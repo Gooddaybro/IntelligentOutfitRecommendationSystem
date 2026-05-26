@@ -1,6 +1,7 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.product.api;
 
 import com.recommendation.intelligentoutfitrecommendationsystem.common.api.ApiResponse;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.dto.RecommendationCandidateQuery;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.ProductDetail;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.ProductSearchItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate;
@@ -14,6 +15,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+/**
+ * 商品模块
+ */
 @RestController
 @RequestMapping("/internal")
 public class InternalProductController {
@@ -44,21 +48,7 @@ public class InternalProductController {
     }
 
     @GetMapping("/recommendation-candidates")
-    public ApiResponse<List<RecommendationCandidate>> findRecommendationCandidates(
-            @RequestParam(required = false) String category,
-            @RequestParam(required = false) String style,
-            @RequestParam(required = false) String season,
-            @RequestParam(required = false) String material,
-            @RequestParam(required = false) String fit,
-            @RequestParam(required = false) Integer budgetMax
-    ) {
-        return ApiResponse.ok(productCatalogService.findRecommendationCandidates(
-                category,
-                style,
-                season,
-                material,
-                fit,
-                budgetMax
-        ));
+    public ApiResponse<List<RecommendationCandidate>> findRecommendationCandidates(RecommendationCandidateQuery query) {
+        return ApiResponse.ok(productCatalogService.findRecommendationCandidates(query));
     }
 }

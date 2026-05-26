@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recommendation.intelligentoutfitrecommendationsystem.inventory.mapper.InventoryMapper">
+
+    <select id="findBySkuId" resultType="com.recommendation.intelligentoutfitrecommendationsystem.inventory.model.InventoryView">
+        SELECT
+            sku.id AS sku_id,
+            sku.sku_code,
+            sku.spu_id,
+            p.name AS product_name,
+            co.name AS color,
+            so.code AS size,
+            inv.available_stock,
+            inv.locked_stock,
+            inv.sold_stock,
+            CASE WHEN inv.available_stock &gt; 0 THEN TRUE ELSE FALSE END AS in_stock
+        FROM inventory inv
+        JOIN product_sku sku ON sku.id = inv.sku_id
+        JOIN product_spu p ON p.id = sku.spu_id
+        JOIN color co ON co.id = sku.color_id
+        JOIN size_option so ON so.id = sku.size_id
+        WHERE sku.id = #{skuId}
+    </select>
+
+</mapper>

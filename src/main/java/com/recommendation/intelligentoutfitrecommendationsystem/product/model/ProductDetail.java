@@ -1,22 +1,28 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.product.model;
 
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
-public record ProductDetail(
-        Long spuId,
-        String spuCode,
-        String name,
-        String categoryName,
-        String description,
-        String mainImageUrl,
-        String fitType,
-        List<String> materials,
-        List<String> seasons,
-        List<String> styleTags,
-        Map<String, String> attributes,
-        BigDecimal minPrice,
-        BigDecimal maxPrice
-) {
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class ProductDetail {
+    private Long spuId;
+    private String spuCode;
+    private String name;
+    private String categoryName;
+    private String description;
+    private String mainImageUrl;
+    private String fitType;
+    private List<String> materials;
+    private List<String> seasons;
+    private List<String> styleTags;
+    private Map<String, String> attributes;
+    private BigDecimal minPrice;
+    private BigDecimal maxPrice;
 }
