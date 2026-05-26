@@ -9,7 +9,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 库存模块
+ * Internal 库存事实接口。
+ *
+ * Python AI 推荐服务调用该接口确认 SKU 是否有可用库存，避免推荐不可购买商品。
  */
 @RestController
 @RequestMapping("/internal")

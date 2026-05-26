@@ -16,7 +16,9 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * 商品模块
+ * Internal 商品事实接口。
+ *
+ * Python AI 推荐服务通过这些接口读取商品、SKU 和候选商品数据，避免维护独立商品目录。
  */
 @RestController
 @RequestMapping("/internal")

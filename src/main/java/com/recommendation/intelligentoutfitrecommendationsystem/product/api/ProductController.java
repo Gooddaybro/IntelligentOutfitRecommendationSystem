@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 /**
- * 商品模块
+ * 商品与推荐候选模块
  */
 @RestController
 @RequestMapping("/api/products")

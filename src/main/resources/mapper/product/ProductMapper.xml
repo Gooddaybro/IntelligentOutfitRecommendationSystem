@@ -31,6 +31,10 @@
         ORDER BY p.id
     </select>
 
+    <!--
+        商品详情基础字段只查询单值属性。
+        材质、季节、风格标签和扩展属性由 Service 分轻量查询装配，避免 resultMap 嵌套过深。
+    -->
     <select id="findProductDetailBase" resultType="com.recommendation.intelligentoutfitrecommendationsystem.product.model.ProductDetail">
         SELECT
             p.id AS spu_id,
@@ -70,6 +74,10 @@
           AND s.status = 'on_sale'
     </select>
 
+    <!--
+        给商城前端和 Python AI 推荐服务提供候选商品池。
+        这里只筛出上架、有库存、符合用户筛选条件的 SPU；自然语言解释和个性化排序由 Python AI 服务完成。
+    -->
     <select id="findRecommendationCandidates" resultType="com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate">
         <bind name="categoryValue" value="query.category == null ? null : query.category.trim()" />
         <bind name="styleValue" value="query.style == null ? null : query.style.trim()" />
@@ -84,6 +92,7 @@
             p.main_image_url,
             f.name AS fit_type,
             (
+                <!-- 候选列表使用逗号拼接，减少 Python AI 服务构建候选摘要时的二次查询。 -->
                 SELECT GROUP_CONCAT(m.name ORDER BY m.id SEPARATOR ',')
                 FROM product_material pm
                 JOIN material m ON m.id = pm.material_id
@@ -141,10 +150,12 @@
             )
         </if>
         GROUP BY p.id, p.spu_code, p.name, c.name, p.main_image_url, f.name
+        <!-- 推荐候选必须有可售库存，避免 AI 推荐用户无法购买的商品。 -->
         HAVING COALESCE(SUM(inv.available_stock), 0) &gt; 0
         <if test="query.budgetMax != null">
             AND MIN(sku.sale_price) &lt;= #{query.budgetMax}
         </if>
+        <!-- 库存优先、价格次之、ID 兜底，保证候选结果稳定且更偏向可购买商品。 -->
         ORDER BY total_available_stock DESC, min_price ASC, p.id ASC
     </select>
 

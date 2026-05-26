@@ -36,6 +36,8 @@ public class ProductCatalogService {
         if (detail == null) {
             throw new ResourceNotFoundException("product not found: " + spuId);
         }
+        // 多值属性保持为轻量查询后在 Service 层装配，避免 XML resultMap 过度嵌套。
+        // 这里返回给商城前端和 Python AI 服务的都是完整商品事实数据。
         detail.setMaterials(productMapper.findMaterials(spuId));
         detail.setSeasons(productMapper.findSeasons(spuId));
         detail.setStyleTags(productMapper.findStyleTags(spuId));
@@ -53,6 +55,7 @@ public class ProductCatalogService {
         if (size == null || size.isBlank()) {
             throw new BadRequestException("size must not be blank");
         }
+        // 尺码统一转成标准码，避免 Python AI 服务传入 " l " 时查不到 SKU。
         SkuSearchItem sku = productMapper.findSku(spuId, color.trim(), size.trim().toUpperCase());
         if (sku == null) {
             throw new ResourceNotFoundException("sku not found");
@@ -64,6 +67,7 @@ public class ProductCatalogService {
         if (query.getBudgetMax() != null && query.getBudgetMax() < 0) {
             throw new BadRequestException("budgetMax must not be negative");
         }
+        // Java 只负责提供可靠候选商品池，最终自然语言解释和个性化排序交给 Python AI 服务。
         return productMapper.findRecommendationCandidates(query);
     }
 
