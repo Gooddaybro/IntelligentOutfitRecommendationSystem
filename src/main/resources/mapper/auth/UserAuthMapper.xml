@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recommendation.intelligentoutfitrecommendationsystem.auth.mapper.UserAuthMapper">
+
+    <!-- 注册前做唯一性检查，错误信息在 Service 层转换成面向接口调用方的业务异常。 -->
+    <select id="existsByUsername" resultType="int">
+        SELECT COUNT(1)
+        FROM user_account
+        WHERE username = #{username}
+    </select>
+
+    <select id="existsByPhone" resultType="int">
+        SELECT COUNT(1)
+        FROM user_account
+        WHERE phone = #{phone}
+    </select>
+
+    <select id="existsByEmail" resultType="int">
+        SELECT COUNT(1)
+        FROM user_account
+        WHERE email = #{email}
+    </select>
+
+    <insert id="insertUserAccount" parameterType="com.recommendation.intelligentoutfitrecommendationsystem.auth.model.UserAccount"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_account (
+            username,
+            phone,
+            email,
+            password_hash,
+            status
+        ) VALUES (
+            #{username},
+            #{phone},
+            #{email},
+            #{passwordHash},
+            #{status}
+        )
+    </insert>
+
+    <select id="findRoleIdByCode" resultType="long">
+        SELECT id
+        FROM role
+        WHERE code = #{code}
+    </select>
+
+    <insert id="insertUserRole">
+        INSERT INTO user_role (user_id, role_id)
+        VALUES (#{userId}, #{roleId})
+    </insert>
+
+    <!-- 登录只按 username 查账号；手机号/邮箱登录后续可在 Service 层扩展统一入口语义。 -->
+    <select id="findByUsername" resultType="com.recommendation.intelligentoutfitrecommendationsystem.auth.model.UserAccount">
+        SELECT
+            id,
+            username,
+            phone,
+            email,
+            password_hash,
+            status,
+            created_at,
+            updated_at
+        FROM user_account
+        WHERE username = #{username}
+    </select>
+
+    <select id="findById" resultType="com.recommendation.intelligentoutfitrecommendationsystem.auth.model.UserAccount">
+        SELECT
+            id,
+            username,
+            phone,
+            email,
+            password_hash,
+            status,
+            created_at,
+            updated_at
+        FROM user_account
+        WHERE id = #{userId}
+    </select>
+
+    <select id="findRoleCodesByUserId" resultType="string">
+        SELECT r.code
+        FROM user_role ur
+        JOIN role r ON r.id = ur.role_id
+        WHERE ur.user_id = #{userId}
+        ORDER BY r.id
+    </select>
+
+    <insert id="insertRefreshToken" parameterType="com.recommendation.intelligentoutfitrecommendationsystem.auth.model.RefreshTokenRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        <!-- 只保存 refresh token 哈希和客户端上下文，明文 token 只返回给客户端一次。 -->
+        INSERT INTO refresh_token (
+            user_id,
+            token_hash,
+            device_id,
+            user_agent,
+            ip_address,
+            expires_at,
+            last_used_at
+        ) VALUES (
+            #{userId},
+            #{tokenHash},
+            #{deviceId},
+            #{userAgent},
+            #{ipAddress},
+            #{expiresAt},
+            #{lastUsedAt}
+        )
+    </insert>
+
+    <select id="findRefreshTokenByHash" resultType="com.recommendation.intelligentoutfitrecommendationsystem.auth.model.RefreshTokenRecord">
+        SELECT
+            id,
+            user_id,
+            token_hash,
+            device_id,
+            user_agent,
+            ip_address,
+            expires_at,
+            revoked_at,
+            created_at,
+            last_used_at
+        FROM refresh_token
+        WHERE token_hash = #{tokenHash}
+    </select>
+
+    <update id="revokeRefreshToken">
+        UPDATE refresh_token
+        SET revoked_at = #{revokedAt}
+        WHERE id = #{id}
+          AND revoked_at IS NULL
+    </update>
+
+    <update id="markRefreshTokenUsed">
+        UPDATE refresh_token
+        SET last_used_at = #{lastUsedAt}
+        WHERE id = #{id}
+    </update>
+
+    <insert id="insertLoginLog" parameterType="com.recommendation.intelligentoutfitrecommendationsystem.auth.model.LoginLog">
+        <!-- 成功和失败都写入登录审计；密码等敏感输入永远不落库。 -->
+        INSERT INTO login_log (
+            user_id,
+            username,
+            success,
+            fail_reason,
+            ip_address,
+            user_agent
+        ) VALUES (
+            #{userId},
+            #{username},
+            #{success},
+            #{failReason},
+            #{ipAddress},
+            #{userAgent}
+        )
+    </insert>
+
+</mapper>

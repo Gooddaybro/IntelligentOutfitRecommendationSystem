@@ -36,13 +36,16 @@
 - 公开商品只读 API
 - 基于 Flyway 的数据库初始化
 - H2 测试环境和 MySQL 8.0 本地运行环境
+- 用户注册登录
+- Spring Security + Access JWT 用户接口鉴权
+- Refresh Token 数据库存根、滚动刷新和登出撤销
+- 登录日志审计
+- 当前用户信息接口
+- 用户基础资料、身体数据和穿衣偏好接口
+- 用户认证与画像 MyBatis XML 数据访问层
 
 ### 未实现
 
-- 用户注册登录
-- 用户权限和 Access/Refresh Token
-- 用户身材数据和穿衣偏好
-- 登录日志和 Refresh Token 撤销
 - Testcontainers + MySQL 集成测试
 - Docker Compose 本地依赖启动
 - GitHub Actions 自动测试
@@ -65,6 +68,11 @@
 | 库存查询 | 已实现 | inventory | inventory、product_sku | GET /internal/inventory | InventoryMapperTests、InternalInventoryControllerTests |
 | 推荐候选商品查询 | 已实现 | product | product_spu、product_sku、inventory、material、season、style_tag、fit_type | GET /api/products/recommendation-candidates、GET /internal/recommendation-candidates | ProductCatalogMapperTests、ProductControllerTests、InternalProductControllerTests |
 | Internal 鉴权 | 已实现 | common/internal | 无 | /internal/** | InternalProductControllerTests |
+| 用户注册登录 | 已实现 | auth | user_account、role、user_role、login_log | POST /api/auth/register、POST /api/auth/login | AuthControllerTests、UserAuthMapperTests |
+| Access/Refresh Token | 已实现 | auth、security | refresh_token | POST /api/auth/refresh、POST /api/auth/logout、GET /api/users/me | AuthControllerTests |
+| 用户基础资料 | 已实现 | user | user_profile | GET/PUT /api/me/profile | UserProfileControllerTests、UserProfileMapperTests |
+| 身体数据 | 已实现 | user | user_body_data | GET/PUT /api/me/body-data | UserProfileControllerTests、UserProfileMapperTests |
+| 穿衣偏好 | 已实现 | user | user_preferences | GET/PUT /api/me/preferences | UserProfileControllerTests、UserProfileMapperTests |
 | 统一响应格式 | 已实现 | common/api | 无 | 所有 Controller | Controller 测试覆盖 |
 
 ## 模块与代码位置
@@ -83,6 +91,46 @@
 | `common/internal/InternalApiProperties.java` | internal token 配置 |
 | `common/internal/InternalApiInterceptor.java` | 校验 `X-Internal-Token` |
 | `common/internal/WebMvcConfig.java` | 注册 `/internal/**` 拦截器 |
+
+### security
+
+负责普通用户 API 的 Spring Security 鉴权、JWT 编解码和当前登录用户解析。
+
+| 文件 | 作用 |
+|---|---|
+| `security/SecurityConfig.java` | 配置匿名接口、受保护接口、JWT Resource Server、BCrypt |
+| `security/JwtProperties.java` | 读取 `app.jwt.*` 配置 |
+| `security/JwtService.java` | 签发 Access JWT |
+| `security/CurrentUser.java` | 从 Spring Security Authentication 中解析当前用户 |
+
+### auth
+
+负责注册、登录、双 Token、登出和当前用户账户信息。
+
+| 文件 | 作用 |
+|---|---|
+| `auth/api/AuthController.java` | `/api/auth/**` 注册、登录、刷新、登出接口 |
+| `auth/api/CurrentUserController.java` | `/api/users/me` 当前用户接口 |
+| `auth/service/AuthService.java` | 账号唯一性、密码校验、Token 签发、Refresh Token 撤销、登录日志 |
+| `auth/mapper/UserAuthMapper.java` | 用户认证 MyBatis Mapper 接口 |
+| `src/main/resources/mapper/auth/UserAuthMapper.xml` | 用户认证 SQL 映射 |
+| `auth/model/UserAccount.java` | 登录账号模型 |
+| `auth/model/RefreshTokenRecord.java` | Refresh Token 数据库存根模型 |
+| `auth/model/LoginLog.java` | 登录日志模型 |
+
+### user
+
+负责为 AI 推荐提供结构化用户上下文，包括基础资料、身体数据和穿衣偏好。
+
+| 文件 | 作用 |
+|---|---|
+| `user/api/UserProfileController.java` | `/api/me/**` 当前用户画像接口 |
+| `user/service/UserProfileService.java` | 画像保存、读取、偏好 JSON 列表转换和预算校验 |
+| `user/mapper/UserProfileMapper.java` | 用户画像 MyBatis Mapper 接口 |
+| `src/main/resources/mapper/user/UserProfileMapper.xml` | 用户画像 SQL 映射 |
+| `user/model/UserProfile.java` | 用户基础资料模型 |
+| `user/model/UserBodyData.java` | 身体数据模型 |
+| `user/model/UserPreferences.java` | 穿衣偏好模型 |
 
 ### product
 
@@ -142,6 +190,14 @@
 | product_image | 商品图片 |
 | size_rule | 尺码规则 |
 | inventory | SKU 库存 |
+| user_account | 用户登录账号、手机号、邮箱、密码哈希和状态 |
+| role | 系统角色字典 |
+| user_role | 用户和角色关系 |
+| refresh_token | Refresh Token 哈希存根、过期时间、撤销时间和设备信息 |
+| login_log | 登录成功/失败审计日志 |
+| user_profile | 用户昵称、头像、性别和生日 |
+| user_body_data | 用户身高、体重、三围、肩宽和偏好版型 |
+| user_preferences | 用户风格、颜色、品类偏好和预算区间 |
 | flyway_schema_history | Flyway 数据库迁移记录 |
 
 ## API 对照
@@ -155,6 +211,24 @@
 | GET /api/products | 商品搜索 | 否 |
 | GET /api/products/{spuId} | 商品详情 | 否 |
 | GET /api/products/recommendation-candidates | 推荐候选商品查询 | 否 |
+
+### 普通用户 API
+
+普通用户 API 使用 `Authorization: Bearer <accessToken>` 鉴权。`accessToken` 由 `/api/auth/login` 或 `/api/auth/refresh` 返回。
+
+| API | 作用 | 是否需要 Bearer Token |
+|---|---|---|
+| POST /api/auth/register | 用户注册 | 否 |
+| POST /api/auth/login | 用户登录并签发 Access/Refresh Token | 否 |
+| POST /api/auth/refresh | 使用 Refresh Token 滚动刷新双 Token | 否 |
+| POST /api/auth/logout | 撤销 Refresh Token | 否 |
+| GET /api/users/me | 获取当前登录用户 | 是 |
+| GET /api/me/profile | 获取当前用户基础资料 | 是 |
+| PUT /api/me/profile | 更新当前用户基础资料 | 是 |
+| GET /api/me/body-data | 获取当前用户身体数据 | 是 |
+| PUT /api/me/body-data | 更新当前用户身体数据 | 是 |
+| GET /api/me/preferences | 获取当前用户穿衣偏好 | 是 |
+| PUT /api/me/preferences | 更新当前用户穿衣偏好 | 是 |
 
 ### Internal API
 
@@ -184,6 +258,10 @@ X-Internal-Token: dev-internal-token
 | `InventoryQueryServiceTests.java` | 库存业务参数校验是否正确 |
 | `InternalInventoryControllerTests.java` | internal 库存 API 是否可用 |
 | `IntelligentOutfitRecommendationSystemApplicationTests.java` | Spring Boot 上下文是否能启动 |
+| `AuthControllerTests.java` | 用户注册、登录、Access JWT 鉴权、Refresh Token 刷新和登出撤销 |
+| `UserAuthMapperTests.java` | 用户账号、角色、Refresh Token 和登录日志 SQL 映射 |
+| `UserProfileControllerTests.java` | 当前用户基础资料、身体数据、穿衣偏好接口和参数校验 |
+| `UserProfileMapperTests.java` | 用户画像三类表的 MyBatis SQL 映射 |
 
 运行测试：
 
@@ -209,6 +287,7 @@ Flyway 已执行：
 |---|---|---|
 | V1__product_inventory_schema.sql | 创建商品和库存表结构 | 成功 |
 | V2__seed_demo_clothing_catalog.sql | 插入 demo 服装数据 | 成功 |
+| V3__user_auth_profile_schema.sql | 创建用户认证、Refresh Token、登录日志和用户画像表结构 | 成功 |
 
 当前 demo 数据：
 
@@ -229,7 +308,7 @@ SELECT version, success FROM flyway_schema_history;
 
 ## 下一阶段开发建议
 
-建议下一阶段优先实现用户认证、双 Token 鉴权、用户资料和穿衣偏好模块。原因是 AI 推荐在 Java 调 Python 之前，需要先有用户身份、用户身高体重、尺码、预算、颜色偏好、风格偏好等上下文。
+用户认证、双 Token 鉴权、用户资料和穿衣偏好模块已经完成。下一阶段建议优先补工程化能力和 AI 联动前置能力：先把 Testcontainers、Docker Compose、CI 和接口文档补齐，再开发会话记录与 Java 调 Python AI 服务。原因是 AI 推荐在进入真实链路前，需要稳定的用户上下文、可重复启动的本地环境、可验证的接口契约和可追踪的会话历史。
 
 下一阶段要明确区分两套 token：
 
@@ -243,16 +322,14 @@ X-Internal-Token
 
 后续模块顺序建议：
 
-1. auth-service：用户注册、登录、Access/Refresh Token、退出登录、登录日志
-2. user-profile-service：基础资料、身体数据、尺码偏好、风格偏好
-3. engineering：Testcontainers、Docker Compose、GitHub Actions、Spring REST Docs
-4. conversation-service：会话和消息历史
-5. assistant-service：Java 调 Python AI 服务
-6. cart-service：购物车
-7. order-service：订单和库存锁定
-8. mock-payment：模拟支付
-9. SSE / WebSocket：流式返回
-10. MQ：复杂推荐异步任务
+1. engineering：Testcontainers、Docker Compose、GitHub Actions、Spring REST Docs
+2. conversation-service：会话、消息历史、thread_id
+3. assistant-service：Java 调 Python AI 服务，同步问答先跑通
+4. cart-service：购物车
+5. order-service：订单和库存锁定
+6. mock-payment：模拟支付
+7. SSE / WebSocket：流式返回
+8. MQ：复杂推荐异步任务
 
 ## 后续维护方式
 

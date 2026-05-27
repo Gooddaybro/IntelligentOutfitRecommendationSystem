@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recommendation.intelligentoutfitrecommendationsystem.user.mapper.UserProfileMapper">
+
+    <!-- 基础资料、身体数据、穿衣偏好拆表保存，便于后续 AI 推荐按需读取上下文。 -->
+    <select id="findProfileByUserId" resultType="com.recommendation.intelligentoutfitrecommendationsystem.user.model.UserProfile">
+        SELECT
+            id,
+            user_id,
+            nickname,
+            avatar_url,
+            gender,
+            birthday,
+            created_at,
+            updated_at
+        FROM user_profile
+        WHERE user_id = #{userId}
+    </select>
+
+    <insert id="insertProfile" parameterType="com.recommendation.intelligentoutfitrecommendationsystem.user.model.UserProfile"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_profile (
+            user_id,
+            nickname,
+            avatar_url,
+            gender,
+            birthday
+        ) VALUES (
+            #{userId},
+            #{nickname},
+            #{avatarUrl},
+            #{gender},
+            #{birthday}
+        )
+    </insert>
+
+    <update id="updateProfile" parameterType="com.recommendation.intelligentoutfitrecommendationsystem.user.model.UserProfile">
+        UPDATE user_profile
+        SET nickname = #{nickname},
+            avatar_url = #{avatarUrl},
+            gender = #{gender},
+            birthday = #{birthday},
+            updated_at = CURRENT_TIMESTAMP(6)
+        WHERE user_id = #{userId}
+    </update>
+
+    <select id="findBodyDataByUserId" resultType="com.recommendation.intelligentoutfitrecommendationsystem.user.model.UserBodyData">
+        SELECT
+            id,
+            user_id,
+            height_cm,
+            weight_kg,
+            gender,
+            shoulder_width_cm,
+            bust_cm,
+            waist_cm,
+            hip_cm,
+            preferred_fit,
+            created_at,
+            updated_at
+        FROM user_body_data
+        WHERE user_id = #{userId}
+    </select>
+
+    <insert id="insertBodyData" parameterType="com.recommendation.intelligentoutfitrecommendationsystem.user.model.UserBodyData"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_body_data (
+            user_id,
+            height_cm,
+            weight_kg,
+            gender,
+            shoulder_width_cm,
+            bust_cm,
+            waist_cm,
+            hip_cm,
+            preferred_fit
+        ) VALUES (
+            #{userId},
+            #{heightCm},
+            #{weightKg},
+            #{gender},
+            #{shoulderWidthCm},
+            #{bustCm},
+            #{waistCm},
+            #{hipCm},
+            #{preferredFit}
+        )
+    </insert>
+
+    <update id="updateBodyData" parameterType="com.recommendation.intelligentoutfitrecommendationsystem.user.model.UserBodyData">
+        UPDATE user_body_data
+        SET height_cm = #{heightCm},
+            weight_kg = #{weightKg},
+            gender = #{gender},
+            shoulder_width_cm = #{shoulderWidthCm},
+            bust_cm = #{bustCm},
+            waist_cm = #{waistCm},
+            hip_cm = #{hipCm},
+            preferred_fit = #{preferredFit},
+            updated_at = CURRENT_TIMESTAMP(6)
+        WHERE user_id = #{userId}
+    </update>
+
+    <select id="findPreferencesByUserId" resultType="com.recommendation.intelligentoutfitrecommendationsystem.user.model.UserPreferences">
+        SELECT
+            id,
+            user_id,
+            preferred_styles,
+            preferred_colors,
+            disliked_colors,
+            preferred_categories,
+            budget_min,
+            budget_max,
+            created_at,
+            updated_at
+        FROM user_preferences
+        WHERE user_id = #{userId}
+    </select>
+
+    <insert id="insertPreferences" parameterType="com.recommendation.intelligentoutfitrecommendationsystem.user.model.UserPreferences"
+            useGeneratedKeys="true" keyProperty="id">
+        <!-- 多值偏好以 JSON 文本保存，当前阶段保持表结构轻量，接口层仍返回 List<String>。 -->
+        INSERT INTO user_preferences (
+            user_id,
+            preferred_styles,
+            preferred_colors,
+            disliked_colors,
+            preferred_categories,
+            budget_min,
+            budget_max
+        ) VALUES (
+            #{userId},
+            #{preferredStyles},
+            #{preferredColors},
+            #{dislikedColors},
+            #{preferredCategories},
+            #{budgetMin},
+            #{budgetMax}
+        )
+    </insert>
+
+    <update id="updatePreferences" parameterType="com.recommendation.intelligentoutfitrecommendationsystem.user.model.UserPreferences">
+        <!-- 更新偏好时整组覆盖，避免局部追加导致 AI 上下文出现过期标签。 -->
+        UPDATE user_preferences
+        SET preferred_styles = #{preferredStyles},
+            preferred_colors = #{preferredColors},
+            disliked_colors = #{dislikedColors},
+            preferred_categories = #{preferredCategories},
+            budget_min = #{budgetMin},
+            budget_max = #{budgetMax},
+            updated_at = CURRENT_TIMESTAMP(6)
+        WHERE user_id = #{userId}
+    </update>
+
+</mapper>
