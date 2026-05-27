@@ -6,6 +6,25 @@
 
 ## 当前阶段范围
 
+## 技术栈基线
+
+当前后端技术栈按 Spring Boot 4 路线维护：
+
+| 方向 | 当前选择 | 说明 |
+|---|---|---|
+| Java | Java 21 | 与 Spring Boot 4.0.6 兼容 |
+| Web 框架 | Spring Boot 4.0.6 / Spring Web MVC | Boot 4 基于 Spring Framework 7，第三方依赖需确认兼容性 |
+| 数据库 | MySQL 8.0 | 本地开发主库 |
+| 数据迁移 | Flyway | 管理表结构版本 |
+| 数据访问 | MyBatis Spring Boot Starter 4.0.0 + XML | 保持 SQL 可控，贴合当前项目重构方向 |
+| 参数校验 | spring-boot-starter-validation / `@Validated` | DTO 入参校验 |
+| 测试 | JUnit 5、MockMvc、H2 | 当前已有自动化测试基础 |
+| 推荐测试升级 | Testcontainers + MySQL | 后续用于关键 Mapper 和鉴权链路，减少 H2/MySQL 方言差异 |
+| 本地依赖 | Docker Compose | 后续提供 MySQL 一键启动 |
+| CI | GitHub Actions | 后续自动执行 Maven 测试 |
+| 接口文档 | Spring REST Docs 4.0 优先 | Swagger/OpenAPI 后续确认 Boot 4 兼容版本后再接 |
+| 手动测试 | Reqable | 注册、登录、商品、库存、internal API 验证 |
+
 ### 已实现
 
 - 商品目录基础能力
@@ -21,8 +40,13 @@
 ### 未实现
 
 - 用户注册登录
-- 用户权限和 JWT
+- 用户权限和 Access/Refresh Token
 - 用户身材数据和穿衣偏好
+- 登录日志和 Refresh Token 撤销
+- Testcontainers + MySQL 集成测试
+- Docker Compose 本地依赖启动
+- GitHub Actions 自动测试
+- Spring REST Docs 接口文档
 - 购物车
 - 订单
 - 支付
@@ -205,18 +229,30 @@ SELECT version, success FROM flyway_schema_history;
 
 ## 下一阶段开发建议
 
-建议下一阶段优先实现用户资料和穿衣偏好模块。原因是 AI 推荐在 Java 调 Python 之前，需要先有用户身高、体重、尺码、预算、颜色偏好、风格偏好等上下文。
+建议下一阶段优先实现用户认证、双 Token 鉴权、用户资料和穿衣偏好模块。原因是 AI 推荐在 Java 调 Python 之前，需要先有用户身份、用户身高体重、尺码、预算、颜色偏好、风格偏好等上下文。
+
+下一阶段要明确区分两套 token：
+
+```text
+Authorization: Bearer <accessToken>
+  普通用户 API 使用，accessToken 为短效 JWT，refreshToken 由数据库 refresh_token 表管理。
+
+X-Internal-Token
+  Python AI 服务调用 Java internal API 使用，继续读取 application.properties 固定配置。
+```
 
 后续模块顺序建议：
 
-1. user-service：用户、登录、权限
-2. user-profile-service：身材数据、尺码偏好、风格偏好
-3. assistant-service：Java 调 Python AI 服务
+1. auth-service：用户注册、登录、Access/Refresh Token、退出登录、登录日志
+2. user-profile-service：基础资料、身体数据、尺码偏好、风格偏好
+3. engineering：Testcontainers、Docker Compose、GitHub Actions、Spring REST Docs
 4. conversation-service：会话和消息历史
-5. cart-service：购物车
-6. order-service：订单
-7. SSE / WebSocket：流式返回
-8. MQ：复杂推荐异步任务
+5. assistant-service：Java 调 Python AI 服务
+6. cart-service：购物车
+7. order-service：订单和库存锁定
+8. mock-payment：模拟支付
+9. SSE / WebSocket：流式返回
+10. MQ：复杂推荐异步任务
 
 ## 后续维护方式
 

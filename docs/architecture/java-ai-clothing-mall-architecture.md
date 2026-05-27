@@ -60,9 +60,33 @@ Python AI 服务：
 
 ```text
 语言：Java 21
-框架：Spring Boot
+框架：Spring Boot 4.0.6
 构建：Maven
-数据库：MySQL
+数据库：MySQL 8.0
+数据访问：MyBatis Mapper + XML
+数据库迁移：Flyway
+```
+
+技术栈时效性说明：
+
+```text
+Spring Boot 4.0.6 属于 Boot 4 版本线，基于 Spring Framework 7，并进入 Jakarta EE 11 / Jackson 3 体系。
+第三方依赖必须优先确认 Boot 4 / Spring Framework 7 兼容性。
+MyBatis 使用 Spring Boot Starter 4.0.0 路线。
+接口文档优先使用 Spring REST Docs 4.0；Swagger UI/OpenAPI 作为后续增强，接入前需确认 springdoc-openapi 的 Boot 4 兼容版本。
+```
+
+工程化能力目标：
+
+```text
+统一响应 ApiResponse
+统一异常 GlobalExceptionHandler
+参数校验 @Validated
+操作日志 / 登录日志
+Testcontainers + MySQL 集成测试
+Docker Compose 本地依赖启动
+GitHub Actions 自动化测试
+Reqable 手动接口验证
 ```
 
 建议包结构：
@@ -92,6 +116,9 @@ com.recommendation.intelligentoutfitrecommendationsystem
 主要能力：
 
 - 用户注册、登录、退出。
+- Access JWT + Refresh Token 双 Token 鉴权。
+- Refresh Token 数据库撤销与多端登录追踪。
+- 登录日志审计。
 - 用户基础资料维护。
 - 收货地址维护。
 - 用户身体数据维护。
@@ -264,7 +291,7 @@ created_at
 updated_at
 ```
 
-#### user_body_profile
+#### user_body_data
 
 用户身体数据，用于尺码推荐。
 
@@ -291,7 +318,7 @@ regular
 slim
 ```
 
-#### user_style_preference
+#### user_preferences
 
 用户穿衣偏好，用于个性化推荐。
 
@@ -309,6 +336,38 @@ updated_at
 ```
 
 第一版可以把多值字段存成 JSON 字符串，后续再拆成关系表。
+
+#### refresh_token
+
+Refresh Token 状态表。Access Token 保持短效无状态，Refresh Token 通过数据库控制撤销、过期和多端登录。
+
+```text
+id
+user_id
+token_hash
+device_id
+user_agent
+ip_address
+expires_at
+revoked_at
+created_at
+last_used_at
+```
+
+#### login_log
+
+登录审计日志。
+
+```text
+id
+user_id
+username
+success
+fail_reason
+ip_address
+user_agent
+created_at
+```
 
 #### user_address
 
@@ -1174,10 +1233,12 @@ assistant-service
 必做表：
 
 ```text
-user
+user_account
 user_profile
-user_body_profile
-user_style_preference
+user_body_data
+user_preferences
+refresh_token
+login_log
 user_address
 
 category
@@ -1231,15 +1292,17 @@ MVP 可以暂缓：
 2. 设计并落地商品、SKU、颜色、尺码、材质、版型、季节、风格标签表。
 3. 实现商品查询和 internal product API。
 4. 实现库存表和库存查询。
-5. 实现用户画像和穿衣偏好。
-6. 实现 assistant-session 和 assistant-message。
-7. 实现 Java 调 Python `/chat`。
-8. 改造 Python structured lookup，让它调用 Java internal API。
-9. 实现推荐结果保存和前端商品卡片所需返回结构。
-10. 实现购物车。
-11. 实现订单和库存锁定。
-12. 增加 SSE 流式聊天。
-13. 评估是否引入 MQ 处理长任务。
+5. 实现用户注册登录、Access/Refresh Token、JWT 鉴权、登录日志。
+6. 实现用户画像、身体数据和穿衣偏好。
+7. 增加 Testcontainers、Docker Compose、GitHub Actions 和接口文档能力。
+8. 实现 assistant-session 和 assistant-message。
+9. 实现 Java 调 Python `/chat`。
+10. 改造 Python structured lookup，让它调用 Java internal API。
+11. 实现推荐结果保存和前端商品卡片所需返回结构。
+12. 实现购物车。
+13. 实现订单和库存锁定。
+14. 增加 SSE 流式聊天。
+15. 评估是否引入 MQ 处理长任务。
 
 ## 10. 风险与约束
 
