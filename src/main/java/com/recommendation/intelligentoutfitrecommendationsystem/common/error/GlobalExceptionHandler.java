@@ -22,6 +22,12 @@ public class GlobalExceptionHandler {
         return ApiResponse.error("not_found", exception.getMessage());
     }
 
+    @ExceptionHandler(ExternalServiceException.class)
+    @ResponseStatus(HttpStatus.BAD_GATEWAY)
+    public ApiResponse<Void> handleExternalService(ExternalServiceException exception) {
+        return ApiResponse.error("external_service_error", exception.getMessage());
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResponse<Void> handleValidation(MethodArgumentNotValidException exception) {

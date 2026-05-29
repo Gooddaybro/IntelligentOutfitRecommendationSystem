@@ -1,0 +1,18 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: intelligent_outfit_mysql
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_DATABASE: intelligent_outfit
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-123456}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - intelligent_outfit_mysql_data:/var/lib/mysql
+
+volumes:
+  intelligent_outfit_mysql_data:

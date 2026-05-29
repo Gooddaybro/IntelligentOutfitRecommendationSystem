@@ -89,6 +89,29 @@ GitHub Actions 自动化测试
 Reqable 手动接口验证
 ```
 
+当前 Phase 2 已落地的能力：
+
+```text
+Docker Compose 本地 MySQL 8 环境
+MDC requestId 日志链路追踪
+GitHub Actions Maven 测试
+Testcontainers MySQL Flyway 迁移测试
+Spring REST Docs auth 接口片段
+conversation-service 会话和消息历史
+assistant-service 同步 HTTP 调 Python /chat
+```
+
+仍保留到后续阶段的能力：
+
+```text
+购物车
+订单
+支付
+SSE / WebSocket 流式返回
+MQ 异步推荐任务
+推荐结果独立结构化沉淀表
+```
+
 建议包结构：
 
 ```text

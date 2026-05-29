@@ -1,0 +1,17 @@
+= Intelligent Outfit Recommendation System API
+
+本文档聚合 Spring REST Docs 生成的接口契约片段。
+
+== Auth
+
+=== Register
+
+include::{snippets}/auth-register/http-request.adoc[]
+
+include::{snippets}/auth-register/http-response.adoc[]
+
+=== Login
+
+include::{snippets}/auth-login/http-request.adoc[]
+
+include::{snippets}/auth-login/http-response.adoc[]

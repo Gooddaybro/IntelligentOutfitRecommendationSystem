@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recommendation.intelligentoutfitrecommendationsystem.conversation.mapper.ConversationMapper">
+
+    <insert id="insertSession" parameterType="com.recommendation.intelligentoutfitrecommendationsystem.conversation.model.ChatSession"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO chat_session (
+            thread_id,
+            user_id,
+            title,
+            status
+        ) VALUES (
+            #{threadId},
+            #{userId},
+            #{title},
+            #{status}
+        )
+    </insert>
+
+    <!--
+        会话读取必须同时匹配 threadId 和 userId。
+        threadId 会暴露给前端，不能把它当成跨用户访问凭证。
+    -->
+    <select id="findSessionByThreadIdAndUserId"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.conversation.model.ChatSession">
+        SELECT
+            id,
+            thread_id,
+            user_id,
+            title,
+            status,
+            created_at,
+            updated_at,
+            last_message_at
+        FROM chat_session
+        WHERE thread_id = #{threadId}
+          AND user_id = #{userId}
+          AND status = 'active'
+    </select>
+
+    <!--
+        只返回 active 会话；归档会话保留历史数据，但不进入用户默认会话列表。
+        最近有消息的会话优先，便于前端呈现类似聊天应用的时间线。
+    -->
+    <select id="findSessionsByUserId"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.conversation.model.ChatSession">
+        SELECT
+            id,
+            thread_id,
+            user_id,
+            title,
+            status,
+            created_at,
+            updated_at,
+            last_message_at
+        FROM chat_session
+        WHERE user_id = #{userId}
+          AND status = 'active'
+        ORDER BY COALESCE(last_message_at, created_at) DESC, id DESC
+    </select>
+
+    <!-- 归档操作也绑定 userId，避免用户猜到 threadId 后归档其他人的会话。 -->
+    <update id="archiveSession">
+        UPDATE chat_session
+        SET status = 'archived',
+            updated_at = CURRENT_TIMESTAMP(6)
+        WHERE thread_id = #{threadId}
+          AND user_id = #{userId}
+          AND status = 'active'
+    </update>
+
+    <insert id="insertMessage" parameterType="com.recommendation.intelligentoutfitrecommendationsystem.conversation.model.ChatMessage"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO chat_message (
+            session_id,
+            user_id,
+            role,
+            content,
+            message_status,
+            request_id
+        ) VALUES (
+            #{sessionId},
+            #{userId},
+            #{role},
+            #{content},
+            #{messageStatus},
+            #{requestId}
+        )
+    </insert>
+
+    <select id="findMessagesBySessionId"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.conversation.model.ChatMessage">
+        SELECT
+            id,
+            session_id,
+            user_id,
+            role,
+            content,
+            message_status,
+            request_id,
+            created_at
+        FROM chat_message
+        WHERE session_id = #{sessionId}
+        ORDER BY created_at ASC, id ASC
+    </select>
+
+    <update id="touchSessionLastMessageAt">
+        UPDATE chat_session
+        SET last_message_at = CURRENT_TIMESTAMP(6),
+            updated_at = CURRENT_TIMESTAMP(6)
+        WHERE id = #{sessionId}
+    </update>
+
+</mapper>

@@ -2,7 +2,7 @@
 
 本文档用于梳理 Intelligent Outfit Recommendation System 当前 Java 后端已经实现的功能、对应代码位置、数据库表、API 接口和测试用例。
 
-当前阶段重点是：商品库、SKU、库存、服装细粒度属性，以及给 Python AI 推荐服务调用的 internal API。本文档也作为后续继续开发用户、购物车、订单、会话和 assistant-service 的功能追踪表。
+当前阶段重点是：商品库、SKU、库存、服装细粒度属性、用户认证与画像、会话记录，以及 Java 调 Python AI 服务的第一版同步链路。本文档也作为后续继续开发购物车、订单、支付、SSE 和 MQ 的功能追踪表。
 
 ## 当前阶段范围
 
@@ -19,10 +19,10 @@
 | 数据访问 | MyBatis Spring Boot Starter 4.0.0 + XML | 保持 SQL 可控，贴合当前项目重构方向 |
 | 参数校验 | spring-boot-starter-validation / `@Validated` | DTO 入参校验 |
 | 测试 | JUnit 5、MockMvc、H2 | 当前已有自动化测试基础 |
-| 推荐测试升级 | Testcontainers + MySQL | 后续用于关键 Mapper 和鉴权链路，减少 H2/MySQL 方言差异 |
-| 本地依赖 | Docker Compose | 后续提供 MySQL 一键启动 |
-| CI | GitHub Actions | 后续自动执行 Maven 测试 |
-| 接口文档 | Spring REST Docs 4.0 优先 | Swagger/OpenAPI 后续确认 Boot 4 兼容版本后再接 |
+| 推荐测试升级 | Testcontainers + MySQL 1.21.4 | CI 可用真实 MySQL 8 验证 Flyway 迁移，减少 H2/MySQL 方言差异 |
+| 本地依赖 | Docker Compose | 已提供 MySQL 一键启动 |
+| CI | GitHub Actions | 已配置 Maven 自动测试，CI 中开启 MySQL 容器测试 |
+| 接口文档 | Spring REST Docs + MockMvc | 已从 auth 接口生成契约片段，后续继续覆盖 user/conversation/assistant |
 | 手动测试 | Reqable | 注册、登录、商品、库存、internal API 验证 |
 
 ### 已实现
@@ -43,18 +43,19 @@
 - 当前用户信息接口
 - 用户基础资料、身体数据和穿衣偏好接口
 - 用户认证与画像 MyBatis XML 数据访问层
+- Docker Compose 本地 MySQL 环境
+- GitHub Actions 自动测试
+- MDC requestId 日志链路追踪
+- Testcontainers + MySQL Flyway 迁移测试
+- Spring REST Docs auth 接口契约片段
+- 会话记录：创建会话、查询会话列表、查询消息历史、归档会话
+- Java assistant-service 同步调用 Python AI 服务并保存 user/assistant 消息
 
 ### 未实现
 
-- Testcontainers + MySQL 集成测试
-- Docker Compose 本地依赖启动
-- GitHub Actions 自动测试
-- Spring REST Docs 接口文档
 - 购物车
 - 订单
 - 支付
-- 会话记录
-- Java 调 Python AI 服务
 - SSE / WebSocket 流式返回
 - MQ 异步推荐任务
 
@@ -73,6 +74,10 @@
 | 用户基础资料 | 已实现 | user | user_profile | GET/PUT /api/me/profile | UserProfileControllerTests、UserProfileMapperTests |
 | 身体数据 | 已实现 | user | user_body_data | GET/PUT /api/me/body-data | UserProfileControllerTests、UserProfileMapperTests |
 | 穿衣偏好 | 已实现 | user | user_preferences | GET/PUT /api/me/preferences | UserProfileControllerTests、UserProfileMapperTests |
+| 会话记录 | 已实现 | conversation | chat_session、chat_message | POST/GET/DELETE /api/conversations、GET /api/conversations/{threadId}/messages | ConversationMapperTests、ConversationControllerTests |
+| AI 同步问答 | 已实现 | assistant | chat_session、chat_message、product_*、user_* | POST /api/assistant/chat | AssistantServiceTests、AssistantControllerTests |
+| requestId 日志追踪 | 已实现 | common/logging | 无 | 所有 HTTP 请求响应头 `X-Request-Id` | MdcRequestIdInterceptorTests |
+| MySQL 容器迁移测试 | 已实现 | support test | flyway_schema_history、全部业务表 | 无 | MySqlFlywayMigrationTests |
 | 统一响应格式 | 已实现 | common/api | 无 | 所有 Controller | Controller 测试覆盖 |
 
 ## 模块与代码位置
@@ -87,10 +92,12 @@
 | `common/api/ErrorResponse.java` | 错误响应结构 |
 | `common/error/BadRequestException.java` | 参数错误异常 |
 | `common/error/ResourceNotFoundException.java` | 资源不存在异常 |
+| `common/error/ExternalServiceException.java` | 外部服务调用失败异常，当前用于 Python AI 服务 |
 | `common/error/GlobalExceptionHandler.java` | 统一异常处理 |
 | `common/internal/InternalApiProperties.java` | internal token 配置 |
 | `common/internal/InternalApiInterceptor.java` | 校验 `X-Internal-Token` |
-| `common/internal/WebMvcConfig.java` | 注册 `/internal/**` 拦截器 |
+| `common/internal/WebMvcConfig.java` | 注册 requestId 和 `/internal/**` 拦截器 |
+| `common/logging/MdcRequestIdInterceptor.java` | 为每个 HTTP 请求注入/回传 `X-Request-Id`，并写入 SLF4J MDC |
 
 ### security
 
@@ -162,6 +169,33 @@
 | `src/main/resources/mapper/inventory/InventoryMapper.xml` | 库存 SQL 映射 |
 | `inventory/model/InventoryView.java` | 库存返回模型 |
 
+### conversation
+
+负责当前用户的 AI 会话和消息历史，所有查询都绑定 JWT 中的 `userId`。
+
+| 文件 | 作用 |
+|---|---|
+| `conversation/api/ConversationController.java` | `/api/conversations/**` 会话接口 |
+| `conversation/service/ConversationService.java` | 会话创建、列表、消息查询、归档、消息追加 |
+| `conversation/mapper/ConversationMapper.java` | 会话 MyBatis Mapper 接口 |
+| `src/main/resources/mapper/conversation/ConversationMapper.xml` | 会话 SQL 映射 |
+| `conversation/model/ChatSession.java` | 会话表模型 |
+| `conversation/model/ChatMessage.java` | 消息表模型 |
+| `conversation/dto/*` | 会话和消息响应 DTO |
+
+### assistant
+
+负责 Java 调 Python AI 服务。Java 端组装用户画像、会话历史、商品候选池，再调用 Python `/chat`，并把 user/assistant 消息写回 conversation 模块。
+
+| 文件 | 作用 |
+|---|---|
+| `assistant/api/AssistantController.java` | `/api/assistant/chat` 同步问答接口 |
+| `assistant/service/AssistantService.java` | 创建/复用 thread、保存消息、调用 Python、返回结果 |
+| `assistant/service/AssistantContextService.java` | 组装用户画像、会话历史和推荐候选商品 |
+| `assistant/client/PythonAssistantClient.java` | Python AI 客户端接口，便于测试替换 |
+| `assistant/client/RestPythonAssistantClient.java` | 基于 Java HttpClient 的 Python `/chat` HTTP 实现 |
+| `assistant/dto/*` | Java 前端请求/响应和 Java 调 Python 请求/响应 DTO |
+
 ### 数据访问层
 
 当前商品和库存模块已经从 `NamedParameterJdbcTemplate` Repository 重构为 MyBatis：
@@ -198,6 +232,8 @@
 | user_profile | 用户昵称、头像、性别和生日 |
 | user_body_data | 用户身高、体重、三围、肩宽和偏好版型 |
 | user_preferences | 用户风格、颜色、品类偏好和预算区间 |
+| chat_session | AI 会话，保存 thread_id、user_id、标题、状态和最后消息时间 |
+| chat_message | AI 会话消息，保存 user/assistant 消息内容、角色、状态和 requestId |
 | flyway_schema_history | Flyway 数据库迁移记录 |
 
 ## API 对照
@@ -229,6 +265,11 @@
 | PUT /api/me/body-data | 更新当前用户身体数据 | 是 |
 | GET /api/me/preferences | 获取当前用户穿衣偏好 | 是 |
 | PUT /api/me/preferences | 更新当前用户穿衣偏好 | 是 |
+| POST /api/conversations | 创建当前用户会话 | 是 |
+| GET /api/conversations | 查询当前用户会话列表 | 是 |
+| GET /api/conversations/{threadId}/messages | 查询当前用户某个会话的消息历史 | 是 |
+| DELETE /api/conversations/{threadId} | 归档当前用户某个会话 | 是 |
+| POST /api/assistant/chat | 同步调用 Python AI 导购服务并落库消息 | 是 |
 
 ### Internal API
 
@@ -262,6 +303,12 @@ X-Internal-Token: dev-internal-token
 | `UserAuthMapperTests.java` | 用户账号、角色、Refresh Token 和登录日志 SQL 映射 |
 | `UserProfileControllerTests.java` | 当前用户基础资料、身体数据、穿衣偏好接口和参数校验 |
 | `UserProfileMapperTests.java` | 用户画像三类表的 MyBatis SQL 映射 |
+| `ConversationMapperTests.java` | 会话和消息 MyBatis SQL 映射、归档隔离 |
+| `ConversationControllerTests.java` | 会话接口鉴权、当前用户隔离、归档后列表不可见 |
+| `AssistantServiceTests.java` | assistant-service 创建会话、保存消息、调用 Python 客户端的业务顺序 |
+| `AssistantControllerTests.java` | `/api/assistant/chat` 鉴权、AI 响应和消息落库 |
+| `MdcRequestIdInterceptorTests.java` | `X-Request-Id` 生成、透传、响应头回写和 MDC 清理 |
+| `MySqlFlywayMigrationTests.java` | Testcontainers MySQL 环境下 Flyway 迁移可执行性 |
 
 运行测试：
 
@@ -269,6 +316,13 @@ X-Internal-Token: dev-internal-token
 $env:JAVA_HOME='D:\Program Files\Java\jdk-21'
 $env:Path="$env:JAVA_HOME\bin;$env:Path"
 .\mvnw.cmd test
+```
+
+如果要在本地跑真实 MySQL 容器测试，需要先启动 Docker，再设置：
+
+```powershell
+$env:RUN_MYSQL_TESTS='true'
+.\mvnw.cmd -q -Dtest=MySqlFlywayMigrationTests test
 ```
 
 ## 当前本地数据库状态
@@ -288,6 +342,7 @@ Flyway 已执行：
 | V1__product_inventory_schema.sql | 创建商品和库存表结构 | 成功 |
 | V2__seed_demo_clothing_catalog.sql | 插入 demo 服装数据 | 成功 |
 | V3__user_auth_profile_schema.sql | 创建用户认证、Refresh Token、登录日志和用户画像表结构 | 成功 |
+| V4__conversation_schema.sql | 创建 AI 会话和消息历史表结构 | 成功 |
 
 当前 demo 数据：
 
