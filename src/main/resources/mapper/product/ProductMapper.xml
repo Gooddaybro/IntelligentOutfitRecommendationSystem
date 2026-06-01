@@ -4,6 +4,26 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.recommendation.intelligentoutfitrecommendationsystem.product.mapper.ProductMapper">
 
+    <resultMap id="RecommendationCandidateMap" type="com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate">
+        <id property="spuId" column="spu_id"/>
+        <result property="skuId" column="sku_id"/>
+        <result property="spuCode" column="spu_code"/>
+        <result property="name" column="name"/>
+        <result property="categoryName" column="category_name"/>
+        <result property="mainImageUrl" column="main_image_url"/>
+        <result property="fitType" column="fit_type"/>
+        <result property="color" column="color"/>
+        <result property="size" column="size"/>
+        <result property="materials" column="materials"/>
+        <result property="seasons" column="seasons"/>
+        <result property="styleTags" column="style_tags"/>
+        <result property="salePrice" column="sale_price"/>
+        <result property="stockStatus" column="stock_status"/>
+        <result property="minPrice" column="min_price"/>
+        <result property="maxPrice" column="max_price"/>
+        <result property="totalAvailableStock" column="total_available_stock"/>
+    </resultMap>
+
     <select id="searchProducts" resultType="com.recommendation.intelligentoutfitrecommendationsystem.product.model.ProductSearchItem">
         <bind name="keywordValue" value="keyword == null ? null : keyword.trim()" />
         SELECT
@@ -78,7 +98,7 @@
         给商城前端和 Python AI 推荐服务提供候选商品池。
         这里只筛出上架、有库存、符合用户筛选条件的 SPU；自然语言解释和个性化排序由 Python AI 服务完成。
     -->
-    <select id="findRecommendationCandidates" resultType="com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate">
+    <select id="findRecommendationCandidates" resultMap="RecommendationCandidateMap">
         <bind name="categoryValue" value="query.category == null ? null : query.category.trim()" />
         <bind name="styleValue" value="query.style == null ? null : query.style.trim()" />
         <bind name="seasonValue" value="query.season == null ? null : query.season.trim()" />
@@ -86,11 +106,14 @@
         <bind name="fitValue" value="query.fit == null ? null : query.fit.trim()" />
         SELECT
             p.id AS spu_id,
+            MIN(sku.id) AS sku_id,
             p.spu_code,
             p.name,
             c.name AS category_name,
             p.main_image_url,
             f.name AS fit_type,
+            MIN(co.name) AS color,
+            MIN(so.code) AS size,
             (
                 <!-- 候选列表使用逗号拼接，减少 Python AI 服务构建候选摘要时的二次查询。 -->
                 SELECT GROUP_CONCAT(m.name ORDER BY m.id SEPARATOR ',')
@@ -110,6 +133,8 @@
                 JOIN style_tag st ON st.id = pst.style_tag_id
                 WHERE pst.spu_id = p.id
             ) AS style_tags,
+            MIN(sku.sale_price) AS sale_price,
+            CASE WHEN COALESCE(SUM(inv.available_stock), 0) &gt; 0 THEN 'in_stock' ELSE 'out_of_stock' END AS stock_status,
             MIN(sku.sale_price) AS min_price,
             MAX(sku.sale_price) AS max_price,
             COALESCE(SUM(inv.available_stock), 0) AS total_available_stock
@@ -117,8 +142,11 @@
         JOIN category c ON c.id = p.category_id
         LEFT JOIN fit_type f ON f.id = p.fit_type_id
         JOIN product_sku sku ON sku.spu_id = p.id
+        JOIN color co ON co.id = sku.color_id
+        JOIN size_option so ON so.id = sku.size_id
         LEFT JOIN inventory inv ON inv.sku_id = sku.id
         WHERE p.status = 'on_sale'
+          AND sku.status = 'on_sale'
         <if test="categoryValue != null and categoryValue != ''">
             AND c.name = #{categoryValue}
         </if>

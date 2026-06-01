@@ -17,14 +17,19 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 public class RecommendationCandidate {
     private Long spuId;
+    private Long skuId;
     private String spuCode;
     private String name;
     private String categoryName;
     private String mainImageUrl;
     private String fitType;
+    private String color;
+    private String size;
     private String materials;
     private String seasons;
     private String styleTags;
+    private BigDecimal salePrice;
+    private String stockStatus;
     private BigDecimal minPrice;
     private BigDecimal maxPrice;
     private Integer totalAvailableStock;

@@ -36,8 +36,10 @@ public class RestPythonAssistantClient implements PythonAssistantClient {
         // Python 请求包含 LocalDateTime 聊天历史，必须注册 JavaTime 模块并使用 ISO 字符串格式保持跨服务契约稳定。
         this.objectMapper = new ObjectMapper()
                 .findAndRegisterModules()
-                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+                .disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
         this.httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofMillis(connectTimeoutMs))
                 .build();
         this.chatUrl = pythonBaseUrl.replaceAll("/+$", "") + "/chat";

@@ -55,14 +55,19 @@ class ProductCatalogServiceTests {
         when(productMapper.findRecommendationCandidates(query))
                 .thenReturn(List.of(new RecommendationCandidate(
                         1002L,
+                        2101L,
                         "JACKET_COMMUTE_001",
                         "通勤夹克",
                         "外套",
                         "https://example.com/jacket.jpg",
                         "regular",
+                        "黑色",
+                        "M",
                         "聚酯纤维",
                         "autumn",
                         "commute",
+                        BigDecimal.valueOf(299),
+                        "in_stock",
                         BigDecimal.valueOf(299),
                         BigDecimal.valueOf(399),
                         11

@@ -54,5 +54,15 @@ class ProductCatalogMapperTests {
         var candidates = mapper.findRecommendationCandidates(query);
 
         assertThat(candidates).extracting("spuCode").contains("JACKET_COMMUTE_001");
+        assertThat(candidates)
+                .filteredOn(candidate -> "JACKET_COMMUTE_001".equals(candidate.getSpuCode()))
+                .first()
+                .satisfies(candidate -> {
+                    assertThat(candidate.getSkuId()).isNotNull();
+                    assertThat(candidate.getSalePrice()).isEqualByComparingTo("299.00");
+                    assertThat(candidate.getStockStatus()).isEqualTo("in_stock");
+                    assertThat(candidate.getColor()).isNotBlank();
+                    assertThat(candidate.getSize()).isNotBlank();
+                });
     }
 }
