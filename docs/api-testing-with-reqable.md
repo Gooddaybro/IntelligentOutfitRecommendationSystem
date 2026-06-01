@@ -207,7 +207,7 @@ Content-Type: application/json
 {
   "threadId": null,
   "message": "我想买一件适合秋季通勤的外套，预算 800 以内",
-  "category": "outerwear",
+  "category": "外套",
   "style": "commute",
   "season": "autumn",
   "material": null,
@@ -231,10 +231,22 @@ Python `/chat` 第一版建议返回：
 
 ```json
 {
+  "request_id": "req-xxx",
   "answer": "推荐优先看通勤外套，版型选择 regular，更适合秋季叠穿。",
-  "recommendedSpuIds": [1001]
+  "intent": "recommendation",
+  "product_refs": [
+    {
+      "spu_id": 1002,
+      "sku_id": 2004,
+      "reason": "符合秋季通勤、regular 版型和预算条件",
+      "rank_score": 0.95
+    }
+  ],
+  "suggested_actions": []
 }
 ```
+
+Java 会把 `product_refs[*].spu_id` 转成 `/api/assistant/chat` 响应里的 `data.recommendedSpuIds`。
 
 ## 10. 刷新与登出
 

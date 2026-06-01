@@ -8,7 +8,7 @@ D:/git/AI Clothing Shopping Assistant System/docs/contracts/python-ai-api-contra
 
 当前 Java 侧确认契约版本：v1
 确认日期：2026-06-01
-适配状态：Java 侧 `/chat` 请求 DTO 已适配 snake_case 契约
+适配状态：Java 侧 `/chat` 请求 DTO 和响应 DTO 已适配 snake_case 契约
 
 Java 侧适配设计文档见：
 

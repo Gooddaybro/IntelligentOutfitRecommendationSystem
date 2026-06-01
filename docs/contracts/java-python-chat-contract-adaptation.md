@@ -1,14 +1,19 @@
 # Java-Python Chat Contract Adaptation
 
-本文档记录 Java 后端适配 Python AI `/chat` 接口 snake_case JSON 契约的开发设计。当前 Java 侧已按本文完成 `/chat` 请求 DTO 和转换逻辑适配。
+本文档记录 Java 后端适配 Python AI `/chat` 接口 snake_case JSON 契约的开发设计。当前 Java 侧已按本文完成 `/chat` 请求 DTO、响应 DTO 和转换逻辑适配。
 
 ## 1. 背景
 
 Python AI 服务使用 Pydantic 接收请求，跨服务 JSON 字段以 snake_case 为准。Java 后端内部仍使用 Java 标准驼峰命名，但发送给 Python 的请求体必须稳定输出 snake_case 字段，避免 Python 返回 422 参数校验错误。
 
-当前 Java `PythonChatRequest` 仍偏向 Java 内部上下文结构，字段包括 `threadId`、`userId`、`message`、`profile`、`bodyData`、`preferences`、`chatHistory`、`candidates`。这与 Python 新契约不一致，尤其是 Python 期望 `query`，而不是 `message`。
+旧版 Java `PythonChatRequest` 曾偏向 Java 内部上下文结构，字段包括 `threadId`、`userId`、`message`、`profile`、`bodyData`、`preferences`、`chatHistory`、`candidates`。这与 Python 新契约不一致，尤其是 Python 期望 `query`，而不是 `message`。
 
 ## 2. 目标 JSON 契约
+
+> **⚠️ 避免混淆：这不是前端请求 Java 的契约**
+>
+> 这里的 JSON 结构是 **Java 服务端在内部查库并组装好用户画像和商品候选后，作为 HTTP 客户端发给 Python AI 服务**的契约。
+> 如果你是在测试前端调用 Java `/api/assistant/chat` 的接口，请**不要**直接拷贝此 JSON 作为请求体。前端请求 Java 只需要极简参数（例如 `{"message": "我想买一件外套"}`），Java 接收后会自动转换。前端请求契约请参考 `AssistantChatRequest.java` 或是 `docs/api-testing-with-reqable.md`。
 
 Java 调用 Python `POST /chat` 时，请求 JSON 应按下面结构发送：
 
@@ -33,7 +38,7 @@ Java 调用 Python `POST /chat` 时，请求 JSON 应按下面结构发送：
     "preferred_styles": ["commute", "casual"],
     "preferred_colors": ["black"],
     "disliked_colors": [],
-    "preferred_categories": ["outerwear"],
+    "preferred_categories": ["外套"],
     "budget_min": null,
     "budget_max": 800.0
   },
@@ -50,12 +55,32 @@ Java 调用 Python `POST /chat` 时，请求 JSON 应按下面结构发送：
       "brand": null,
       "material": null,
       "fit_type": "regular",
-      "season": "autumn",
+      "season": ["autumn"],
       "style_tags": ["commute"],
       "main_image_url": null
     }
   ],
   "debug": false
+}
+```
+
+Python `POST /chat` 成功响应按下面结构返回；Java 目前只把 `answer` 和 `product_refs[*].spu_id` 暴露到前端同步响应：
+
+```json
+{
+  "request_id": "req-xxx",
+  "answer": "推荐优先看通勤外套，版型选择 regular，更适合秋季叠穿。",
+  "intent": "recommendation",
+  "product_refs": [
+    {
+      "spu_id": 123,
+      "sku_id": 456,
+      "reason": "符合通勤、秋季和预算条件",
+      "rank_score": 0.95
+    }
+  ],
+  "suggested_actions": [],
+  "debug": null
 }
 ```
 
@@ -135,7 +160,7 @@ public record PythonProductCandidate(
         @JsonProperty("brand") String brand,
         @JsonProperty("material") String material,
         @JsonProperty("fit_type") String fitType,
-        @JsonProperty("season") String season,
+        @JsonProperty("season") List<String> season,
         @JsonProperty("style_tags") List<String> styleTags,
         @JsonProperty("main_image_url") String mainImageUrl
 ) {
@@ -145,6 +170,30 @@ public record PythonProductCandidate(
 候选商品也应使用 Python 专用 DTO，避免把 Java 查询模型里的聚合字段、数据库命名或未来前端展示字段直接泄漏到 Python 契约中。
 
 当前 Java 推荐候选查询仍以 SPU 为主聚合维度，同时会为每个 SPU 聚合出一个代表性 SKU 的 `sku_id`、`sale_price`、`stock_status`、`color` 和 `size`，用于满足 Python `/chat` 对候选商品必填字段的要求。后续如果 Python 需要精确到每个可售 SKU 的多行候选，可再把候选 SQL 从 SPU 聚合升级为 SKU 明细列表。
+
+### 4.5 PythonProductRef
+
+```java
+public record PythonProductRef(
+        @JsonProperty("spu_id") Long spuId,
+        @JsonProperty("sku_id") Long skuId,
+        @JsonProperty("reason") String reason,
+        @JsonProperty("rank_score") BigDecimal rankScore
+) {
+}
+```
+
+### 4.6 PythonChatResponse
+
+```java
+public record PythonChatResponse(
+        @JsonProperty("request_id") String requestId,
+        @JsonProperty("answer") String answer,
+        @JsonProperty("intent") String intent,
+        @JsonProperty("product_refs") List<PythonProductRef> productRefs
+) {
+}
+```
 
 ## 5. 字段映射规则
 
@@ -160,6 +209,7 @@ public record PythonProductCandidate(
 | `profile + bodyData + preferences` | `user_context` | 合并为扁平用户画像对象。 |
 | `AssistantContext.candidates()` | `candidates` | 转换成 Python 专用候选商品 DTO。 |
 | 固定默认值 | `debug` | 第一版默认 `false`。 |
+| `PythonChatResponse.productRefs[*].spuId` | `AssistantChatResponse.recommendedSpuIds` | 前端第一版只需要商品 SPU 引用，推荐理由后续可扩展。 |
 
 ## 6. 历史消息转换建议
 
@@ -196,7 +246,8 @@ assistant: 下一轮回答
 - 不包含 `"message"`。
 - 包含 `"chat_history"`、`"user_query"`、`"assistant_answer"`。
 - 包含 `"user_context"`、`"height_cm"`、`"preferred_styles"`、`"budget_max"`。
-- 包含 `"candidates"`、`"spu_id"`、`"sku_id"`、`"sale_price"`、`"stock_status"`。
+- 包含 `"candidates"`、`"spu_id"`、`"sku_id"`、`"sale_price"`、`"stock_status"`、`"season"`。
+- 能反序列化 `"product_refs"`，并读取 `"spu_id"`、`"sku_id"`、`"reason"`。
 
 ### 7.2 AssistantServiceTests
 
@@ -210,6 +261,7 @@ assistant: 下一轮回答
 - `query` 等于前端传入的 `AssistantChatRequest.message()`。
 - `debug` 默认为 `false`。
 - `userContext.userId` 等于当前登录用户 ID。
+- `productRefs[*].spuId` 会映射为前端响应里的 `recommendedSpuIds`。
 
 ## 8. 验证命令
 
@@ -223,12 +275,12 @@ $env:Path="$env:JAVA_HOME\bin;$env:Path"
 
 ## 9. 实施边界
 
-本次适配只处理 Java 调用 Python `/chat` 的请求体结构，不改变：
+本次适配只处理 Java 调用 Python `/chat` 的请求体结构和响应商品引用解析，不改变：
 
 - 前端调用 Java `/api/assistant/chat` 的请求格式。
 - Java 内部用户画像、商品、会话模块的数据库模型。
 - Python 调用 Java `/internal/**` 的 internal API 契约。
-- Python `/chat` 响应结构，除非 Python 契约另行调整。
+- Python `/chat` 响应结构。
 
 ## 10. 待确认点
 

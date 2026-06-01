@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client.PythonAssistantClient;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatResponse;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonProductRef;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -122,7 +123,12 @@ class AssistantControllerTests {
         @Bean
         @Primary
         PythonAssistantClient pythonAssistantClient() {
-            return request -> new PythonChatResponse("A structured jacket is a good match.", List.of(1001L));
+            return request -> new PythonChatResponse(
+                    request.requestId(),
+                    "A structured jacket is a good match.",
+                    "recommendation",
+                    List.of(new PythonProductRef(1001L, 2001L, "fits the requested commute style", null))
+            );
         }
     }
 }

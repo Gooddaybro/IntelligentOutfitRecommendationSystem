@@ -37,8 +37,18 @@ class RestPythonAssistantClientTests {
             requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             byte[] body = """
                     {
+                      "request_id": "req-client-test",
                       "answer": "ok",
-                      "recommendedSpuIds": [1001]
+                      "intent": "recommendation",
+                      "product_refs": [
+                        {
+                          "spu_id": 1001,
+                          "sku_id": 2001,
+                          "reason": "fits the requested commute style",
+                          "rank_score": 0.95
+                        }
+                      ],
+                      "suggested_actions": []
                     }
                     """.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
@@ -81,7 +91,7 @@ class RestPythonAssistantClientTests {
                         null,
                         "棉",
                         "regular",
-                        "autumn",
+                        List.of("autumn"),
                         List.of("commute"),
                         null
                 )),
@@ -90,8 +100,16 @@ class RestPythonAssistantClientTests {
 
         PythonChatResponse response = client.chat(request);
 
+        assertThat(response.requestId()).isEqualTo("req-client-test");
         assertThat(response.answer()).isEqualTo("ok");
-        assertThat(response.recommendedSpuIds()).containsExactly(1001L);
+        assertThat(response.intent()).isEqualTo("recommendation");
+        assertThat(response.productRefs())
+                .extracting("spuId", "skuId", "reason")
+                .containsExactly(org.assertj.core.api.Assertions.tuple(
+                        1001L,
+                        2001L,
+                        "fits the requested commute style"
+                ));
         assertThat(requestBody.get())
                 .contains("\"request_id\":\"req-client-test\"")
                 .contains("\"session_id\":\"th_client_001\"")
@@ -109,6 +127,7 @@ class RestPythonAssistantClientTests {
                 .contains("\"sku_id\":456")
                 .contains("\"sale_price\":299.0")
                 .contains("\"stock_status\":\"in_stock\"")
+                .contains("\"season\":[\"autumn\"]")
                 .doesNotContain("\"message\"")
                 .doesNotContain("\"requestId\"")
                 .doesNotContain("\"chatHistory\"");

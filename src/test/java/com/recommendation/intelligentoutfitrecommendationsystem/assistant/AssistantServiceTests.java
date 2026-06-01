@@ -6,6 +6,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.As
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantContext;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatResponse;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonProductRef;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.AssistantContextService;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.AssistantService;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.ConversationResponse;
@@ -108,7 +109,12 @@ class AssistantServiceTests {
         when(conversationService.createConversation(10L, "recommend a warm jacket")).thenReturn(conversation);
         when(assistantContextService.buildContext(10L, "th_service_001", request)).thenReturn(context);
         when(pythonAssistantClient.chat(any(PythonChatRequest.class)))
-                .thenReturn(new PythonChatResponse("A wool blend jacket fits this request.", List.of(1001L)));
+                .thenReturn(new PythonChatResponse(
+                        "req-ai-service-test",
+                        "A wool blend jacket fits this request.",
+                        "recommendation",
+                        List.of(new PythonProductRef(1001L, 2001L, "fits the requested commute style", null))
+                ));
 
         AssistantChatResponse response = assistantService.chat(10L, request);
 

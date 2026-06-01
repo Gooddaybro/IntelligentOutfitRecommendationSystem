@@ -8,10 +8,11 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.Py
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonProductCandidate;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonProductRef;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonUserContext;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ExternalServiceException;
-import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.MessageResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.ConversationResponse;
+import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.MessageResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationService;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserBodyDataResponse;
@@ -60,9 +61,7 @@ public class AssistantService {
         String answer = requireAnswer(pythonResponse);
         conversationService.appendMessage(userId, threadId, "assistant", answer, requestId);
 
-        List<Long> recommendedSpuIds = pythonResponse.recommendedSpuIds() == null
-                ? List.of()
-                : pythonResponse.recommendedSpuIds();
+        List<Long> recommendedSpuIds = toRecommendedSpuIds(pythonResponse.productRefs());
         return new AssistantChatResponse(threadId, answer, recommendedSpuIds, context.candidates().size());
     }
 
@@ -178,6 +177,17 @@ public class AssistantService {
             throw new ExternalServiceException("python assistant returned empty answer");
         }
         return pythonResponse.answer();
+    }
+
+    private List<Long> toRecommendedSpuIds(List<PythonProductRef> productRefs) {
+        if (productRefs == null || productRefs.isEmpty()) {
+            return List.of();
+        }
+        return productRefs.stream()
+                .map(PythonProductRef::spuId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
     }
 
     private String titleFrom(String message) {
