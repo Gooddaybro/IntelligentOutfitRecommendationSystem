@@ -4,6 +4,9 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * 库存查询视图，汇总 SKU 基础信息和可售、锁定、售出库存状态。
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

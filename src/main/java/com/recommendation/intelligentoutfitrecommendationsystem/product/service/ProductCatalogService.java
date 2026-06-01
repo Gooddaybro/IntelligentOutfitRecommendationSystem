@@ -15,6 +15,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 商品目录服务，负责商品搜索、详情装配、SKU 查询和推荐候选商品池筛选。
+ */
 @Service
 public class ProductCatalogService {
 

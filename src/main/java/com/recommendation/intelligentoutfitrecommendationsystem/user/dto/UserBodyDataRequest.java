@@ -7,6 +7,9 @@ import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
 
+/**
+ * 用户身体数据保存入参，约束前端提交的尺码相关画像字段。
+ */
 public record UserBodyDataRequest(
         @DecimalMin("0.0")
         @Digits(integer = 3, fraction = 2)

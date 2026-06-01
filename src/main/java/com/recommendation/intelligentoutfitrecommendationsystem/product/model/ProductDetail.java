@@ -8,6 +8,9 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 商品详情视图，聚合 SPU 基础信息、标签、属性和价格区间。
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

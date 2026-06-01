@@ -11,6 +11,9 @@ import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 
+/**
+ * 商品目录数据访问入口，提供搜索、详情、SKU 和推荐候选商品查询。
+ */
 @Mapper
 public interface ProductMapper {
 

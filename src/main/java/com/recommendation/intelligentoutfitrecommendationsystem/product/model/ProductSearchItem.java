@@ -6,6 +6,9 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 
+/**
+ * 商品搜索列表项，返回列表页需要展示的轻量 SPU 摘要。
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

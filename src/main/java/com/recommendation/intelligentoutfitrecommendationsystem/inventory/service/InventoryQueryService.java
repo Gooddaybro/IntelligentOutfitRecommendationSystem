@@ -6,6 +6,9 @@ import com.recommendation.intelligentoutfitrecommendationsystem.inventory.mapper
 import com.recommendation.intelligentoutfitrecommendationsystem.inventory.model.InventoryView;
 import org.springframework.stereotype.Service;
 
+/**
+ * 库存查询服务，统一校验 SKU 入参并把缺失库存转换为业务异常。
+ */
 @Service
 public class InventoryQueryService {
 

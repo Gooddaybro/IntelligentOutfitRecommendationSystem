@@ -9,6 +9,9 @@ import org.apache.ibatis.annotations.Param;
 import java.time.LocalDateTime;
 import java.util.List;
 
+/**
+ * 用户认证与令牌审计数据访问入口，维护账号、角色、refresh token 和登录日志的持久化边界。
+ */
 @Mapper
 public interface UserAuthMapper {
 

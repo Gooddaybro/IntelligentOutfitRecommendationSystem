@@ -5,6 +5,9 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
+/**
+ * 注册接口入参，集中约束账号标识和初始密码的公开 API 边界。
+ */
 public record RegisterRequest(
         @NotBlank
         @Size(min = 3, max = 64)

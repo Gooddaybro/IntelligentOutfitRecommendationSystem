@@ -7,6 +7,9 @@ import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 
+/**
+ * 会话与消息数据访问入口，维护用户隔离的聊天会话历史。
+ */
 @Mapper
 public interface ConversationMapper {
     void insertSession(ChatSession session);

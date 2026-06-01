@@ -6,6 +6,9 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 
+/**
+ * SKU 查询视图，承载颜色、尺码和售价等可购买规格信息。
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

@@ -5,6 +5,9 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+/**
+ * Internal API 鉴权拦截器，通过 X-Internal-Token 保护 Java 后端暴露给 Python AI 服务的内部接口。
+ */
 @Component
 public class InternalApiInterceptor implements HandlerInterceptor {
 

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE module PUBLIC
+        "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+        "https://checkstyle.org/dtds/configuration_1_3.dtd">
+
+<module name="Checker">
+    <property name="charset" value="UTF-8"/>
+    <property name="severity" value="error"/>
+
+    <module name="FileTabCharacter"/>
+
+    <module name="RegexpSingleline">
+        <property name="format" value="\s+$"/>
+        <property name="message" value="Line has trailing whitespace."/>
+    </module>
+
+    <module name="RegexpSingleline">
+        <property name="format" value="^\s*\S.*;\s*//"/>
+        <property name="message" value="Do not write trailing comments after code. Move the comment to the line above."/>
+    </module>
+
+    <module name="RegexpSingleline">
+        <property name="format" value="//\s*TODO:(?!\s*\[[^]]+\]\s+.+\s+\([^)]+\)\s*$)"/>
+        <property name="message" value="TODO comments must use: // TODO: [Owner] Description (Target date or condition)."/>
+    </module>
+
+    <module name="RegexpSingleline">
+        <property name="format" value="//\s*FIXME:(?!\s*\S.+$)"/>
+        <property name="message" value="FIXME comments must describe the defect and possible failure mode."/>
+    </module>
+
+    <module name="TreeWalker">
+        <module name="AvoidStarImport"/>
+        <module name="UnusedImports"/>
+        <module name="OuterTypeFilename"/>
+        <module name="MissingJavadocType">
+            <property name="scope" value="public"/>
+            <property name="tokens" value="CLASS_DEF,INTERFACE_DEF,ENUM_DEF,ANNOTATION_DEF,RECORD_DEF"/>
+        </module>
+    </module>
+</module>

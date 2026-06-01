@@ -5,6 +5,9 @@ import lombok.Data;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+/**
+ * 用户身体数据持久化模型，为尺码推荐和穿搭匹配提供结构化身体画像。
+ */
 @Data
 public class UserBodyData {
 

@@ -24,7 +24,7 @@ jobs:
       - name: Make Maven wrapper executable
         run: chmod +x mvnw
 
-      - name: Run tests
+      - name: Run verification
         env:
           RUN_MYSQL_TESTS: "true"
-        run: ./mvnw -q test
+        run: ./mvnw -q verify

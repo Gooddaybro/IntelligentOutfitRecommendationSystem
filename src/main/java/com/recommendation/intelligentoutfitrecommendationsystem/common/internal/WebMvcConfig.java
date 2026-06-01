@@ -6,6 +6,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+/**
+ * Web MVC 拦截器配置，固定 requestId 链路追踪和 internal token 鉴权的执行顺序。
+ */
 @Configuration
 @EnableConfigurationProperties(InternalApiProperties.class)
 public class WebMvcConfig implements WebMvcConfigurer {

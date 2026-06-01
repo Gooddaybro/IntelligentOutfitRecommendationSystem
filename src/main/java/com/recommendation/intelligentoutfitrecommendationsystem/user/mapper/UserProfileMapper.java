@@ -6,6 +6,9 @@ import com.recommendation.intelligentoutfitrecommendationsystem.user.model.UserP
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+/**
+ * 用户画像数据访问入口，维护基础资料、身体数据和穿衣偏好的持久化边界。
+ */
 @Mapper
 public interface UserProfileMapper {
 
