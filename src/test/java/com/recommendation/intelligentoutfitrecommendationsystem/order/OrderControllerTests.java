@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -62,6 +63,8 @@ class OrderControllerTests {
                 .andExpect(jsonPath("$.data.items[1].skuId").value(2203))
                 .andExpect(jsonPath("$.data.items[1].quantity").value(2))
                 .andExpect(jsonPath("$.data.items[1].lineAmount").value(398.0))
+                .andExpect(jsonPath("$.data.closedAt").value(nullValue()))
+                .andExpect(jsonPath("$.data.closeReason").value(nullValue()))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();

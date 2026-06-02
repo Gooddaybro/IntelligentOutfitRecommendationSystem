@@ -65,6 +65,8 @@
             total_amount,
             status,
             paid_at,
+            closed_at,
+            close_reason,
             created_at,
             updated_at
         FROM sales_order
@@ -85,6 +87,8 @@
             total_amount,
             status,
             paid_at,
+            closed_at,
+            close_reason,
             created_at,
             updated_at
         FROM sales_order

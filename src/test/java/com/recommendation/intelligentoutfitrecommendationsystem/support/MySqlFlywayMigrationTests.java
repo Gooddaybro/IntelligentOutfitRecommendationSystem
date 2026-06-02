@@ -20,11 +20,27 @@ class MySqlFlywayMigrationTests extends BaseMySqlContainerTest {
         Integer cartItemCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM cart_item", Integer.class);
         Integer salesOrderCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sales_order", Integer.class);
         Integer orderItemCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM order_item", Integer.class);
+        Integer paymentCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM payment", Integer.class);
+        Integer closedAtColumnCount = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'sales_order'
+                  AND COLUMN_NAME = 'closed_at'
+                """, Integer.class);
+        Integer closeReasonColumnCount = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'sales_order'
+                  AND COLUMN_NAME = 'close_reason'
+                """, Integer.class);
 
         assertThat(chatSessionCount).isZero();
         assertThat(chatMessageCount).isZero();
         assertThat(cartItemCount).isZero();
         assertThat(salesOrderCount).isZero();
         assertThat(orderItemCount).isZero();
+        assertThat(paymentCount).isZero();
+        assertThat(closedAtColumnCount).isOne();
+        assertThat(closeReasonColumnCount).isOne();
     }
 }

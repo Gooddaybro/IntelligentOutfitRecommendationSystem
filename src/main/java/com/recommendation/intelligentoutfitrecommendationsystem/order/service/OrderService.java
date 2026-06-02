@@ -174,7 +174,9 @@ public class OrderService {
                 order.getTotalAmount(),
                 items.stream().map(this::toItemResponse).toList(),
                 order.getCreatedAt(),
-                order.getPaidAt()
+                order.getPaidAt(),
+                order.getClosedAt(),
+                order.getCloseReason()
         );
     }
 

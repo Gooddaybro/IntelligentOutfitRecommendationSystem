@@ -26,6 +26,10 @@ public class SalesOrder {
 
     private LocalDateTime paidAt;
 
+    private LocalDateTime closedAt;
+
+    private String closeReason;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
