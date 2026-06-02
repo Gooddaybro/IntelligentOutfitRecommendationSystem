@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recommendation.intelligentoutfitrecommendationsystem.cart.mapper.CartMapper">
+
+    <select id="existsSkuById" resultType="int">
+        SELECT COUNT(1)
+        FROM product_sku
+        WHERE id = #{skuId}
+    </select>
+
+    <insert id="insertItem" parameterType="com.recommendation.intelligentoutfitrecommendationsystem.cart.model.CartItem"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO cart_item (
+            user_id,
+            sku_id,
+            quantity
+        ) VALUES (
+            #{userId},
+            #{skuId},
+            #{quantity}
+        )
+    </insert>
+
+    <!--
+        加购以 userId + skuId 唯一键合并数量，保证购物车没有重复规格行。
+        库存是否足够属于下单阶段的强一致校验，这里只维护用户的购买意图。
+    -->
+    <insert id="upsertItem">
+        INSERT INTO cart_item (
+            user_id,
+            sku_id,
+            quantity
+        ) VALUES (
+            #{userId},
+            #{skuId},
+            #{quantity}
+        )
+        ON DUPLICATE KEY UPDATE
+            quantity = quantity + VALUES(quantity),
+            updated_at = CURRENT_TIMESTAMP(6)
+    </insert>
+
+    <select id="findByUserIdAndSkuId"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.cart.model.CartItem">
+        SELECT
+            id,
+            user_id,
+            sku_id,
+            quantity,
+            created_at,
+            updated_at
+        FROM cart_item
+        WHERE user_id = #{userId}
+          AND sku_id = #{skuId}
+    </select>
+
+    <!--
+        购物车列表实时读取商品目录和库存状态，让前端看到当前价格、上下架和可售库存。
+        订单创建时不能复用该视图作为成交快照，必须在订单模块重新固化价格和商品信息。
+    -->
+    <select id="findItemsByUserId"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.cart.model.CartItemView">
+        SELECT
+            ci.id,
+            ci.user_id,
+            ci.sku_id,
+            sku.spu_id,
+            sku.sku_code,
+            spu.spu_code,
+            spu.name,
+            c.name AS category_name,
+            co.name AS color,
+            so.code AS size,
+            sku.sale_price,
+            CASE
+                WHEN sku.status = 'on_sale'
+                     AND spu.status = 'on_sale'
+                     AND COALESCE(inv.available_stock, 0) &gt; 0
+                    THEN 'in_stock'
+                ELSE 'out_of_stock'
+            END AS stock_status,
+            spu.main_image_url,
+            ci.quantity,
+            COALESCE(inv.available_stock, 0) AS available_stock,
+            ci.created_at,
+            ci.updated_at
+        FROM cart_item ci
+        JOIN product_sku sku ON sku.id = ci.sku_id
+        JOIN product_spu spu ON spu.id = sku.spu_id
+        JOIN category c ON c.id = spu.category_id
+        JOIN color co ON co.id = sku.color_id
+        JOIN size_option so ON so.id = sku.size_id
+        LEFT JOIN inventory inv ON inv.sku_id = sku.id
+        WHERE ci.user_id = #{userId}
+        ORDER BY ci.updated_at DESC, ci.id DESC
+    </select>
+
+    <update id="updateQuantity">
+        UPDATE cart_item
+        SET quantity = #{quantity},
+            updated_at = CURRENT_TIMESTAMP(6)
+        WHERE user_id = #{userId}
+          AND sku_id = #{skuId}
+    </update>
+
+    <delete id="deleteItem">
+        DELETE FROM cart_item
+        WHERE user_id = #{userId}
+          AND sku_id = #{skuId}
+    </delete>
+
+    <delete id="clearByUserId">
+        DELETE FROM cart_item
+        WHERE user_id = #{userId}
+    </delete>
+
+</mapper>
