@@ -11,4 +11,13 @@ import org.apache.ibatis.annotations.Param;
 public interface InventoryMapper {
 
     InventoryView findBySkuId(@Param("skuId") Long skuId);
+
+    /**
+     * 原子锁定订单库存。
+     *
+     * @param skuId 下单 SKU
+     * @param quantity 需要锁定的数量
+     * @return 1 表示库存充足并锁定成功，0 表示库存不足或库存记录不存在
+     */
+    int lockStock(@Param("skuId") Long skuId, @Param("quantity") Integer quantity);
 }

@@ -111,6 +111,15 @@
           AND sku_id = #{skuId}
     </delete>
 
+    <delete id="deleteItemsByUserIdAndSkuIds">
+        DELETE FROM cart_item
+        WHERE user_id = #{userId}
+          AND sku_id IN
+        <foreach collection="skuIds" item="skuId" open="(" separator="," close=")">
+            #{skuId}
+        </foreach>
+    </delete>
+
     <delete id="clearByUserId">
         DELETE FROM cart_item
         WHERE user_id = #{userId}

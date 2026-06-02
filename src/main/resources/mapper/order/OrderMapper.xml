@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recommendation.intelligentoutfitrecommendationsystem.order.mapper.OrderMapper">
+
+    <insert id="insertOrder" parameterType="com.recommendation.intelligentoutfitrecommendationsystem.order.model.SalesOrder"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO sales_order (
+            order_no,
+            user_id,
+            total_amount,
+            status,
+            paid_at
+        ) VALUES (
+            #{orderNo},
+            #{userId},
+            #{totalAmount},
+            #{status},
+            #{paidAt}
+        )
+    </insert>
+
+    <insert id="insertItems">
+        INSERT INTO order_item (
+            order_id,
+            sku_id,
+            spu_id,
+            sku_code,
+            spu_code,
+            product_name,
+            category_name,
+            color,
+            size,
+            sale_price,
+            quantity,
+            line_amount,
+            main_image_url
+        ) VALUES
+        <foreach collection="items" item="item" separator=",">
+            (
+                #{item.orderId},
+                #{item.skuId},
+                #{item.spuId},
+                #{item.skuCode},
+                #{item.spuCode},
+                #{item.productName},
+                #{item.categoryName},
+                #{item.color},
+                #{item.size},
+                #{item.salePrice},
+                #{item.quantity},
+                #{item.lineAmount},
+                #{item.mainImageUrl}
+            )
+        </foreach>
+    </insert>
+
+    <select id="findOrdersByUserId"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.order.model.SalesOrder">
+        SELECT
+            id,
+            order_no,
+            user_id,
+            total_amount,
+            status,
+            paid_at,
+            created_at,
+            updated_at
+        FROM sales_order
+        WHERE user_id = #{userId}
+        ORDER BY created_at DESC, id DESC
+    </select>
+
+    <!--
+        订单号会暴露给前端，因此详情读取必须同时绑定 userId。
+        这样即使用户猜到其他订单号，也无法跨用户读取订单主表。
+    -->
+    <select id="findOrderByUserIdAndOrderNo"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.order.model.SalesOrder">
+        SELECT
+            id,
+            order_no,
+            user_id,
+            total_amount,
+            status,
+            paid_at,
+            created_at,
+            updated_at
+        FROM sales_order
+        WHERE user_id = #{userId}
+          AND order_no = #{orderNo}
+    </select>
+
+    <select id="findItemsByOrderId"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderItem">
+        SELECT
+            id,
+            order_id,
+            sku_id,
+            spu_id,
+            sku_code,
+            spu_code,
+            product_name,
+            category_name,
+            color,
+            size,
+            sale_price,
+            quantity,
+            line_amount,
+            main_image_url,
+            created_at
+        FROM order_item
+        WHERE order_id = #{orderId}
+        ORDER BY id ASC
+    </select>
+
+    <!--
+        购物车结算查询只读取当前用户选中的 SKU，并在下单瞬间重新读取商品、规格、价格和库存事实。
+        前端传入的金额、单价和数量都不参与该查询，数量来自 cart_item，价格来自 product_sku。
+    -->
+    <select id="findCheckoutItemsFromCart"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderCheckoutItem">
+        SELECT
+            ci.sku_id,
+            sku.spu_id,
+            sku.sku_code,
+            spu.spu_code,
+            spu.name AS product_name,
+            c.name AS category_name,
+            co.name AS color,
+            so.code AS size,
+            sku.sale_price,
+            ci.quantity,
+            spu.main_image_url,
+            sku.status AS sku_status,
+            spu.status AS spu_status,
+            COALESCE(inv.available_stock, 0) AS available_stock
+        FROM cart_item ci
+        JOIN product_sku sku ON sku.id = ci.sku_id
+        JOIN product_spu spu ON spu.id = sku.spu_id
+        JOIN category c ON c.id = spu.category_id
+        JOIN color co ON co.id = sku.color_id
+        JOIN size_option so ON so.id = sku.size_id
+        LEFT JOIN inventory inv ON inv.sku_id = sku.id
+        WHERE ci.user_id = #{userId}
+          AND ci.sku_id IN
+        <foreach collection="skuIds" item="skuId" open="(" separator="," close=")">
+            #{skuId}
+        </foreach>
+        ORDER BY ci.id ASC
+    </select>
+
+</mapper>

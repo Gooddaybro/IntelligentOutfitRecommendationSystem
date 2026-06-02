@@ -2,7 +2,7 @@
 
 本文档用于梳理 Intelligent Outfit Recommendation System 当前 Java 后端已经实现的功能、对应代码位置、数据库表、API 接口和测试用例。
 
-当前阶段重点是：商品库、SKU、库存、服装细粒度属性、用户认证与画像、会话记录，以及 Java 调 Python AI 服务的第一版同步链路。本文档也作为后续继续开发购物车、订单、支付、SSE 和 MQ 的功能追踪表。
+当前阶段重点是：商品库、SKU、库存、服装细粒度属性、用户认证与画像、会话记录、Java 调 Python AI 服务的第一版同步链路，以及购物车 Cart MVP。购物车开发文档见 `docs/superpowers/plans/2026-06-01-cart-mvp.md`。下一阶段订单 MVP 开发文档见 `docs/superpowers/plans/2026-06-02-order-mvp.md`。本文档也作为后续继续开发订单、支付、SSE 和 MQ 的功能追踪表。
 
 ## 当前阶段范围
 
@@ -50,11 +50,11 @@
 - Spring REST Docs auth 接口契约片段
 - 会话记录：创建会话、查询会话列表、查询消息历史、归档会话
 - Java assistant-service 同步调用 Python AI 服务并保存 user/assistant 消息
+- 购物车：当前登录用户加购 SKU、查询购物车、修改数量、删除单项、清空购物车
 
 ### 未实现
 
-- 购物车
-- 订单
+- 订单（下一阶段计划中，见 `docs/superpowers/plans/2026-06-02-order-mvp.md`）
 - 支付
 - SSE / WebSocket 流式返回
 - MQ 异步推荐任务
@@ -76,6 +76,8 @@
 | 穿衣偏好 | 已实现 | user | user_preferences | GET/PUT /api/me/preferences | UserProfileControllerTests、UserProfileMapperTests |
 | 会话记录 | 已实现 | conversation | chat_session、chat_message | POST/GET/DELETE /api/conversations、GET /api/conversations/{threadId}/messages | ConversationMapperTests、ConversationControllerTests |
 | AI 同步问答 | 已实现 | assistant | chat_session、chat_message、product_*、user_* | POST /api/assistant/chat | AssistantServiceTests、AssistantControllerTests |
+| 购物车 | 已实现 | cart | cart_item | GET/POST/PUT/DELETE /api/cart/items | CartMapperTests、CartServiceTests、CartControllerTests |
+| 订单 | 计划中 | order | sales_order、order_item | POST/GET /api/orders、GET /api/orders/{orderNo} | OrderMapperTests、OrderServiceTests、OrderControllerTests |
 | requestId 日志追踪 | 已实现 | common/logging | 无 | 所有 HTTP 请求响应头 `X-Request-Id` | MdcRequestIdInterceptorTests |
 | MySQL 容器迁移测试 | 已实现 | support test | flyway_schema_history、全部业务表 | 无 | MySqlFlywayMigrationTests |
 | 统一响应格式 | 已实现 | common/api | 无 | 所有 Controller | Controller 测试覆盖 |
@@ -169,6 +171,21 @@
 | `src/main/resources/mapper/inventory/InventoryMapper.xml` | 库存 SQL 映射 |
 | `inventory/model/InventoryView.java` | 库存返回模型 |
 
+### cart
+
+负责当前登录用户的购物车意图数据，不锁库存、不生成价格快照，也不向 Python AI 服务暴露 internal API。
+
+| 文件 | 作用 |
+|---|---|
+| `cart/api/CartController.java` | `/api/cart/items` 当前用户购物车接口 |
+| `cart/service/CartService.java` | 加购、列表、改数量、删除和清空的用户隔离业务逻辑 |
+| `cart/mapper/CartMapper.java` | 购物车 MyBatis Mapper 接口 |
+| `src/main/resources/mapper/cart/CartMapper.xml` | 购物车 SQL 映射 |
+| `cart/model/CartItem.java` | `cart_item` 持久化模型 |
+| `cart/model/CartItemView.java` | 购物车列表展示视图 |
+| `cart/dto/AddCartItemRequest.java` | 加购请求 DTO |
+| `cart/dto/UpdateCartItemRequest.java` | 修改数量请求 DTO |
+
 ### conversation
 
 负责当前用户的 AI 会话和消息历史，所有查询都绑定 JWT 中的 `userId`。
@@ -234,6 +251,7 @@
 | user_preferences | 用户风格、颜色、品类偏好和预算区间 |
 | chat_session | AI 会话，保存 thread_id、user_id、标题、状态和最后消息时间 |
 | chat_message | AI 会话消息，保存 user/assistant 消息内容、角色、状态和 requestId |
+| cart_item | 当前用户购物车条目，保存 user_id、sku_id 和购买意图数量 |
 | flyway_schema_history | Flyway 数据库迁移记录 |
 
 ## API 对照
@@ -270,6 +288,11 @@
 | GET /api/conversations/{threadId}/messages | 查询当前用户某个会话的消息历史 | 是 |
 | DELETE /api/conversations/{threadId} | 归档当前用户某个会话 | 是 |
 | POST /api/assistant/chat | 同步调用 Python AI 导购服务并落库消息 | 是 |
+| GET /api/cart/items | 查询当前用户购物车 | 是 |
+| POST /api/cart/items | 添加 SKU 到当前用户购物车，同 SKU 合并数量 | 是 |
+| PUT /api/cart/items/{skuId} | 修改当前用户购物车中某个 SKU 的数量 | 是 |
+| DELETE /api/cart/items/{skuId} | 删除当前用户购物车中某个 SKU | 是 |
+| DELETE /api/cart/items | 清空当前用户购物车 | 是 |
 
 ### Internal API
 
@@ -307,6 +330,9 @@ X-Internal-Token: dev-internal-token
 | `ConversationControllerTests.java` | 会话接口鉴权、当前用户隔离、归档后列表不可见 |
 | `AssistantServiceTests.java` | assistant-service 创建会话、保存消息、调用 Python 客户端的业务顺序 |
 | `AssistantControllerTests.java` | `/api/assistant/chat` 鉴权、AI 响应和消息落库 |
+| `CartMapperTests.java` | `cart_item` SQL 映射、同 SKU 合并数量、用户隔离删除和购物车展示查询 |
+| `CartServiceTests.java` | 购物车数量校验、SKU 存在性校验、用户隔离更新和删除异常 |
+| `CartControllerTests.java` | `/api/cart/items` 鉴权、加购、改数量、删除、清空和用户隔离 |
 | `MdcRequestIdInterceptorTests.java` | `X-Request-Id` 生成、透传、响应头回写和 MDC 清理 |
 | `MySqlFlywayMigrationTests.java` | Testcontainers MySQL 环境下 Flyway 迁移可执行性 |
 
@@ -343,6 +369,7 @@ Flyway 已执行：
 | V2__seed_demo_clothing_catalog.sql | 插入 demo 服装数据 | 成功 |
 | V3__user_auth_profile_schema.sql | 创建用户认证、Refresh Token、登录日志和用户画像表结构 | 成功 |
 | V4__conversation_schema.sql | 创建 AI 会话和消息历史表结构 | 成功 |
+| V5__cart_schema.sql | 创建当前用户购物车条目表结构 | 成功 |
 
 当前 demo 数据：
 
@@ -358,6 +385,7 @@ Flyway 已执行：
 SELECT COUNT(*) FROM product_spu;
 SELECT COUNT(*) FROM product_sku;
 SELECT COUNT(*) FROM inventory;
+SELECT COUNT(*) FROM cart_item;
 SELECT version, success FROM flyway_schema_history;
 ```
 
@@ -395,3 +423,67 @@ X-Internal-Token
 3. 如果新增接口，更新“API 对照”。
 4. 如果新增测试，更新“测试对照”。
 5. 如果当前阶段范围变化，更新“已实现”和“未实现”列表。
+
+## 2026-06-02 订单 MVP 开发状态
+
+订单模块已经进入第一版 Java 后端实现阶段，开发范围严格按 `docs/superpowers/plans/2026-06-02-order-mvp.md` 执行。本阶段只支持“购物车结算”，不支持“立即购买”，也不修改 Python AI 服务。
+
+### 本阶段已实现
+
+- `order` 标准分层：`api`、`service`、`mapper`、`model`、`dto`。
+- Flyway 迁移 `V6__order_schema.sql`：
+  - `sales_order`：订单主表，保存 `order_no`、`user_id`、`total_amount`、`status`、`paid_at`、创建和更新时间。
+  - `order_item`：订单明细表，保存 SKU/SPU、商品名、分类、颜色、尺码、成交单价、数量、行金额、主图等下单快照。
+- `InventoryMapper.lockStock`：
+  - 使用 `UPDATE inventory SET available_stock = available_stock - ?, locked_stock = locked_stock + ? WHERE sku_id = ? AND available_stock >= ?` 完成原子库存锁定。
+  - 这是“锁定库存”，不是最终销售扣减；支付阶段才会把 `locked_stock` 转成 `sold_stock`。
+- `OrderService.createOrder`：
+  - 只接受 `source=CART`。
+  - 从 JWT 当前用户读取 `userId`，不信任前端传入用户信息。
+  - 从 `cart_item` 和商品库重新读取数量、价格、商品名称、规格和库存事实。
+  - 在后端重算 `totalAmount` 和每行 `lineAmount`。
+  - 在同一个事务内完成库存锁定、订单主表插入、订单明细快照插入、购物车已购买 SKU 清理。
+- 公开接口：
+  - `POST /api/orders`：从当前用户购物车选中 SKU 创建 `UNPAID` 订单。
+  - `GET /api/orders`：查询当前用户订单列表。
+  - `GET /api/orders/{orderNo}`：按 `userId + orderNo` 查询当前用户订单详情。
+- 测试覆盖：
+  - `MySqlFlywayMigrationTests` 覆盖新订单表迁移存在性。
+  - `OrderMapperTests` 覆盖订单插入、明细插入、用户隔离查询和购物车结算事实查询。
+  - `InventoryMapperTests` 覆盖库存锁定成功、库存不足返回 0、库存从 available 移到 locked。
+  - `OrderServiceTests` 覆盖后端重算金额、快照落库、库存不足、购物车 SKU 不存在和阶段性拒绝 `BUY_NOW`。
+  - `OrderControllerTests` 覆盖鉴权、购物车结算、订单列表、订单详情、购物车清理、用户隔离和入参校验。
+
+### 本阶段仍未实现
+
+- `BUY_NOW` 立即购买：文档中已保留请求形态，当前接口会返回 `400 bad_request`。
+- Mock Payment：暂未实现 `POST /api/payments/mock-pay`。
+- 支付成功后的库存确认：暂未把 `locked_stock` 转为 `sold_stock`。
+- 订单取消、超时关闭、锁定库存释放。
+- 地址快照、优惠券、运费、发票、售后。
+- Python Function Calling / Tool Use：AI 仍只推荐商品，不代客加购或下单。
+- SSE / WebSocket 流式返回与 MQ 异步推荐任务。
+
+### 本阶段接口契约
+
+```http
+POST /api/orders
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+```
+
+```json
+{
+  "source": "CART",
+  "skuIds": [2103, 2203]
+}
+```
+
+关键约束：
+
+- `skuIds` 表示当前用户购物车中选中的 SKU。
+- 数量来自 `cart_item.quantity`，前端不能在订单请求里传数量。
+- 金额来自数据库实时 `sale_price`，前端不能传 `salePrice` 或 `totalAmount`。
+- 如果任意 SKU 不属于当前用户购物车，返回 `404 not_found`。
+- 如果库存不足，返回 `400 bad_request`，整个事务回滚。
+- 成功后订单状态为 `UNPAID`，对应 SKU 会从当前用户购物车中移除。

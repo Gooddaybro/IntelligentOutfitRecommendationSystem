@@ -81,6 +81,20 @@ public class CartService {
         cartMapper.clearByUserId(userId);
     }
 
+    /**
+     * 删除订单已结算的购物车 SKU。
+     *
+     * @param userId 当前认证用户 ID
+     * @param skuIds 已经成功写入订单明细的 SKU 集合
+     */
+    public void removePurchasedItems(Long userId, List<Long> skuIds) {
+        validateUserId(userId);
+        if (skuIds == null || skuIds.isEmpty()) {
+            return;
+        }
+        cartMapper.deleteItemsByUserIdAndSkuIds(userId, skuIds);
+    }
+
     private void ensureSkuExists(Long skuId) {
         if (cartMapper.existsSkuById(skuId) == 0) {
             throw new ResourceNotFoundException("sku not found: " + skuId);

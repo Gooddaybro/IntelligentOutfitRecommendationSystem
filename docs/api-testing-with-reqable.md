@@ -248,7 +248,207 @@ Python `/chat` 第一版建议返回：
 
 Java 会把 `product_refs[*].spu_id` 转成 `/api/assistant/chat` 响应里的 `data.recommendedSpuIds`。
 
-## 10. 刷新与登出
+## 10. 测试购物车
+
+购物车接口只使用普通用户 `Authorization: Bearer <access_token>`，不需要也不支持 `X-Internal-Token`。本阶段购物车只保存购买意图，不锁库存、不创建订单、不调用 Python。
+
+查询空购物车：
+
+```http
+GET {{base_url}}/api/cart/items
+Authorization: Bearer {{access_token}}
+```
+
+期望：`200 OK`，`data` 是数组。
+
+添加 SKU 到购物车：
+
+```http
+POST {{base_url}}/api/cart/items
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+```
+
+```json
+{
+  "skuId": 2102,
+  "quantity": 1
+}
+```
+
+期望：`200 OK`，返回列表中包含 `skuId=2102`、`spuCode=JACKET_COMMUTE_001`、`quantity=1`。
+
+重复添加同一 SKU：
+
+```http
+POST {{base_url}}/api/cart/items
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+```
+
+```json
+{
+  "skuId": 2102,
+  "quantity": 2
+}
+```
+
+期望：`quantity` 累加为 `3`。
+
+修改数量：
+
+```http
+PUT {{base_url}}/api/cart/items/2102
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+```
+
+```json
+{
+  "quantity": 5
+}
+```
+
+期望：`200 OK`，`quantity=5`。
+
+删除单个 SKU：
+
+```http
+DELETE {{base_url}}/api/cart/items/2102
+Authorization: Bearer {{access_token}}
+```
+
+期望：`200 OK`，返回当前购物车列表。
+
+清空购物车：
+
+```http
+DELETE {{base_url}}/api/cart/items
+Authorization: Bearer {{access_token}}
+```
+
+期望：`200 OK`。再次查询 `/api/cart/items` 时 `data` 为空数组。
+
+参数校验：
+
+```http
+POST {{base_url}}/api/cart/items
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+```
+
+```json
+{
+  "skuId": 2102,
+  "quantity": 0
+}
+```
+
+期望：`400 Bad Request`，`errorCode=validation_failed`。
+
+把 `quantity` 改成 `100` 时也应返回 `400 Bad Request`，当前购物车数量上限为 `99`。
+
+## 11. 测试订单购物车结算
+
+订单接口只使用普通用户 `Authorization: Bearer <access_token>`。本阶段只支持购物车结算，Python AI 不参与下单，`BUY_NOW` 立即购买暂未实现。
+
+先确保购物车里有可结算 SKU：
+
+```http
+POST {{base_url}}/api/cart/items
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+```
+
+```json
+{
+  "skuId": 2103,
+  "quantity": 1
+}
+```
+
+再添加第二个 SKU：
+
+```http
+POST {{base_url}}/api/cart/items
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+```
+
+```json
+{
+  "skuId": 2203,
+  "quantity": 2
+}
+```
+
+从购物车创建订单：
+
+```http
+POST {{base_url}}/api/orders
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+```
+
+```json
+{
+  "source": "CART",
+  "skuIds": [2103, 2203]
+}
+```
+
+期望：`200 OK`，返回：
+
+- `data.orderNo` 非空，形如 `ORD20260602113000123456`。
+- `data.status=UNPAID`。
+- `data.totalAmount` 由后端按数据库价格和购物车数量计算。
+- `data.items[*].salePrice`、`quantity`、`lineAmount` 来自后端快照，不来自前端请求。
+
+创建成功后，再查购物车：
+
+```http
+GET {{base_url}}/api/cart/items
+Authorization: Bearer {{access_token}}
+```
+
+期望：刚刚结算的 `2103` 和 `2203` 已从当前用户购物车移除。
+
+查询当前用户订单列表：
+
+```http
+GET {{base_url}}/api/orders
+Authorization: Bearer {{access_token}}
+```
+
+期望：`200 OK`，`data` 中包含刚创建的 `orderNo`。
+
+查询订单详情：
+
+```http
+GET {{base_url}}/api/orders/{{order_no}}
+Authorization: Bearer {{access_token}}
+```
+
+期望：`200 OK`，返回订单主信息和 `items` 快照。
+
+阶段性拒绝立即购买：
+
+```http
+POST {{base_url}}/api/orders
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+```
+
+```json
+{
+  "source": "BUY_NOW",
+  "skuIds": [2103]
+}
+```
+
+期望：`400 Bad Request`，`errorCode=bad_request`。`BUY_NOW` 会在下一阶段作为单独功能开发。
+
+## 12. 刷新与登出
 
 刷新：
 
@@ -280,7 +480,7 @@ Content-Type: application/json
 
 期望：`200 OK`。再次用同一个 refresh token 调 `/api/auth/refresh` 应返回 `400 Bad Request`。
 
-## 11. Internal API
+## 13. Internal API
 
 普通 Bearer Token 不能替代内部 token。Python AI 服务调用 internal API 时仍然使用：
 

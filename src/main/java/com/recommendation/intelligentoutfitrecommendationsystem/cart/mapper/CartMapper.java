@@ -38,5 +38,7 @@ public interface CartMapper {
 
     int deleteItem(@Param("userId") Long userId, @Param("skuId") Long skuId);
 
+    int deleteItemsByUserIdAndSkuIds(@Param("userId") Long userId, @Param("skuIds") List<Long> skuIds);
+
     int clearByUserId(@Param("userId") Long userId);
 }

@@ -18,9 +18,13 @@ class MySqlFlywayMigrationTests extends BaseMySqlContainerTest {
         Integer chatSessionCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM chat_session", Integer.class);
         Integer chatMessageCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM chat_message", Integer.class);
         Integer cartItemCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM cart_item", Integer.class);
+        Integer salesOrderCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sales_order", Integer.class);
+        Integer orderItemCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM order_item", Integer.class);
 
         assertThat(chatSessionCount).isZero();
         assertThat(chatMessageCount).isZero();
         assertThat(cartItemCount).isZero();
+        assertThat(salesOrderCount).isZero();
+        assertThat(orderItemCount).isZero();
     }
 }
