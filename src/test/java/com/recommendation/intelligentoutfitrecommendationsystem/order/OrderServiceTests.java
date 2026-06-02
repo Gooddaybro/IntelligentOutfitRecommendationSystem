@@ -19,6 +19,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -161,6 +162,20 @@ class OrderServiceTests {
 
         verify(orderMapper).updateOrderClosed(88L, "CLOSED", "TIMEOUT_UNPAID_30_MINUTES");
         verify(inventoryMapper).releaseLockedStock(eq(2203L), eq(1));
+    }
+
+    @Test
+    void findExpiredUnpaidOrderNosUsesConfiguredTimeoutAndBatchSize() {
+        when(orderMapper.findExpiredUnpaidOrderNos(any(LocalDateTime.class), eq(50)))
+                .thenReturn(List.of("ORDTIMEOUT1", "ORDTIMEOUT2"));
+
+        List<String> orderNos = service.findExpiredUnpaidOrderNos(30, 50);
+
+        ArgumentCaptor<LocalDateTime> cutoffCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(orderMapper).findExpiredUnpaidOrderNos(cutoffCaptor.capture(), eq(50));
+        assertThat(orderNos).containsExactly("ORDTIMEOUT1", "ORDTIMEOUT2");
+        assertThat(cutoffCaptor.getValue()).isBefore(LocalDateTime.now().minusMinutes(29));
+        assertThat(cutoffCaptor.getValue()).isAfter(LocalDateTime.now().minusMinutes(31));
     }
 
     private OrderCheckoutItem checkoutItem(Long skuId, String salePrice, int quantity) {

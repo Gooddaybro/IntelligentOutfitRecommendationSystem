@@ -172,6 +172,17 @@ public class OrderService {
         closeOrder(order, CLOSED_STATUS, closeReason);
     }
 
+    public List<String> findExpiredUnpaidOrderNos(int unpaidTimeoutMinutes, int batchSize) {
+        if (unpaidTimeoutMinutes <= 0) {
+            throw new BadRequestException("unpaid timeout minutes must be positive");
+        }
+        if (batchSize <= 0) {
+            throw new BadRequestException("timeout close batch size must be positive");
+        }
+        LocalDateTime cutoffTime = LocalDateTime.now().minusMinutes(unpaidTimeoutMinutes);
+        return orderMapper.findExpiredUnpaidOrderNos(cutoffTime, batchSize);
+    }
+
     private void validateRequest(CreateOrderRequest request) {
         if (request == null) {
             throw new BadRequestException("request must not be null");
