@@ -51,11 +51,13 @@
 - 会话记录：创建会话、查询会话列表、查询消息历史、归档会话
 - Java assistant-service 同步调用 Python AI 服务并保存 user/assistant 消息
 - 购物车：当前登录用户加购 SKU、查询购物车、修改数量、删除单项、清空购物车
+- 订单：当前登录用户从购物车结算、查询订单、取消未支付订单、超时关闭未支付订单
+- Mock 支付：模拟支付成功、支付流水记录、锁定库存确认售出
 
 ### 未实现
 
-- 订单（下一阶段计划中，见 `docs/superpowers/plans/2026-06-02-order-mvp.md`）
-- 支付
+- `BUY_NOW` 立即购买
+- 真实支付渠道、支付回调、退款和售后
 - SSE / WebSocket 流式返回
 - MQ 异步推荐任务
 
@@ -77,7 +79,8 @@
 | 会话记录 | 已实现 | conversation | chat_session、chat_message | POST/GET/DELETE /api/conversations、GET /api/conversations/{threadId}/messages | ConversationMapperTests、ConversationControllerTests |
 | AI 同步问答 | 已实现 | assistant | chat_session、chat_message、product_*、user_* | POST /api/assistant/chat | AssistantServiceTests、AssistantControllerTests |
 | 购物车 | 已实现 | cart | cart_item | GET/POST/PUT/DELETE /api/cart/items | CartMapperTests、CartServiceTests、CartControllerTests |
-| 订单 | 计划中 | order | sales_order、order_item | POST/GET /api/orders、GET /api/orders/{orderNo} | OrderMapperTests、OrderServiceTests、OrderControllerTests |
+| 订单 | 已实现 | order | sales_order、order_item | POST/GET /api/orders、GET /api/orders/{orderNo}、POST /api/orders/{orderNo}/cancel | OrderMapperTests、OrderServiceTests、OrderControllerTests、OrderTimeoutSchedulerTests |
+| Mock 支付 | 已实现 | payment | payment | POST /api/payments/mock-pay | PaymentMapperTests、PaymentServiceTests、PaymentControllerTests |
 | requestId 日志追踪 | 已实现 | common/logging | 无 | 所有 HTTP 请求响应头 `X-Request-Id` | MdcRequestIdInterceptorTests |
 | MySQL 容器迁移测试 | 已实现 | support test | flyway_schema_history、全部业务表 | 无 | MySqlFlywayMigrationTests |
 | 统一响应格式 | 已实现 | common/api | 无 | 所有 Controller | Controller 测试覆盖 |
@@ -447,19 +450,27 @@ X-Internal-Token
   - `POST /api/orders`：从当前用户购物车选中 SKU 创建 `UNPAID` 订单。
   - `GET /api/orders`：查询当前用户订单列表。
   - `GET /api/orders/{orderNo}`：按 `userId + orderNo` 查询当前用户订单详情。
+  - `POST /api/orders/{orderNo}/cancel`：当前用户取消自己的 `UNPAID` 订单并释放锁定库存。
+- Mock Payment：
+  - `POST /api/payments/mock-pay`：当前用户模拟支付自己的 `UNPAID` 订单。
+  - `payment` 表保存 `payment_no`、`order_id`、`order_no`、`user_id`、`amount`、`channel`、`status`、`transaction_id` 和 `paid_at`。
+  - 支付成功时把 `locked_stock` 转为 `sold_stock`，订单状态更新为 `PAID`。
+  - 重复支付已 `PAID` 订单时返回已有成功支付流水，不重复扣减库存。
+- 订单关闭：
+  - 用户主动取消 `UNPAID` 订单时，状态更新为 `CANCELLED`，`locked_stock` 释放回 `available_stock`。
+  - 定时任务按 `order.unpaid-timeout-minutes=30` 扫描超时未支付订单，状态更新为 `CLOSED` 并释放库存。
 - 测试覆盖：
   - `MySqlFlywayMigrationTests` 覆盖新订单表迁移存在性。
-  - `OrderMapperTests` 覆盖订单插入、明细插入、用户隔离查询和购物车结算事实查询。
-  - `InventoryMapperTests` 覆盖库存锁定成功、库存不足返回 0、库存从 available 移到 locked。
-  - `OrderServiceTests` 覆盖后端重算金额、快照落库、库存不足、购物车 SKU 不存在和阶段性拒绝 `BUY_NOW`。
-  - `OrderControllerTests` 覆盖鉴权、购物车结算、订单列表、订单详情、购物车清理、用户隔离和入参校验。
+  - `OrderMapperTests` 覆盖订单插入、明细插入、用户隔离查询、购物车结算事实查询和超时订单扫描。
+  - `InventoryMapperTests` 覆盖库存锁定、库存确认售出、库存释放和库存不足返回 0。
+  - `OrderServiceTests` 覆盖后端重算金额、快照落库、库存不足、取消订单、超时关闭和阶段性拒绝 `BUY_NOW`。
+  - `OrderControllerTests` 覆盖鉴权、购物车结算、订单列表、订单详情、购物车清理、用户隔离、取消订单和入参校验。
+  - `PaymentMapperTests`、`PaymentServiceTests`、`PaymentControllerTests` 覆盖支付流水、mock 支付、重复支付幂等和用户隔离。
+  - `OrderTimeoutSchedulerTests` 覆盖超时关闭调度委托。
 
 ### 本阶段仍未实现
 
 - `BUY_NOW` 立即购买：文档中已保留请求形态，当前接口会返回 `400 bad_request`。
-- Mock Payment：暂未实现 `POST /api/payments/mock-pay`。
-- 支付成功后的库存确认：暂未把 `locked_stock` 转为 `sold_stock`。
-- 订单取消、超时关闭、锁定库存释放。
 - 地址快照、优惠券、运费、发票、售后。
 - Python Function Calling / Tool Use：AI 仍只推荐商品，不代客加购或下单。
 - SSE / WebSocket 流式返回与 MQ 异步推荐任务。

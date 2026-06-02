@@ -448,7 +448,96 @@ Content-Type: application/json
 
 期望：`400 Bad Request`，`errorCode=bad_request`。`BUY_NOW` 会在下一阶段作为单独功能开发。
 
-## 12. 刷新与登出
+## 12. 测试 Mock 支付和订单取消
+
+支付接口只使用普通用户 `Authorization: Bearer <access_token>`。Python AI 不参与支付，前端不能传金额、渠道、用户 ID 或支付状态。
+
+先用第 11 节流程创建一个 `UNPAID` 订单，并把返回的 `data.orderNo` 保存为 `{{order_no}}`。
+
+模拟支付：
+
+```http
+POST {{base_url}}/api/payments/mock-pay
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+```
+
+```json
+{
+  "orderNo": "{{order_no}}"
+}
+```
+
+期望：`200 OK`，返回：
+
+- `data.paymentNo` 非空，形如 `PAY20260602114500123456`。
+- `data.orderNo={{order_no}}`。
+- `data.amount` 等于订单后端计算的总金额。
+- `data.channel=MOCK`。
+- `data.status=SUCCESS`。
+- `data.transactionId` 非空。
+- `data.paidAt` 非空。
+
+重复提交同一个支付请求：
+
+```http
+POST {{base_url}}/api/payments/mock-pay
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+```
+
+```json
+{
+  "orderNo": "{{order_no}}"
+}
+```
+
+期望：仍为 `200 OK`，返回同一个 `paymentNo`，不会重复把库存从 `locked_stock` 转为 `sold_stock`。
+
+取消未支付订单：
+
+先重新创建一个新的 `UNPAID` 订单，把订单号保存为 `{{cancel_order_no}}`。
+
+```http
+POST {{base_url}}/api/orders/{{cancel_order_no}}/cancel
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+```
+
+```json
+{
+  "reason": "用户不想买了"
+}
+```
+
+期望：`200 OK`，返回：
+
+- `data.orderNo={{cancel_order_no}}`。
+- `data.status=CANCELLED`。
+- `data.closedAt` 非空。
+- `data.closeReason=用户不想买了`。
+
+取消已支付订单：
+
+如果对已经 `PAID` 的订单调用取消接口，期望：`400 Bad Request`，`errorCode=bad_request`。当前 MVP 不做退款、发货、确认收货或售后。
+
+跨用户支付或取消：
+
+用另一个用户的 access token 调用 `POST /api/payments/mock-pay` 或 `POST /api/orders/{{order_no}}/cancel`，期望：`404 Not Found`，`errorCode=not_found`。
+
+超时关闭：
+
+MVP 使用 Spring `@Scheduled` 轮询超时未支付订单，默认配置：
+
+```properties
+order.unpaid-timeout-minutes=30
+order.timeout-close-batch-size=50
+order.timeout-close-fixed-delay-ms=60000
+```
+
+超时关闭后的订单状态为 `CLOSED`，锁定库存会释放回 `available_stock`。
+
+## 13. 刷新与登出
 
 刷新：
 

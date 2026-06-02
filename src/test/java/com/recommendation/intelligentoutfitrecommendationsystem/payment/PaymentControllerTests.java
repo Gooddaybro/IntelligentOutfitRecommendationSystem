@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -26,6 +27,9 @@ class PaymentControllerTests {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
@@ -39,6 +43,7 @@ class PaymentControllerTests {
     @Test
     void mockPayCurrentUsersOrderAndReturnsExistingPaymentOnRepeat() throws Exception {
         String accessToken = registerAndLogin(nextUsername());
+        resetInventory(2005, 5);
         addCartItem(accessToken, 2005, 1);
         String orderNo = createOrder(accessToken, 2005);
 
@@ -81,6 +86,7 @@ class PaymentControllerTests {
     void mockPayRejectsOrderOwnedByAnotherUser() throws Exception {
         String ownerToken = registerAndLogin(nextUsername());
         String otherToken = registerAndLogin(nextUsername());
+        resetInventory(2005, 5);
         addCartItem(ownerToken, 2005, 1);
         String orderNo = createOrder(ownerToken, 2005);
 
@@ -157,5 +163,15 @@ class PaymentControllerTests {
 
     private String nextUsername() {
         return "payment_user_" + USER_SEQUENCE.incrementAndGet();
+    }
+
+    private void resetInventory(long skuId, int availableStock) {
+        jdbcTemplate.update("""
+                UPDATE inventory
+                SET available_stock = ?,
+                    locked_stock = 0,
+                    sold_stock = 0
+                WHERE sku_id = ?
+                """, availableStock, skuId);
     }
 }
