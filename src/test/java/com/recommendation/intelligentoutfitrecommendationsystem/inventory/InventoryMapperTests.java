@@ -38,4 +38,28 @@ class InventoryMapperTests {
     void lockStockReturnsZeroWhenAvailableStockIsInsufficient() {
         assertThat(mapper.lockStock(2004L, 1)).isZero();
     }
+
+    @Test
+    void confirmSoldStockMovesLockedStockToSoldStock() {
+        assertThat(mapper.lockStock(2103L, 2)).isEqualTo(1);
+
+        assertThat(mapper.confirmSoldStock(2103L, 2)).isEqualTo(1);
+
+        var inventory = mapper.findBySkuId(2103L);
+        assertThat(inventory.getAvailableStock()).isEqualTo(3);
+        assertThat(inventory.getLockedStock()).isZero();
+        assertThat(inventory.getSoldStock()).isEqualTo(2);
+    }
+
+    @Test
+    void releaseLockedStockMovesLockedStockBackToAvailableStock() {
+        assertThat(mapper.lockStock(2203L, 2)).isEqualTo(1);
+
+        assertThat(mapper.releaseLockedStock(2203L, 2)).isEqualTo(1);
+
+        var inventory = mapper.findBySkuId(2203L);
+        assertThat(inventory.getAvailableStock()).isEqualTo(4);
+        assertThat(inventory.getLockedStock()).isZero();
+        assertThat(inventory.getSoldStock()).isZero();
+    }
 }

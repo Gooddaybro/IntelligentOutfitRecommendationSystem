@@ -20,4 +20,22 @@ public interface InventoryMapper {
      * @return 1 表示库存充足并锁定成功，0 表示库存不足或库存记录不存在
      */
     int lockStock(@Param("skuId") Long skuId, @Param("quantity") Integer quantity);
+
+    /**
+     * 支付成功后确认销售库存。
+     *
+     * @param skuId 已支付订单明细中的 SKU
+     * @param quantity 需要从锁定库存转为已售库存的数量
+     * @return 1 表示库存状态转换成功，0 表示锁定库存不足或库存记录不存在
+     */
+    int confirmSoldStock(@Param("skuId") Long skuId, @Param("quantity") Integer quantity);
+
+    /**
+     * 订单取消或超时关闭后释放锁定库存。
+     *
+     * @param skuId 未支付订单明细中的 SKU
+     * @param quantity 需要释放回可售库存的数量
+     * @return 1 表示库存状态转换成功，0 表示锁定库存不足或库存记录不存在
+     */
+    int releaseLockedStock(@Param("skuId") Long skuId, @Param("quantity") Integer quantity);
 }

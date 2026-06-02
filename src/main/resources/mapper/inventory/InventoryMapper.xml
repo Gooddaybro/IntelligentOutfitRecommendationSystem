@@ -41,4 +41,30 @@
           AND available_stock &gt;= #{quantity}
     </update>
 
+    <!--
+        支付成功阶段只确认订单已经锁定的库存，不能再读取实时价格或重新判断购物车。
+        条件 UPDATE 保证重复支付或库存状态异常时不会把 locked_stock 扣成负数。
+    -->
+    <update id="confirmSoldStock">
+        UPDATE inventory
+        SET locked_stock = locked_stock - #{quantity},
+            sold_stock = sold_stock + #{quantity},
+            updated_at = CURRENT_TIMESTAMP(6)
+        WHERE sku_id = #{skuId}
+          AND locked_stock &gt;= #{quantity}
+    </update>
+
+    <!--
+        取消和超时关闭阶段把订单锁定库存释放回可售库存。
+        该 SQL 与支付确认互斥依赖订单行锁保护，避免同一订单重复释放或边支付边取消。
+    -->
+    <update id="releaseLockedStock">
+        UPDATE inventory
+        SET locked_stock = locked_stock - #{quantity},
+            available_stock = available_stock + #{quantity},
+            updated_at = CURRENT_TIMESTAMP(6)
+        WHERE sku_id = #{skuId}
+          AND locked_stock &gt;= #{quantity}
+    </update>
+
 </mapper>
