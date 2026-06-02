@@ -6,6 +6,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.order.model.Sale
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -50,8 +51,10 @@ public interface OrderMapper {
             @Param("closeReason") String closeReason
     );
 
+    int updateOrderPaid(@Param("orderId") Long orderId, @Param("paidAt") LocalDateTime paidAt);
+
     List<String> findExpiredUnpaidOrderNos(
-            @Param("cutoffTime") java.time.LocalDateTime cutoffTime,
+            @Param("cutoffTime") LocalDateTime cutoffTime,
             @Param("batchSize") int batchSize
     );
 
