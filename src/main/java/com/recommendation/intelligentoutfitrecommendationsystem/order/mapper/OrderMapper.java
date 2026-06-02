@@ -25,7 +25,35 @@ public interface OrderMapper {
 
     SalesOrder findOrderByUserIdAndOrderNo(@Param("userId") Long userId, @Param("orderNo") String orderNo);
 
+    /**
+     * 按当前用户和订单号锁定订单主表行。
+     *
+     * @param userId 当前认证用户 ID，用于保护公开订单接口的用户隔离边界
+     * @param orderNo 前端持有的订单业务号
+     * @return 被当前事务锁定的订单；不存在或不属于当前用户时返回 null
+     */
+    SalesOrder findOrderByUserIdAndOrderNoForUpdate(@Param("userId") Long userId, @Param("orderNo") String orderNo);
+
+    /**
+     * 系统内部按订单号锁定订单主表行。
+     *
+     * @param orderNo 系统超时任务扫描到的订单业务号
+     * @return 被当前事务锁定的订单；不存在时返回 null
+     */
+    SalesOrder findOrderByOrderNoForUpdate(@Param("orderNo") String orderNo);
+
     List<OrderItem> findItemsByOrderId(@Param("orderId") Long orderId);
+
+    int updateOrderClosed(
+            @Param("orderId") Long orderId,
+            @Param("status") String status,
+            @Param("closeReason") String closeReason
+    );
+
+    List<String> findExpiredUnpaidOrderNos(
+            @Param("cutoffTime") java.time.LocalDateTime cutoffTime,
+            @Param("batchSize") int batchSize
+    );
 
     /**
      * 读取当前用户选中的购物车项以及下单时刻的商品事实数据。

@@ -10,9 +10,11 @@ import com.recommendation.intelligentoutfitrecommendationsystem.order.model.Sale
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -32,6 +34,9 @@ class OrderMapperTests {
 
     @Autowired
     private OrderMapper orderMapper;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Test
     void insertsOrderAndItemsThenReadsOwnedDetail() {
@@ -95,6 +100,31 @@ class OrderMapperTests {
                     assertThat(item.getSpuStatus()).isEqualTo("on_sale");
                     assertThat(item.getAvailableStock()).isPositive();
                 });
+    }
+
+    @Test
+    void closesOrderAndFindsExpiredUnpaidOrders() {
+        Long userId = createUser();
+        SalesOrder order = new SalesOrder();
+        order.setOrderNo("ORDEXPIRED" + userId);
+        order.setUserId(userId);
+        order.setTotalAmount(new BigDecimal("299.00"));
+        order.setStatus("UNPAID");
+        orderMapper.insertOrder(order);
+        jdbcTemplate.update(
+                "UPDATE sales_order SET created_at = DATEADD('MINUTE', -31, CURRENT_TIMESTAMP) WHERE id = ?",
+                order.getId()
+        );
+
+        List<String> expiredOrderNos = orderMapper.findExpiredUnpaidOrderNos(LocalDateTime.now().minusMinutes(30), 10);
+        int updatedRows = orderMapper.updateOrderClosed(order.getId(), "CLOSED", "TIMEOUT_UNPAID_30_MINUTES");
+        SalesOrder closedOrder = orderMapper.findOrderByUserIdAndOrderNo(userId, order.getOrderNo());
+
+        assertThat(expiredOrderNos).contains(order.getOrderNo());
+        assertThat(updatedRows).isOne();
+        assertThat(closedOrder.getStatus()).isEqualTo("CLOSED");
+        assertThat(closedOrder.getClosedAt()).isNotNull();
+        assertThat(closedOrder.getCloseReason()).isEqualTo("TIMEOUT_UNPAID_30_MINUTES");
     }
 
     private OrderItem orderItem(Long orderId, Long skuId) {

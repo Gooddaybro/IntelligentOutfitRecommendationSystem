@@ -137,6 +137,47 @@ class OrderControllerTests {
     }
 
     @Test
+    void cancelsCurrentUsersUnpaidOrderAndKeepsCancelScopedToOwner() throws Exception {
+        String ownerToken = registerAndLogin(nextUsername());
+        String otherToken = registerAndLogin(nextUsername());
+
+        addCartItem(ownerToken, 2005, 1);
+
+        String createBody = mockMvc.perform(post("/api/orders")
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "source": "CART",
+                                  "skuIds": [2005]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        String orderNo = objectMapper.readTree(createBody).path("data").path("orderNo").asText();
+
+        mockMvc.perform(post("/api/orders/{orderNo}/cancel", orderNo)
+                        .header("Authorization", "Bearer " + otherToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"用户不想买了\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("not_found"));
+
+        mockMvc.perform(post("/api/orders/{orderNo}/cancel", orderNo)
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"用户不想买了\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.orderNo").value(orderNo))
+                .andExpect(jsonPath("$.data.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.data.closedAt").isNotEmpty())
+                .andExpect(jsonPath("$.data.closeReason").value("用户不想买了"));
+    }
+
+    @Test
     void rejectsEmptyCheckoutSkuListBeforeTouchingOrderService() throws Exception {
         String accessToken = registerAndLogin(nextUsername());
 

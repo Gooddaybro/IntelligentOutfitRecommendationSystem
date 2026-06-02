@@ -4,6 +4,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.cart.service.Car
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
 import com.recommendation.intelligentoutfitrecommendationsystem.inventory.mapper.InventoryMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.CancelOrderRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.CreateOrderRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.mapper.OrderMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderCheckoutItem;
@@ -23,6 +24,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -109,6 +111,58 @@ class OrderServiceTests {
         verify(cartService, never()).removePurchasedItems(any(), any());
     }
 
+    @Test
+    void cancelUnpaidOrderReleasesLockedStockAndClosesOrder() {
+        SalesOrder order = salesOrder(88L, 10L, "ORDCANCEL1", "UNPAID");
+        when(orderMapper.findOrderByUserIdAndOrderNoForUpdate(10L, "ORDCANCEL1")).thenReturn(order);
+        when(orderMapper.findItemsByOrderId(88L)).thenReturn(List.of(orderItem(2102L, 2)));
+        when(inventoryMapper.releaseLockedStock(2102L, 2)).thenReturn(1);
+        when(orderMapper.updateOrderClosed(88L, "CANCELLED", "用户不想买了")).thenReturn(1);
+
+        var response = service.cancelOrder(10L, "ORDCANCEL1", new CancelOrderRequest("用户不想买了"));
+
+        verify(orderMapper).updateOrderClosed(88L, "CANCELLED", "用户不想买了");
+        assertThat(response.status()).isEqualTo("CANCELLED");
+        assertThat(response.closeReason()).isEqualTo("用户不想买了");
+    }
+
+    @Test
+    void cancelPaidOrderIsRejectedWithoutReleasingStock() {
+        SalesOrder order = salesOrder(88L, 10L, "ORDPAID1", "PAID");
+        when(orderMapper.findOrderByUserIdAndOrderNoForUpdate(10L, "ORDPAID1")).thenReturn(order);
+
+        assertThatThrownBy(() -> service.cancelOrder(10L, "ORDPAID1", new CancelOrderRequest("用户不想买了")))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("paid order cannot be cancelled in this phase");
+        verify(inventoryMapper, never()).releaseLockedStock(any(), any());
+        verify(orderMapper, never()).updateOrderClosed(any(), any(), any());
+    }
+
+    @Test
+    void closeExpiredOrderSkipsPaidOrderWithoutReleasingStock() {
+        SalesOrder order = salesOrder(88L, 10L, "ORDPAID1", "PAID");
+        when(orderMapper.findOrderByOrderNoForUpdate("ORDPAID1")).thenReturn(order);
+
+        service.closeExpiredOrder("ORDPAID1", "TIMEOUT_UNPAID_30_MINUTES");
+
+        verify(inventoryMapper, never()).releaseLockedStock(any(), any());
+        verify(orderMapper, never()).updateOrderClosed(any(), any(), any());
+    }
+
+    @Test
+    void closeExpiredOrderReleasesLockedStockAndMarksOrderClosed() {
+        SalesOrder order = salesOrder(88L, 10L, "ORDTIMEOUT1", "UNPAID");
+        when(orderMapper.findOrderByOrderNoForUpdate("ORDTIMEOUT1")).thenReturn(order);
+        when(orderMapper.findItemsByOrderId(88L)).thenReturn(List.of(orderItem(2203L, 1)));
+        when(inventoryMapper.releaseLockedStock(2203L, 1)).thenReturn(1);
+        when(orderMapper.updateOrderClosed(88L, "CLOSED", "TIMEOUT_UNPAID_30_MINUTES")).thenReturn(1);
+
+        service.closeExpiredOrder("ORDTIMEOUT1", "TIMEOUT_UNPAID_30_MINUTES");
+
+        verify(orderMapper).updateOrderClosed(88L, "CLOSED", "TIMEOUT_UNPAID_30_MINUTES");
+        verify(inventoryMapper).releaseLockedStock(eq(2203L), eq(1));
+    }
+
     private OrderCheckoutItem checkoutItem(Long skuId, String salePrice, int quantity) {
         OrderCheckoutItem item = new OrderCheckoutItem();
         item.setSkuId(skuId);
@@ -125,6 +179,32 @@ class OrderServiceTests {
         item.setSkuStatus("on_sale");
         item.setSpuStatus("on_sale");
         item.setAvailableStock(10);
+        return item;
+    }
+
+    private SalesOrder salesOrder(Long id, Long userId, String orderNo, String status) {
+        SalesOrder order = new SalesOrder();
+        order.setId(id);
+        order.setUserId(userId);
+        order.setOrderNo(orderNo);
+        order.setTotalAmount(new BigDecimal("299.00"));
+        order.setStatus(status);
+        return order;
+    }
+
+    private OrderItem orderItem(Long skuId, int quantity) {
+        OrderItem item = new OrderItem();
+        item.setSkuId(skuId);
+        item.setSpuId(1002L);
+        item.setSkuCode("JK-COMMUTE-001-BLK-L");
+        item.setSpuCode("JACKET_COMMUTE_001");
+        item.setProductName("commute jacket");
+        item.setCategoryName("jacket");
+        item.setColor("black");
+        item.setSize("L");
+        item.setSalePrice(new BigDecimal("299.00"));
+        item.setQuantity(quantity);
+        item.setLineAmount(new BigDecimal("299.00").multiply(BigDecimal.valueOf(quantity)));
         return item;
     }
 }

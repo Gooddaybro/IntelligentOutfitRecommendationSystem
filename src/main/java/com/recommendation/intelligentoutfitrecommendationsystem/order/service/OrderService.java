@@ -4,6 +4,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.cart.service.Car
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
 import com.recommendation.intelligentoutfitrecommendationsystem.inventory.mapper.InventoryMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.CancelOrderRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.CreateOrderRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.OrderItemResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.OrderResponse;
@@ -34,6 +35,16 @@ public class OrderService {
     private static final String CART_SOURCE = "CART";
 
     private static final String UNPAID_STATUS = "UNPAID";
+
+    private static final String PAID_STATUS = "PAID";
+
+    private static final String CANCELLED_STATUS = "CANCELLED";
+
+    private static final String CLOSED_STATUS = "CLOSED";
+
+    private static final String DEFAULT_CANCEL_REASON = "USER_CANCELLED";
+
+    private static final int MAX_CLOSE_REASON_LENGTH = 255;
 
     private static final DateTimeFormatter ORDER_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS");
 
@@ -111,6 +122,56 @@ public class OrderService {
         return toResponse(order, orderMapper.findItemsByOrderId(order.getId()));
     }
 
+    /**
+     * 取消当前用户自己的未支付订单。
+     *
+     * @param userId 当前认证用户 ID，只能来自服务端 JWT 上下文
+     * @param orderNo 前端持有的订单业务号
+     * @param request 可选取消原因，请求体不能决定订单归属或目标状态
+     * @return 取消后的订单状态快照
+     */
+    @Transactional
+    public OrderResponse cancelOrder(Long userId, String orderNo, CancelOrderRequest request) {
+        validateUserId(userId);
+        String normalizedOrderNo = normalizeOrderNo(orderNo);
+        SalesOrder order = orderMapper.findOrderByUserIdAndOrderNoForUpdate(userId, normalizedOrderNo);
+        if (order == null) {
+            throw new ResourceNotFoundException("order not found: " + normalizedOrderNo);
+        }
+        if (isClosedStatus(order.getStatus())) {
+            return toResponse(order, List.of());
+        }
+        if (PAID_STATUS.equals(order.getStatus())) {
+            throw new BadRequestException("paid order cannot be cancelled in this phase");
+        }
+        validateUnpaid(order);
+
+        String closeReason = normalizeCloseReason(request);
+        releaseLockedStock(order);
+        closeOrder(order, CANCELLED_STATUS, closeReason);
+        return toResponse(order, List.of());
+    }
+
+    /**
+     * 系统超时任务关闭未支付订单。
+     *
+     * 该入口不接收用户上下文，因此必须先锁定订单行并重查状态；如果用户已经支付或取消，
+     * 本方法直接跳过，避免重复释放库存。
+     *
+     * @param orderNo 超时扫描得到的订单业务号
+     * @param closeReason 系统关闭原因
+     */
+    @Transactional
+    public void closeExpiredOrder(String orderNo, String closeReason) {
+        String normalizedOrderNo = normalizeOrderNo(orderNo);
+        SalesOrder order = orderMapper.findOrderByOrderNoForUpdate(normalizedOrderNo);
+        if (order == null || !UNPAID_STATUS.equals(order.getStatus())) {
+            return;
+        }
+        releaseLockedStock(order);
+        closeOrder(order, CLOSED_STATUS, closeReason);
+    }
+
     private void validateRequest(CreateOrderRequest request) {
         if (request == null) {
             throw new BadRequestException("request must not be null");
@@ -148,6 +209,25 @@ public class OrderService {
         if (affectedRows == 0) {
             throw new BadRequestException("insufficient stock for sku: " + item.getSkuId());
         }
+    }
+
+    private void releaseLockedStock(SalesOrder order) {
+        for (OrderItem item : orderMapper.findItemsByOrderId(order.getId())) {
+            int affectedRows = inventoryMapper.releaseLockedStock(item.getSkuId(), item.getQuantity());
+            if (affectedRows == 0) {
+                throw new BadRequestException("locked stock is inconsistent for sku: " + item.getSkuId());
+            }
+        }
+    }
+
+    private void closeOrder(SalesOrder order, String status, String closeReason) {
+        int affectedRows = orderMapper.updateOrderClosed(order.getId(), status, closeReason);
+        if (affectedRows == 0) {
+            throw new BadRequestException("order status changed before close: " + order.getOrderNo());
+        }
+        order.setStatus(status);
+        order.setClosedAt(LocalDateTime.now());
+        order.setCloseReason(closeReason);
     }
 
     private OrderItem toOrderItem(OrderCheckoutItem checkoutItem, BigDecimal lineAmount) {
@@ -200,6 +280,32 @@ public class OrderService {
     private String generateOrderNo() {
         int suffix = ThreadLocalRandom.current().nextInt(100000, 1000000);
         return "ORD" + LocalDateTime.now().format(ORDER_TIME_FORMATTER) + suffix;
+    }
+
+    private String normalizeOrderNo(String orderNo) {
+        if (orderNo == null || orderNo.isBlank()) {
+            throw new BadRequestException("orderNo must not be blank");
+        }
+        return orderNo.trim();
+    }
+
+    private String normalizeCloseReason(CancelOrderRequest request) {
+        String reason = request == null ? null : request.reason();
+        String normalized = reason == null || reason.isBlank() ? DEFAULT_CANCEL_REASON : reason.trim();
+        if (normalized.length() > MAX_CLOSE_REASON_LENGTH) {
+            throw new BadRequestException("close reason must not exceed 255 characters");
+        }
+        return normalized;
+    }
+
+    private boolean isClosedStatus(String status) {
+        return CANCELLED_STATUS.equals(status) || CLOSED_STATUS.equals(status);
+    }
+
+    private void validateUnpaid(SalesOrder order) {
+        if (!UNPAID_STATUS.equals(order.getStatus())) {
+            throw new BadRequestException("order is not unpaid: " + order.getOrderNo());
+        }
     }
 
     private void validateUserId(Long userId) {

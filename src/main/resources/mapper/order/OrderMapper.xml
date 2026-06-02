@@ -96,6 +96,51 @@
           AND order_no = #{orderNo}
     </select>
 
+    <!--
+        支付、取消和超时关闭都会改变订单状态和库存状态，必须先锁定订单主表行。
+        公开用户入口绑定 userId，确保用户不能通过猜测 orderNo 锁定或修改他人订单。
+    -->
+    <select id="findOrderByUserIdAndOrderNoForUpdate"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.order.model.SalesOrder">
+        SELECT
+            id,
+            order_no,
+            user_id,
+            total_amount,
+            status,
+            paid_at,
+            closed_at,
+            close_reason,
+            created_at,
+            updated_at
+        FROM sales_order
+        WHERE user_id = #{userId}
+          AND order_no = #{orderNo}
+        FOR UPDATE
+    </select>
+
+    <!--
+        系统超时任务没有前端 JWT 上下文，只能按扫描出的订单号再次锁行并重查状态。
+        这里不能直接批量更新，避免与用户支付或取消请求并发时重复释放库存。
+    -->
+    <select id="findOrderByOrderNoForUpdate"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.order.model.SalesOrder">
+        SELECT
+            id,
+            order_no,
+            user_id,
+            total_amount,
+            status,
+            paid_at,
+            closed_at,
+            close_reason,
+            created_at,
+            updated_at
+        FROM sales_order
+        WHERE order_no = #{orderNo}
+        FOR UPDATE
+    </select>
+
     <select id="findItemsByOrderId"
             resultType="com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderItem">
         SELECT
@@ -117,6 +162,25 @@
         FROM order_item
         WHERE order_id = #{orderId}
         ORDER BY id ASC
+    </select>
+
+    <update id="updateOrderClosed">
+        UPDATE sales_order
+        SET status = #{status},
+            closed_at = CURRENT_TIMESTAMP(6),
+            close_reason = #{closeReason},
+            updated_at = CURRENT_TIMESTAMP(6)
+        WHERE id = #{orderId}
+          AND status = 'UNPAID'
+    </update>
+
+    <select id="findExpiredUnpaidOrderNos" resultType="java.lang.String">
+        SELECT order_no
+        FROM sales_order
+        WHERE status = 'UNPAID'
+          AND created_at &lt; #{cutoffTime}
+        ORDER BY created_at ASC, id ASC
+        LIMIT #{batchSize}
     </select>
 
     <!--

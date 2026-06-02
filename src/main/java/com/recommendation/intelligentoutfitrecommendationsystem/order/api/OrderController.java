@@ -1,6 +1,7 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.order.api;
 
 import com.recommendation.intelligentoutfitrecommendationsystem.common.api.ApiResponse;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.CancelOrderRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.CreateOrderRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.OrderResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.service.OrderService;
@@ -51,5 +52,15 @@ public class OrderController {
     public ApiResponse<OrderResponse> getOrderDetail(Authentication authentication, @PathVariable String orderNo) {
         CurrentUser currentUser = CurrentUser.from(authentication);
         return ApiResponse.ok(orderService.getOrderDetail(currentUser.userId(), orderNo));
+    }
+
+    @PostMapping("/{orderNo}/cancel")
+    public ApiResponse<OrderResponse> cancelOrder(
+            Authentication authentication,
+            @PathVariable String orderNo,
+            @RequestBody(required = false) CancelOrderRequest request
+    ) {
+        CurrentUser currentUser = CurrentUser.from(authentication);
+        return ApiResponse.ok(orderService.cancelOrder(currentUser.userId(), orderNo, request));
     }
 }
