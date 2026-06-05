@@ -51,12 +51,11 @@
 - 会话记录：创建会话、查询会话列表、查询消息历史、归档会话
 - Java assistant-service 同步调用 Python AI 服务并保存 user/assistant 消息
 - 购物车：当前登录用户加购 SKU、查询购物车、修改数量、删除单项、清空购物车
-- 订单：当前登录用户从购物车结算、查询订单、取消未支付订单、超时关闭未支付订单
+- 订单：当前登录用户从购物车结算、立即购买、查询订单、取消未支付订单、超时关闭未支付订单
 - Mock 支付：模拟支付成功、支付流水记录、锁定库存确认售出
 
 ### 未实现
 
-- `BUY_NOW` 立即购买
 - 真实支付渠道、支付回调、退款和售后
 - SSE / WebSocket 流式返回
 - MQ 异步推荐任务
@@ -79,7 +78,7 @@
 | 会话记录 | 已实现 | conversation | chat_session、chat_message | POST/GET/DELETE /api/conversations、GET /api/conversations/{threadId}/messages | ConversationMapperTests、ConversationControllerTests |
 | AI 同步问答 | 已实现 | assistant | chat_session、chat_message、product_*、user_* | POST /api/assistant/chat | AssistantServiceTests、AssistantControllerTests |
 | 购物车 | 已实现 | cart | cart_item | GET/POST/PUT/DELETE /api/cart/items | CartMapperTests、CartServiceTests、CartControllerTests |
-| 订单 | 已实现 | order | sales_order、order_item | POST/GET /api/orders、GET /api/orders/{orderNo}、POST /api/orders/{orderNo}/cancel | OrderMapperTests、OrderServiceTests、OrderControllerTests、OrderTimeoutSchedulerTests |
+| 订单 | 已实现 | order | sales_order、order_item | POST/GET /api/orders、POST /api/orders/buy-now、GET /api/orders/{orderNo}、POST /api/orders/{orderNo}/cancel | OrderMapperTests、OrderServiceTests、OrderControllerTests、OrderTimeoutSchedulerTests |
 | Mock 支付 | 已实现 | payment | payment | POST /api/payments/mock-pay | PaymentMapperTests、PaymentServiceTests、PaymentControllerTests |
 | requestId 日志追踪 | 已实现 | common/logging | 无 | 所有 HTTP 请求响应头 `X-Request-Id` | MdcRequestIdInterceptorTests |
 | MySQL 容器迁移测试 | 已实现 | support test | flyway_schema_history、全部业务表 | 无 | MySqlFlywayMigrationTests |
@@ -429,7 +428,7 @@ X-Internal-Token
 
 ## 2026-06-02 订单 MVP 开发状态
 
-订单模块已经进入第一版 Java 后端实现阶段，开发范围严格按 `docs/superpowers/plans/2026-06-02-order-mvp.md` 执行。本阶段只支持“购物车结算”，不支持“立即购买”，也不修改 Python AI 服务。
+订单模块已经进入第一版 Java 后端实现阶段，开发范围严格按 `docs/superpowers/plans/2026-06-02-order-mvp.md` 和 `docs/superpowers/specs/2026-06-03-next-commerce-ai-features-and-buy-now-design.md` 执行。本阶段支持“购物车结算”和“立即购买”，不修改 Python AI 服务。
 
 ### 本阶段已实现
 
@@ -440,14 +439,17 @@ X-Internal-Token
 - `InventoryMapper.lockStock`：
   - 使用 `UPDATE inventory SET available_stock = available_stock - ?, locked_stock = locked_stock + ? WHERE sku_id = ? AND available_stock >= ?` 完成原子库存锁定。
   - 这是“锁定库存”，不是最终销售扣减；支付阶段才会把 `locked_stock` 转成 `sold_stock`。
-- `OrderService.createOrder`：
-  - 只接受 `source=CART`。
+- `OrderService.createOrder` 和 `OrderService.buyNow`：
+  - 购物车结算只接受 `source=CART`。
+  - 立即购买只接受单个 `skuId` 和 `quantity`。
+  - 两条入口共用内部订单创建逻辑，统一重算金额、校验商品状态、锁定库存和生成订单快照。
   - 从 JWT 当前用户读取 `userId`，不信任前端传入用户信息。
   - 从 `cart_item` 和商品库重新读取数量、价格、商品名称、规格和库存事实。
   - 在后端重算 `totalAmount` 和每行 `lineAmount`。
   - 在同一个事务内完成库存锁定、订单主表插入、订单明细快照插入、购物车已购买 SKU 清理。
 - 公开接口：
   - `POST /api/orders`：从当前用户购物车选中 SKU 创建 `UNPAID` 订单。
+  - `POST /api/orders/buy-now`：从当前用户选择的单个 SKU 和数量创建 `UNPAID` 订单，不读取或清理购物车。
   - `GET /api/orders`：查询当前用户订单列表。
   - `GET /api/orders/{orderNo}`：按 `userId + orderNo` 查询当前用户订单详情。
   - `POST /api/orders/{orderNo}/cancel`：当前用户取消自己的 `UNPAID` 订单并释放锁定库存。
@@ -463,14 +465,13 @@ X-Internal-Token
   - `MySqlFlywayMigrationTests` 覆盖新订单表迁移存在性。
   - `OrderMapperTests` 覆盖订单插入、明细插入、用户隔离查询、购物车结算事实查询和超时订单扫描。
   - `InventoryMapperTests` 覆盖库存锁定、库存确认售出、库存释放和库存不足返回 0。
-  - `OrderServiceTests` 覆盖后端重算金额、快照落库、库存不足、取消订单、超时关闭和阶段性拒绝 `BUY_NOW`。
+  - `OrderServiceTests` 覆盖后端重算金额、快照落库、立即购买、库存不足、取消订单和超时关闭。
   - `OrderControllerTests` 覆盖鉴权、购物车结算、订单列表、订单详情、购物车清理、用户隔离、取消订单和入参校验。
   - `PaymentMapperTests`、`PaymentServiceTests`、`PaymentControllerTests` 覆盖支付流水、mock 支付、重复支付幂等和用户隔离。
   - `OrderTimeoutSchedulerTests` 覆盖超时关闭调度委托。
 
 ### 本阶段仍未实现
 
-- `BUY_NOW` 立即购买：文档中已保留请求形态，当前接口会返回 `400 bad_request`。
 - 地址快照、优惠券、运费、发票、售后。
 - Python Function Calling / Tool Use：AI 仍只推荐商品，不代客加购或下单。
 - SSE / WebSocket 流式返回与 MQ 异步推荐任务。
@@ -498,3 +499,27 @@ Content-Type: application/json
 - 如果任意 SKU 不属于当前用户购物车，返回 `404 not_found`。
 - 如果库存不足，返回 `400 bad_request`，整个事务回滚。
 - 成功后订单状态为 `UNPAID`，对应 SKU 会从当前用户购物车中移除。
+
+立即购买：
+
+```http
+POST /api/orders/buy-now
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+```
+
+```json
+{
+  "skuId": 2103,
+  "quantity": 2
+}
+```
+
+关键约束：
+- 第一版只支持单个 SKU。
+- 请求体只表达购买意图，不接受 `userId`、`salePrice`、`totalAmount` 或订单状态。
+- 数量来自 `quantity`，价格来自数据库实时 `product_sku.sale_price`。
+- 如果 SKU 不存在，返回 `404 not_found`。
+- 如果 SKU 或 SPU 不可售，返回 `400 bad_request`。
+- 如果库存不足，返回 `400 bad_request`，整个事务回滚。
+- 成功后订单状态为 `UNPAID`，不会新增、修改或删除当前用户购物车条目。

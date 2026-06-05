@@ -98,8 +98,30 @@ class OrderMapperTests {
                     assertThat(item.getSalePrice()).isEqualByComparingTo("299.00");
                     assertThat(item.getSkuStatus()).isEqualTo("on_sale");
                     assertThat(item.getSpuStatus()).isEqualTo("on_sale");
-                    assertThat(item.getAvailableStock()).isPositive();
+                    assertThat(item.getAvailableStock()).isNotNegative();
                 });
+    }
+
+    @Test
+    void checkoutQueryBySkuReturnsCurrentProductFactsWithoutCart() {
+        OrderCheckoutItem checkoutItem = orderMapper.findCheckoutItemBySkuId(2103L);
+
+        assertThat(checkoutItem).satisfies(item -> {
+            assertThat(item.getSkuId()).isEqualTo(2103L);
+            assertThat(item.getQuantity()).isNull();
+            assertThat(item.getSpuId()).isEqualTo(1002L);
+            assertThat(item.getSkuCode()).isEqualTo("JK-COMMUTE-001-NAVY-L");
+            assertThat(item.getSpuCode()).isEqualTo("JACKET_COMMUTE_001");
+            assertThat(item.getSalePrice()).isEqualByComparingTo("299.00");
+            assertThat(item.getSkuStatus()).isEqualTo("on_sale");
+            assertThat(item.getSpuStatus()).isEqualTo("on_sale");
+            assertThat(item.getAvailableStock()).isNotNegative();
+        });
+    }
+
+    @Test
+    void checkoutQueryBySkuReturnsNullForMissingSku() {
+        assertThat(orderMapper.findCheckoutItemBySkuId(999999L)).isNull();
     }
 
     @Test

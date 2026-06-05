@@ -69,4 +69,12 @@ public interface OrderMapper {
             @Param("userId") Long userId,
             @Param("skuIds") List<Long> skuIds
     );
+
+    /**
+     * 按 SKU 读取立即购买所需的商品事实快照。
+     *
+     * @param skuId 前端选择的 SKU，数量和用户边界不由 SQL 决定
+     * @return 用于后端重算金额和生成订单明细的结算视图；SKU 不存在时返回 null
+     */
+    OrderCheckoutItem findCheckoutItemBySkuId(@Param("skuId") Long skuId);
 }

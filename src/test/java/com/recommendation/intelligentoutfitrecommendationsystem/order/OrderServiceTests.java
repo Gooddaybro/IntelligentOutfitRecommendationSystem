@@ -3,6 +3,7 @@ package com.recommendation.intelligentoutfitrecommendationsystem.order;
 import com.recommendation.intelligentoutfitrecommendationsystem.cart.service.CartService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.BuyNowRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.inventory.mapper.InventoryMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.CancelOrderRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.CreateOrderRequest;
@@ -85,6 +86,56 @@ class OrderServiceTests {
         assertThatThrownBy(() -> service.createOrder(10L, request))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessage("order source is not supported: BUY_NOW");
+    }
+
+    @Test
+    void buyNowCreatesUnpaidOrderWithoutTouchingCart() {
+        var request = new BuyNowRequest(2102L, 3);
+        OrderCheckoutItem checkoutItem = checkoutItem(2102L, "299.00", 0);
+        when(orderMapper.findCheckoutItemBySkuId(2102L)).thenReturn(checkoutItem);
+        when(inventoryMapper.lockStock(2102L, 3)).thenReturn(1);
+        doAnswer(invocation -> {
+            SalesOrder order = invocation.getArgument(0);
+            order.setId(89L);
+            return null;
+        }).when(orderMapper).insertOrder(any(SalesOrder.class));
+
+        var response = service.buyNow(10L, request);
+
+        ArgumentCaptor<List<OrderItem>> itemCaptor = ArgumentCaptor.forClass(List.class);
+        verify(orderMapper).insertItems(itemCaptor.capture());
+        verify(cartService, never()).removePurchasedItems(any(), any());
+
+        assertThat(checkoutItem.getQuantity()).isEqualTo(3);
+        assertThat(itemCaptor.getValue())
+                .singleElement()
+                .satisfies(item -> {
+                    assertThat(item.getOrderId()).isEqualTo(89L);
+                    assertThat(item.getSkuId()).isEqualTo(2102L);
+                    assertThat(item.getQuantity()).isEqualTo(3);
+                    assertThat(item.getLineAmount()).isEqualByComparingTo("897.00");
+                });
+        assertThat(response.status()).isEqualTo("UNPAID");
+        assertThat(response.totalAmount()).isEqualByComparingTo("897.00");
+        assertThat(response.items())
+                .singleElement()
+                .satisfies(item -> {
+                    assertThat(item.skuId()).isEqualTo(2102L);
+                    assertThat(item.quantity()).isEqualTo(3);
+                    assertThat(item.lineAmount()).isEqualByComparingTo("897.00");
+                });
+    }
+
+    @Test
+    void buyNowRejectsMissingSkuBeforeLockingStock() {
+        var request = new BuyNowRequest(999999L, 1);
+        when(orderMapper.findCheckoutItemBySkuId(999999L)).thenReturn(null);
+
+        assertThatThrownBy(() -> service.buyNow(10L, request))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("sku not found: 999999");
+        verify(inventoryMapper, never()).lockStock(any(), any());
+        verify(orderMapper, never()).insertOrder(any(SalesOrder.class));
     }
 
     @Test

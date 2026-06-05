@@ -348,9 +348,9 @@ Content-Type: application/json
 
 把 `quantity` 改成 `100` 时也应返回 `400 Bad Request`，当前购物车数量上限为 `99`。
 
-## 11. 测试订单购物车结算
+## 11. 测试订单购物车结算和立即购买
 
-订单接口只使用普通用户 `Authorization: Bearer <access_token>`。本阶段只支持购物车结算，Python AI 不参与下单，`BUY_NOW` 立即购买暂未实现。
+订单接口只使用普通用户 `Authorization: Bearer <access_token>`。本阶段支持购物车结算和单 SKU 立即购买，Python AI 不参与下单，前端不能传金额、订单状态或用户 ID。
 
 先确保购物车里有可结算 SKU：
 
@@ -431,22 +431,55 @@ Authorization: Bearer {{access_token}}
 
 期望：`200 OK`，返回订单主信息和 `items` 快照。
 
-阶段性拒绝立即购买：
+立即购买单个 SKU：
 
 ```http
-POST {{base_url}}/api/orders
+POST {{base_url}}/api/orders/buy-now
 Authorization: Bearer {{access_token}}
 Content-Type: application/json
 ```
 
 ```json
 {
-  "source": "BUY_NOW",
-  "skuIds": [2103]
+  "skuId": 2103,
+  "quantity": 2
 }
 ```
 
-期望：`400 Bad Request`，`errorCode=bad_request`。`BUY_NOW` 会在下一阶段作为单独功能开发。
+期望：`200 OK`，返回：
+
+- `data.orderNo` 非空。
+- `data.status=UNPAID`。
+- `data.totalAmount` 由后端按数据库 SKU 价格和 `quantity` 计算。
+- `data.items[0].skuId=2103`。
+- `data.items[0].quantity=2`。
+- `data.items[0].lineAmount` 等于后端价格乘以数量。
+
+立即购买成功后，再查购物车：
+
+```http
+GET {{base_url}}/api/cart/items
+Authorization: Bearer {{access_token}}
+```
+
+期望：立即购买不会新增、删除或修改当前用户购物车条目。
+
+立即购买参数校验：
+
+```http
+POST {{base_url}}/api/orders/buy-now
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+```
+
+```json
+{
+  "skuId": 2103,
+  "quantity": 0
+}
+```
+
+期望：`400 Bad Request`，`errorCode=validation_failed`。
 
 ## 12. 测试 Mock 支付和订单取消
 

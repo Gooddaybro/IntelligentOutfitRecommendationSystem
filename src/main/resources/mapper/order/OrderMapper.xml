@@ -228,4 +228,33 @@
         ORDER BY ci.id ASC
     </select>
 
+    <!--
+        立即购买不依赖 cart_item，数量只能来自已认证用户的请求意图；
+        SQL 只读取下单瞬间的 SKU、SPU、价格、展示和状态事实，防止前端提交金额或商品快照。
+    -->
+    <select id="findCheckoutItemBySkuId"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderCheckoutItem">
+        SELECT
+            sku.id AS sku_id,
+            sku.spu_id,
+            sku.sku_code,
+            spu.spu_code,
+            spu.name AS product_name,
+            c.name AS category_name,
+            co.name AS color,
+            so.code AS size,
+            sku.sale_price,
+            spu.main_image_url,
+            sku.status AS sku_status,
+            spu.status AS spu_status,
+            COALESCE(inv.available_stock, 0) AS available_stock
+        FROM product_sku sku
+        JOIN product_spu spu ON spu.id = sku.spu_id
+        JOIN category c ON c.id = spu.category_id
+        JOIN color co ON co.id = sku.color_id
+        JOIN size_option so ON so.id = sku.size_id
+        LEFT JOIN inventory inv ON inv.sku_id = sku.id
+        WHERE sku.id = #{skuId}
+    </select>
+
 </mapper>

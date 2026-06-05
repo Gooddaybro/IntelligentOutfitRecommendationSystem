@@ -2,6 +2,19 @@
 
 This repository is a Java backend project. Any automated coding agent working here must follow the project comment rules before changing Java backend code.
 
+## Shared Contract
+
+Before changing assistant chat, Java-Python APIs, SSE streaming, recommendation flows, or cross-service data contracts, read:
+
+- `..\outfit-project-contract\AGENTS.md`
+- `..\outfit-project-contract\docs\business-rules.md`
+- `..\outfit-project-contract\docs\coding-boundary.md`
+- `..\outfit-project-contract\docs\dev-checklist.md`
+- `..\outfit-project-contract\contracts\assistant-streaming-chat\v1.md`
+
+This Java backend is the source of truth for users, sessions, products, SKUs, prices, inventory, orders, payments, and frontend APIs.
+Do not let the frontend or Python bypass Java to forge `user_context`, `candidates`, prices, inventory, order status, or payment status.
+
 ## Required Comment Policy
 
 - Read `docs/commenting-guidelines.md` before creating or changing Java source, Mapper XML, or backend API contract code.

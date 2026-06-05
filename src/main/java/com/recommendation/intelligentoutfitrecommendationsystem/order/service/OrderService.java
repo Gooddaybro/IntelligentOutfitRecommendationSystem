@@ -4,6 +4,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.cart.service.Car
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
 import com.recommendation.intelligentoutfitrecommendationsystem.inventory.mapper.InventoryMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.BuyNowRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.CancelOrderRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.CreateOrderRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.OrderItemResponse;
@@ -77,6 +78,36 @@ public class OrderService {
             throw new ResourceNotFoundException("cart item not found");
         }
 
+        OrderResponse response = createUnpaidOrderFromCheckoutItems(userId, checkoutItems);
+        cartService.removePurchasedItems(userId, skuIds);
+        return response;
+    }
+
+    /**
+     * 基于单个 SKU 创建立即购买订单。
+     *
+     * @param userId 当前认证用户 ID，只能来自服务端 JWT 上下文
+     * @param request 前端选择的 SKU 和购买数量，不允许携带价格、金额或用户归属
+     * @return 创建后的未支付订单快照
+     */
+    @Transactional
+    public OrderResponse buyNow(Long userId, BuyNowRequest request) {
+        validateUserId(userId);
+        validateBuyNowRequest(request);
+        OrderCheckoutItem checkoutItem = orderMapper.findCheckoutItemBySkuId(request.skuId());
+        if (checkoutItem == null) {
+            throw new ResourceNotFoundException("sku not found: " + request.skuId());
+        }
+        checkoutItem.setQuantity(request.quantity());
+        return createUnpaidOrderFromCheckoutItems(userId, List.of(checkoutItem));
+    }
+
+    private OrderResponse createUnpaidOrderFromCheckoutItems(Long userId, List<OrderCheckoutItem> checkoutItems) {
+        validateUserId(userId);
+        if (checkoutItems == null || checkoutItems.isEmpty()) {
+            throw new BadRequestException("checkout items must not be empty");
+        }
+
         List<OrderItem> orderItems = new ArrayList<>();
         BigDecimal totalAmount = BigDecimal.ZERO;
         for (OrderCheckoutItem checkoutItem : checkoutItems) {
@@ -98,7 +129,6 @@ public class OrderService {
             item.setOrderId(order.getId());
         }
         orderMapper.insertItems(orderItems);
-        cartService.removePurchasedItems(userId, skuIds);
 
         return toResponse(order, orderItems);
     }
@@ -192,6 +222,18 @@ public class OrderService {
         }
         if (request.skuIds() == null || request.skuIds().isEmpty()) {
             throw new BadRequestException("skuIds must not be empty");
+        }
+    }
+
+    private void validateBuyNowRequest(BuyNowRequest request) {
+        if (request == null) {
+            throw new BadRequestException("request must not be null");
+        }
+        if (request.skuId() == null || request.skuId() <= 0) {
+            throw new BadRequestException("skuId must be positive");
+        }
+        if (request.quantity() == null || request.quantity() <= 0) {
+            throw new BadRequestException("quantity must be positive");
         }
     }
 

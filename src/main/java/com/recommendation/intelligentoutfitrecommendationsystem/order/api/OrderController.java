@@ -1,6 +1,7 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.order.api;
 
 import com.recommendation.intelligentoutfitrecommendationsystem.common.api.ApiResponse;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.BuyNowRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.CancelOrderRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.CreateOrderRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.OrderResponse;
@@ -40,6 +41,15 @@ public class OrderController {
     ) {
         CurrentUser currentUser = CurrentUser.from(authentication);
         return ApiResponse.ok(orderService.createOrder(currentUser.userId(), request));
+    }
+
+    @PostMapping("/buy-now")
+    public ApiResponse<OrderResponse> buyNow(
+            Authentication authentication,
+            @Valid @RequestBody BuyNowRequest request
+    ) {
+        CurrentUser currentUser = CurrentUser.from(authentication);
+        return ApiResponse.ok(orderService.buyNow(currentUser.userId(), request));
     }
 
     @GetMapping

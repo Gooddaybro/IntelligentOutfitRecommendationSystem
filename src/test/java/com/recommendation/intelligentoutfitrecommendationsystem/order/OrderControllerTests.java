@@ -108,6 +108,63 @@ class OrderControllerTests {
     }
 
     @Test
+    void buyNowCreatesOrderWithoutChangingCart() throws Exception {
+        String accessToken = registerAndLogin(nextUsername());
+
+        addCartItem(accessToken, 2203, 1);
+
+        String createBody = mockMvc.perform(post("/api/orders/buy-now")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "skuId": 2103,
+                                  "quantity": 2
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.orderNo").isNotEmpty())
+                .andExpect(jsonPath("$.data.status").value("UNPAID"))
+                .andExpect(jsonPath("$.data.totalAmount").value(598.0))
+                .andExpect(jsonPath("$.data.items[0].skuId").value(2103))
+                .andExpect(jsonPath("$.data.items[0].quantity").value(2))
+                .andExpect(jsonPath("$.data.items[0].lineAmount").value(598.0))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        String orderNo = objectMapper.readTree(createBody).path("data").path("orderNo").asText();
+
+        mockMvc.perform(get("/api/cart/items")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].skuId", hasItem(2203)))
+                .andExpect(jsonPath("$.data[*].skuId", not(hasItem(2103))));
+
+        mockMvc.perform(get("/api/orders/{orderNo}", orderNo)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].skuId").value(2103));
+    }
+
+    @Test
+    void rejectsInvalidBuyNowQuantity() throws Exception {
+        String accessToken = registerAndLogin(nextUsername());
+
+        mockMvc.perform(post("/api/orders/buy-now")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "skuId": 2103,
+                                  "quantity": 0
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("validation_failed"));
+    }
+
+    @Test
     void keepsOrdersScopedToTheOwnerAccessToken() throws Exception {
         String ownerToken = registerAndLogin(nextUsername());
         String otherToken = registerAndLogin(nextUsername());
