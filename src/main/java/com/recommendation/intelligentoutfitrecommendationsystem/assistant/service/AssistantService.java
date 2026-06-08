@@ -1,9 +1,15 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.assistant.service;
 
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client.PythonAssistantClient;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client.PythonAssistantStreamClient;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client.PythonAssistantStreamHandler;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantChatResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantContext;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantStreamDoneEvent;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantStreamErrorEvent;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantStreamMetaEvent;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantStreamTokenEvent;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatHistoryItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatResponse;
@@ -19,11 +25,18 @@ import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserBod
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserPreferencesResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserProfileResponse;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Java 后端内部的 AI 网关。
@@ -38,15 +51,24 @@ public class AssistantService {
     private final ConversationService conversationService;
     private final AssistantContextService assistantContextService;
     private final PythonAssistantClient pythonAssistantClient;
+    private final PythonAssistantStreamClient pythonAssistantStreamClient;
+    private final Executor assistantStreamingExecutor;
+    private final long streamTimeoutMs;
 
     public AssistantService(
             ConversationService conversationService,
             AssistantContextService assistantContextService,
-            PythonAssistantClient pythonAssistantClient
+            PythonAssistantClient pythonAssistantClient,
+            PythonAssistantStreamClient pythonAssistantStreamClient,
+            @Qualifier("assistantStreamingExecutor") Executor assistantStreamingExecutor,
+            @Value("${app.ai.stream-timeout-ms:120000}") long streamTimeoutMs
     ) {
         this.conversationService = conversationService;
         this.assistantContextService = assistantContextService;
         this.pythonAssistantClient = pythonAssistantClient;
+        this.pythonAssistantStreamClient = pythonAssistantStreamClient;
+        this.assistantStreamingExecutor = assistantStreamingExecutor;
+        this.streamTimeoutMs = streamTimeoutMs;
     }
 
     public AssistantChatResponse chat(Long userId, AssistantChatRequest request) {
@@ -63,6 +85,46 @@ public class AssistantService {
 
         List<Long> recommendedSpuIds = toRecommendedSpuIds(pythonResponse.productRefs());
         return new AssistantChatResponse(threadId, answer, recommendedSpuIds, context.candidates().size());
+    }
+
+    /**
+     * 创建前端 SSE 流并代理 Python `/chat/stream`。
+     *
+     * Java 在打开 Python 流之前完成会话归属校验、用户消息落库和候选商品装配；助手消息只在 Python done 后落库。
+     *
+     * @param userId 当前登录用户 ID
+     * @param request 前端导购请求，沿用同步接口入参
+     * @return Spring MVC SSE emitter，由后台执行器继续推送 token/done/error
+     */
+    public SseEmitter streamChat(Long userId, AssistantChatRequest request) {
+        String threadId = resolveThreadId(userId, request);
+        String requestId = MDC.get("requestId");
+
+        conversationService.appendMessage(userId, threadId, "user", request.message(), requestId);
+        AssistantContext context = assistantContextService.buildContext(userId, threadId, request);
+        PythonChatRequest pythonRequest = toPythonRequest(userId, threadId, request, context);
+        SseEmitter emitter = new SseEmitter(streamTimeoutMs);
+        AtomicBoolean active = new AtomicBoolean(true);
+
+        if (!sendEvent(emitter, active, "meta", new AssistantStreamMetaEvent(requestId, threadId))) {
+            return emitter;
+        }
+
+        try {
+            assistantStreamingExecutor.execute(() -> streamToPython(
+                    pythonRequest,
+                    new ForwardingStreamHandler(userId, threadId, requestId, context, emitter, active)
+            ));
+        } catch (RejectedExecutionException exception) {
+            sendEvent(
+                    emitter,
+                    active,
+                    "error",
+                    new AssistantStreamErrorEvent("assistant_stream_busy", "AI assistant stream is busy")
+            );
+            emitter.complete();
+        }
+        return emitter;
     }
 
     private String resolveThreadId(Long userId, AssistantChatRequest request) {
@@ -197,5 +259,90 @@ public class AssistantService {
         }
         // 第一版直接截取用户首问作为会话标题，后续可由 Python 生成更自然的标题。
         return title.substring(0, TITLE_MAX_LENGTH);
+    }
+
+    private boolean sendEvent(SseEmitter emitter, AtomicBoolean active, String eventName, Object data) {
+        if (!active.get()) {
+            return false;
+        }
+        try {
+            emitter.send(SseEmitter.event().name(eventName).data(data));
+            return true;
+        } catch (IOException exception) {
+            active.set(false);
+            emitter.complete();
+            return false;
+        }
+    }
+
+    private void streamToPython(PythonChatRequest pythonRequest, PythonAssistantStreamHandler handler) {
+        try {
+            pythonAssistantStreamClient.streamChat(pythonRequest, handler);
+        } catch (RuntimeException exception) {
+            handler.onError("python_stream_error", "AI assistant stream failed");
+        }
+    }
+
+    private final class ForwardingStreamHandler implements PythonAssistantStreamHandler {
+        private final Long userId;
+        private final String threadId;
+        private final String requestId;
+        private final AssistantContext context;
+        private final SseEmitter emitter;
+        private final AtomicBoolean active;
+
+        private ForwardingStreamHandler(
+                Long userId,
+                String threadId,
+                String requestId,
+                AssistantContext context,
+                SseEmitter emitter,
+                AtomicBoolean active
+        ) {
+            this.userId = userId;
+            this.threadId = threadId;
+            this.requestId = requestId;
+            this.context = context;
+            this.emitter = emitter;
+            this.active = active;
+        }
+
+        @Override
+        public void onToken(String content) {
+            if (content == null || content.isEmpty()) {
+                return;
+            }
+            sendEvent(emitter, active, "token", new AssistantStreamTokenEvent(content));
+        }
+
+        @Override
+        public void onDone(PythonChatResponse response) {
+            if (!active.get()) {
+                return;
+            }
+            String answer = requireAnswer(response);
+            conversationService.appendMessage(userId, threadId, "assistant", answer, requestId);
+            AssistantStreamDoneEvent done = new AssistantStreamDoneEvent(
+                    threadId,
+                    answer,
+                    toRecommendedSpuIds(response.productRefs()),
+                    context.candidates().size(),
+                    response.intent()
+            );
+            if (sendEvent(emitter, active, "done", done)) {
+                emitter.complete();
+            }
+        }
+
+        @Override
+        public void onError(String code, String message) {
+            if (!active.get()) {
+                return;
+            }
+            String safeCode = code == null || code.isBlank() ? "python_stream_error" : code;
+            String safeMessage = message == null || message.isBlank() ? "AI assistant stream failed" : message;
+            sendEvent(emitter, active, "error", new AssistantStreamErrorEvent(safeCode, safeMessage));
+            emitter.complete();
+        }
     }
 }

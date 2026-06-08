@@ -2,7 +2,7 @@
 
 本文档用于梳理 Intelligent Outfit Recommendation System 当前 Java 后端已经实现的功能、对应代码位置、数据库表、API 接口和测试用例。
 
-当前阶段重点是：商品库、SKU、库存、服装细粒度属性、用户认证与画像、会话记录、Java 调 Python AI 服务的第一版同步链路，以及购物车 Cart MVP。购物车开发文档见 `docs/superpowers/plans/2026-06-01-cart-mvp.md`。下一阶段订单 MVP 开发文档见 `docs/superpowers/plans/2026-06-02-order-mvp.md`。本文档也作为后续继续开发订单、支付、SSE 和 MQ 的功能追踪表。
+当前阶段重点是：商品库、SKU、库存、服装细粒度属性、用户认证与画像、会话记录、Java 调 Python AI 服务的同步和 SSE 流式链路，以及购物车 Cart MVP。购物车开发文档见 `docs/superpowers/plans/2026-06-01-cart-mvp.md`。下一阶段订单 MVP 开发文档见 `docs/superpowers/plans/2026-06-02-order-mvp.md`。本文档也作为后续继续开发订单、支付和 MQ 的功能追踪表。
 
 ## 当前阶段范围
 
@@ -50,6 +50,7 @@
 - Spring REST Docs auth 接口契约片段
 - 会话记录：创建会话、查询会话列表、查询消息历史、归档会话
 - Java assistant-service 同步调用 Python AI 服务并保存 user/assistant 消息
+- Java assistant-service SSE 调用 Python `/chat/stream` 并向前端转发 `meta`、`token`、`done`、`error`
 - 购物车：当前登录用户加购 SKU、查询购物车、修改数量、删除单项、清空购物车
 - 订单：当前登录用户从购物车结算、立即购买、查询订单、取消未支付订单、超时关闭未支付订单
 - Mock 支付：模拟支付成功、支付流水记录、锁定库存确认售出
@@ -57,7 +58,7 @@
 ### 未实现
 
 - 真实支付渠道、支付回调、退款和售后
-- SSE / WebSocket 流式返回
+- WebSocket 双向实时通道
 - MQ 异步推荐任务
 
 ## 功能总览
@@ -77,6 +78,7 @@
 | 穿衣偏好 | 已实现 | user | user_preferences | GET/PUT /api/me/preferences | UserProfileControllerTests、UserProfileMapperTests |
 | 会话记录 | 已实现 | conversation | chat_session、chat_message | POST/GET/DELETE /api/conversations、GET /api/conversations/{threadId}/messages | ConversationMapperTests、ConversationControllerTests |
 | AI 同步问答 | 已实现 | assistant | chat_session、chat_message、product_*、user_* | POST /api/assistant/chat | AssistantServiceTests、AssistantControllerTests |
+| AI 流式问答 | 已实现 | assistant | chat_session、chat_message、product_*、user_* | POST /api/assistant/chat/stream | PythonSseEventParserTests、RestPythonAssistantClientTests、AssistantServiceTests、AssistantControllerTests |
 | 购物车 | 已实现 | cart | cart_item | GET/POST/PUT/DELETE /api/cart/items | CartMapperTests、CartServiceTests、CartControllerTests |
 | 订单 | 已实现 | order | sales_order、order_item | POST/GET /api/orders、POST /api/orders/buy-now、GET /api/orders/{orderNo}、POST /api/orders/{orderNo}/cancel | OrderMapperTests、OrderServiceTests、OrderControllerTests、OrderTimeoutSchedulerTests |
 | Mock 支付 | 已实现 | payment | payment | POST /api/payments/mock-pay | PaymentMapperTests、PaymentServiceTests、PaymentControllerTests |
@@ -204,16 +206,19 @@
 
 ### assistant
 
-负责 Java 调 Python AI 服务。Java 端组装用户画像、会话历史、商品候选池，再调用 Python `/chat`，并把 user/assistant 消息写回 conversation 模块。
+负责 Java 调 Python AI 服务。Java 端组装用户画像、会话历史、商品候选池，再调用 Python `/chat` 或 `/chat/stream`，并把 user/assistant 消息写回 conversation 模块。
 
 | 文件 | 作用 |
 |---|---|
-| `assistant/api/AssistantController.java` | `/api/assistant/chat` 同步问答接口 |
-| `assistant/service/AssistantService.java` | 创建/复用 thread、保存消息、调用 Python、返回结果 |
+| `assistant/api/AssistantController.java` | `/api/assistant/chat` 同步问答接口和 `/api/assistant/chat/stream` SSE 流式问答接口 |
+| `assistant/service/AssistantService.java` | 创建/复用 thread、保存消息、调用 Python 同步/流式接口、返回结果 |
 | `assistant/service/AssistantContextService.java` | 组装用户画像、会话历史和推荐候选商品 |
 | `assistant/client/PythonAssistantClient.java` | Python AI 客户端接口，便于测试替换 |
-| `assistant/client/RestPythonAssistantClient.java` | 基于 Java HttpClient 的 Python `/chat` HTTP 实现 |
-| `assistant/dto/*` | Java 前端请求/响应和 Java 调 Python 请求/响应 DTO |
+| `assistant/client/PythonAssistantStreamClient.java` | Python AI 流式客户端接口，隔离 Service 和 SSE/HTTP 细节 |
+| `assistant/client/PythonSseEventParser.java` | Python SSE `event/data` 帧解析器 |
+| `assistant/client/RestPythonAssistantClient.java` | 基于 Java HttpClient 的 Python `/chat` 和 `/chat/stream` HTTP 实现 |
+| `assistant/config/AssistantStreamingConfig.java` | AI SSE 流式转发的有界后台执行器 |
+| `assistant/dto/*` | Java 前端请求/响应、Java 调 Python 请求/响应和前端 SSE 事件 DTO |
 
 ### 数据访问层
 
@@ -290,6 +295,7 @@
 | GET /api/conversations/{threadId}/messages | 查询当前用户某个会话的消息历史 | 是 |
 | DELETE /api/conversations/{threadId} | 归档当前用户某个会话 | 是 |
 | POST /api/assistant/chat | 同步调用 Python AI 导购服务并落库消息 | 是 |
+| POST /api/assistant/chat/stream | SSE 调用 Python AI 导购流式服务并落库完整助手消息 | 是 |
 | GET /api/cart/items | 查询当前用户购物车 | 是 |
 | POST /api/cart/items | 添加 SKU 到当前用户购物车，同 SKU 合并数量 | 是 |
 | PUT /api/cart/items/{skuId} | 修改当前用户购物车中某个 SKU 的数量 | 是 |
@@ -330,8 +336,10 @@ X-Internal-Token: dev-internal-token
 | `UserProfileMapperTests.java` | 用户画像三类表的 MyBatis SQL 映射 |
 | `ConversationMapperTests.java` | 会话和消息 MyBatis SQL 映射、归档隔离 |
 | `ConversationControllerTests.java` | 会话接口鉴权、当前用户隔离、归档后列表不可见 |
-| `AssistantServiceTests.java` | assistant-service 创建会话、保存消息、调用 Python 客户端的业务顺序 |
-| `AssistantControllerTests.java` | `/api/assistant/chat` 鉴权、AI 响应和消息落库 |
+| `PythonSseEventParserTests.java` | Python `/chat/stream` SSE event/data 帧解析 |
+| `RestPythonAssistantClientTests.java` | Java 调 Python `/chat` 和 `/chat/stream` 的请求契约、token/done 回调 |
+| `AssistantServiceTests.java` | assistant-service 创建会话、保存消息、调用 Python 同步/流式客户端的业务顺序 |
+| `AssistantControllerTests.java` | `/api/assistant/chat` 和 `/api/assistant/chat/stream` 鉴权、AI 响应和消息落库 |
 | `CartMapperTests.java` | `cart_item` SQL 映射、同 SKU 合并数量、用户隔离删除和购物车展示查询 |
 | `CartServiceTests.java` | 购物车数量校验、SKU 存在性校验、用户隔离更新和删除异常 |
 | `CartControllerTests.java` | `/api/cart/items` 鉴权、加购、改数量、删除、清空和用户隔离 |

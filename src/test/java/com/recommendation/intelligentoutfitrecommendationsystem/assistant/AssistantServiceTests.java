@@ -1,6 +1,8 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.assistant;
 
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client.PythonAssistantClient;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client.PythonAssistantStreamClient;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client.PythonAssistantStreamHandler;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantChatResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantContext;
@@ -21,14 +23,16 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.MDC;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
@@ -49,8 +53,10 @@ class AssistantServiceTests {
     @Mock
     private PythonAssistantClient pythonAssistantClient;
 
-    @InjectMocks
-    private AssistantService assistantService;
+    @Mock
+    private PythonAssistantStreamClient pythonAssistantStreamClient;
+
+    private final Executor directExecutor = Runnable::run;
 
     @AfterEach
     void clearMdc() {
@@ -116,7 +122,7 @@ class AssistantServiceTests {
                         List.of(new PythonProductRef(1001L, 2001L, "fits the requested commute style", null))
                 ));
 
-        AssistantChatResponse response = assistantService.chat(10L, request);
+        AssistantChatResponse response = newAssistantService().chat(10L, request);
 
         assertThat(response.threadId()).isEqualTo("th_service_001");
         assertThat(response.answer()).contains("wool blend jacket");
@@ -151,5 +157,77 @@ class AssistantServiceTests {
         assertThat(pythonRequest.candidates().get(0).stockStatus()).isEqualTo("in_stock");
         assertThat(pythonRequest.candidates().get(0).color()).isEqualTo("黑色");
         assertThat(pythonRequest.candidates().get(0).size()).isEqualTo("L");
+    }
+
+    @Test
+    void streamsPythonTokensAndStoresAssistantMessageOnlyAfterDone() {
+        AssistantChatRequest request = new AssistantChatRequest(
+                "th_stream_existing",
+                "我身高175体重70kg，适合穿什么码？",
+                "outerwear",
+                "commute",
+                "autumn",
+                null,
+                "regular",
+                800
+        );
+        AssistantContext context = new AssistantContext(
+                null,
+                null,
+                null,
+                List.of(),
+                List.of()
+        );
+        AtomicReference<PythonAssistantStreamHandler> handlerRef = new AtomicReference<>();
+        MDC.put("requestId", "req-stream-service-test");
+
+        when(assistantContextService.buildContext(10L, "th_stream_existing", request)).thenReturn(context);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            handlerRef.set(invocation.getArgument(1));
+            return null;
+        }).when(pythonAssistantStreamClient).streamChat(any(PythonChatRequest.class), any(PythonAssistantStreamHandler.class));
+
+        SseEmitter emitter = newAssistantService().streamChat(10L, request);
+
+        assertThat(emitter).isNotNull();
+        assertThat(handlerRef).hasValueSatisfying(handler -> {
+            handler.onToken("我建议");
+            handler.onDone(new PythonChatResponse(
+                    "req-stream-service-test",
+                    "我建议您穿 L 码。",
+                    "size_recommendation",
+                    List.of(new PythonProductRef(1001L, 2001L, "尺码匹配", null))
+            ));
+        });
+
+        InOrder order = inOrder(conversationService, assistantContextService, pythonAssistantStreamClient);
+        order.verify(conversationService).requireConversation(10L, "th_stream_existing");
+        order.verify(conversationService).appendMessage(
+                10L,
+                "th_stream_existing",
+                "user",
+                "我身高175体重70kg，适合穿什么码？",
+                "req-stream-service-test"
+        );
+        order.verify(assistantContextService).buildContext(10L, "th_stream_existing", request);
+        order.verify(pythonAssistantStreamClient).streamChat(any(PythonChatRequest.class), any(PythonAssistantStreamHandler.class));
+        order.verify(conversationService).appendMessage(
+                10L,
+                "th_stream_existing",
+                "assistant",
+                "我建议您穿 L 码。",
+                "req-stream-service-test"
+        );
+    }
+
+    private AssistantService newAssistantService() {
+        return new AssistantService(
+                conversationService,
+                assistantContextService,
+                pythonAssistantClient,
+                pythonAssistantStreamClient,
+                directExecutor,
+                120_000L
+        );
     }
 }

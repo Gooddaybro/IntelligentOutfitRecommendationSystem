@@ -248,7 +248,71 @@ Python `/chat` 第一版建议返回：
 
 Java 会把 `product_refs[*].spu_id` 转成 `/api/assistant/chat` 响应里的 `data.recommendedSpuIds`。
 
-## 10. 测试购物车
+## 10. 测试 AI 流式问答
+
+注意：这个接口会真实调用 Python：
+
+```properties
+app.ai.python-base-url=http://localhost:8000
+app.ai.stream-timeout-ms=120000
+```
+
+如果 Python 服务没有启动，Java 会返回 SSE `error` 事件。Python 已启动并提供 `POST /chat/stream` 时，请求如下：
+
+```http
+POST {{base_url}}/api/assistant/chat/stream
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+Accept: text/event-stream
+```
+
+```json
+{
+  "threadId": null,
+  "message": "我身高175体重70kg，适合穿什么码？",
+  "category": "外套",
+  "style": "commute",
+  "season": "autumn",
+  "material": null,
+  "fit": "regular",
+  "budgetMax": 800
+}
+```
+
+期望响应头：
+
+```http
+Content-Type: text/event-stream
+```
+
+期望事件顺序：
+
+```text
+event:meta
+data:{"request_id":"...","thread_id":"th_..."}
+
+event:token
+data:{"content":"我建议"}
+
+event:done
+data:{"thread_id":"th_...","answer":"我建议您穿 L 码。","recommended_spu_ids":[],"candidates_count":12,"intent":"size_recommendation"}
+```
+
+如果 Python 生成失败，期望：
+
+```text
+event:error
+data:{"code":"internal_error","message":"大模型生成异常"}
+```
+
+Java 行为边界：
+
+- 前端仍然只传 `AssistantChatRequest`，不能传 `user_context`、`candidates`、价格、库存或订单状态。
+- Java 会先保存 user 消息，再调用 Python `/chat/stream`。
+- Java 只在 Python `done` 后保存完整 assistant 消息。
+- 前端主动取消请求属于正常业务行为，不应视为服务端错误。
+
+## 11. 测试购物车
 
 购物车接口只使用普通用户 `Authorization: Bearer <access_token>`，不需要也不支持 `X-Internal-Token`。本阶段购物车只保存购买意图，不锁库存、不创建订单、不调用 Python。
 
@@ -348,7 +412,7 @@ Content-Type: application/json
 
 把 `quantity` 改成 `100` 时也应返回 `400 Bad Request`，当前购物车数量上限为 `99`。
 
-## 11. 测试订单购物车结算和立即购买
+## 12. 测试订单购物车结算和立即购买
 
 订单接口只使用普通用户 `Authorization: Bearer <access_token>`。本阶段支持购物车结算和单 SKU 立即购买，Python AI 不参与下单，前端不能传金额、订单状态或用户 ID。
 
@@ -481,7 +545,7 @@ Content-Type: application/json
 
 期望：`400 Bad Request`，`errorCode=validation_failed`。
 
-## 12. 测试 Mock 支付和订单取消
+## 13. 测试 Mock 支付和订单取消
 
 支付接口只使用普通用户 `Authorization: Bearer <access_token>`。Python AI 不参与支付，前端不能传金额、渠道、用户 ID 或支付状态。
 
@@ -570,7 +634,7 @@ order.timeout-close-fixed-delay-ms=60000
 
 超时关闭后的订单状态为 `CLOSED`，锁定库存会释放回 `available_stock`。
 
-## 13. 刷新与登出
+## 14. 刷新与登出
 
 刷新：
 
@@ -602,7 +666,7 @@ Content-Type: application/json
 
 期望：`200 OK`。再次用同一个 refresh token 调 `/api/auth/refresh` 应返回 `400 Bad Request`。
 
-## 13. Internal API
+## 15. Internal API
 
 普通 Bearer Token 不能替代内部 token。Python AI 服务调用 internal API 时仍然使用：
 

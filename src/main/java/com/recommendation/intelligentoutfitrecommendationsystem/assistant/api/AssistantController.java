@@ -6,11 +6,13 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.servic
 import com.recommendation.intelligentoutfitrecommendationsystem.common.api.ApiResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.security.CurrentUser;
 import jakarta.validation.Valid;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * 面向前端的 AI 导购接口。
@@ -34,5 +36,14 @@ public class AssistantController {
     ) {
         CurrentUser currentUser = CurrentUser.from(authentication);
         return ApiResponse.ok(assistantService.chat(currentUser.userId(), request));
+    }
+
+    @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamChat(
+            Authentication authentication,
+            @Valid @RequestBody AssistantChatRequest request
+    ) {
+        CurrentUser currentUser = CurrentUser.from(authentication);
+        return assistantService.streamChat(currentUser.userId(), request);
     }
 }

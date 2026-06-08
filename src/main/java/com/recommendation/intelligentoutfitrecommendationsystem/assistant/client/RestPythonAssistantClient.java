@@ -2,6 +2,7 @@ package com.recommendation.intelligentoutfitrecommendationsystem.assistant.clien
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ExternalServiceException;
@@ -14,18 +15,21 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.Optional;
+import java.util.stream.Stream;
 
 /**
- * Python AI 服务的同步 HTTP 客户端。
+ * Python AI 服务的 HTTP 客户端。
  *
- * 第一版只调用 `/chat` JSON 接口；SSE 流式返回和异步任务后续会新增独立客户端能力。
+ * 同步 `/chat` 和流式 `/chat/stream` 共用同一套 Python 请求序列化配置，确保跨服务字段命名一致。
  */
 @Component
-public class RestPythonAssistantClient implements PythonAssistantClient {
+public class RestPythonAssistantClient implements PythonAssistantClient, PythonAssistantStreamClient {
 
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
     private final String chatUrl;
+    private final String streamChatUrl;
     private final Duration readTimeout;
 
     public RestPythonAssistantClient(
@@ -43,6 +47,7 @@ public class RestPythonAssistantClient implements PythonAssistantClient {
                 .connectTimeout(Duration.ofMillis(connectTimeoutMs))
                 .build();
         this.chatUrl = pythonBaseUrl.replaceAll("/+$", "") + "/chat";
+        this.streamChatUrl = pythonBaseUrl.replaceAll("/+$", "") + "/chat/stream";
         this.readTimeout = Duration.ofMillis(readTimeoutMs);
     }
 
@@ -67,5 +72,61 @@ public class RestPythonAssistantClient implements PythonAssistantClient {
         } catch (IllegalArgumentException exception) {
             throw new ExternalServiceException("python assistant url is invalid", exception);
         }
+    }
+
+    @Override
+    public void streamChat(PythonChatRequest request, PythonAssistantStreamHandler handler) {
+        try {
+            HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(streamChatUrl))
+                    .timeout(readTimeout)
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "text/event-stream")
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(request)))
+                    .build();
+            HttpResponse<Stream<String>> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofLines());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                handler.onError("python_stream_unavailable", "python assistant returned status " + response.statusCode());
+                return;
+            }
+            forwardSseLines(response.body(), handler);
+        } catch (IOException exception) {
+            handler.onError("python_stream_unavailable", "failed to call python assistant stream");
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            handler.onError("python_stream_interrupted", "python assistant stream was interrupted");
+        } catch (IllegalArgumentException exception) {
+            handler.onError("python_stream_invalid_url", "python assistant stream url is invalid");
+        }
+    }
+
+    private void forwardSseLines(Stream<String> lines, PythonAssistantStreamHandler handler) {
+        PythonSseEventParser parser = new PythonSseEventParser();
+        try (lines) {
+            lines.map(parser::accept)
+                    .filter(Optional::isPresent)
+                    .map(Optional::get)
+                    .forEach(event -> forwardEvent(event, handler));
+        }
+    }
+
+    private void forwardEvent(PythonSseEvent event, PythonAssistantStreamHandler handler) {
+        try {
+            switch (event.event()) {
+                case "token" -> handler.onToken(objectMapper.readTree(event.data()).path("content").asText(""));
+                case "done" -> handler.onDone(objectMapper.readValue(event.data(), PythonChatResponse.class));
+                case "error" -> forwardErrorEvent(event, handler);
+                default -> {
+                }
+            }
+        } catch (IOException exception) {
+            handler.onError("python_stream_parse_error", "failed to parse python assistant stream event");
+        }
+    }
+
+    private void forwardErrorEvent(PythonSseEvent event, PythonAssistantStreamHandler handler) throws IOException {
+        JsonNode data = objectMapper.readTree(event.data());
+        String code = data.path("code").asText("python_stream_error");
+        String message = data.path("message").asText("python assistant stream failed");
+        handler.onError(code, message);
     }
 }
