@@ -22,9 +22,11 @@ jobs:
           cache: maven
 
       - name: Make Maven wrapper executable
+        working-directory: backend
         run: chmod +x mvnw
 
       - name: Run verification
+        working-directory: backend
         env:
           RUN_MYSQL_TESTS: "true"
         run: ./mvnw -q verify

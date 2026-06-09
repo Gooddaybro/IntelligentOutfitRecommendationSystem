@@ -1,0 +1,129 @@
+import type {
+  ApiResponse,
+  AssistantChatRequest,
+  AssistantChatResponse,
+  AuthTokenResponse,
+  CartItem,
+  CurrentUserResponse,
+  OrderResponse,
+  PaymentResponse,
+  ProductDetail,
+  ProductSearchItem,
+  RecommendationCandidate
+} from "./types";
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
+const TOKEN_STORAGE_KEY = "ior.accessToken";
+const REFRESH_TOKEN_STORAGE_KEY = "ior.refreshToken";
+
+export function getAccessToken(): string | null {
+  return localStorage.getItem(TOKEN_STORAGE_KEY);
+}
+
+export function setAuthTokens(tokens: AuthTokenResponse): void {
+  localStorage.setItem(TOKEN_STORAGE_KEY, tokens.accessToken);
+  localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, tokens.refreshToken);
+}
+
+export function clearAuthTokens(): void {
+  localStorage.removeItem(TOKEN_STORAGE_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+}
+
+export async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  const token = getAccessToken();
+
+  if (!headers.has("Content-Type") && init.body) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers
+  });
+
+  const text = await response.text();
+  const payload = text ? JSON.parse(text) : null;
+
+  if (!response.ok) {
+    const message = payload?.message ?? `请求失败：${response.status}`;
+    throw new Error(message);
+  }
+
+  return (payload?.data ?? payload) as T;
+}
+
+export const api = {
+  login: (username: string, password: string) =>
+    requestJson<AuthTokenResponse>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password })
+    }),
+  register: (username: string, password: string, email?: string) =>
+    requestJson<{ userId: number; username: string; status: string }>("/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ username, password, email })
+    }),
+  me: () => requestJson<CurrentUserResponse>("/api/users/me"),
+  searchProducts: (keyword: string) => {
+    const params = new URLSearchParams();
+    if (keyword.trim()) {
+      params.set("keyword", keyword.trim());
+    }
+    return requestJson<ProductSearchItem[]>(`/api/products?${params.toString()}`);
+  },
+  recommendationCandidates: (params: Partial<AssistantChatRequest>) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== "") {
+        query.set(key, String(value));
+      }
+    });
+    return requestJson<RecommendationCandidate[]>(`/api/products/recommendation-candidates?${query.toString()}`);
+  },
+  productDetail: (spuId: number) => requestJson<ProductDetail>(`/api/products/${spuId}`),
+  chat: (request: AssistantChatRequest) =>
+    requestJson<AssistantChatResponse>("/api/assistant/chat", {
+      method: "POST",
+      body: JSON.stringify(request)
+    }),
+  cart: () => requestJson<CartItem[]>("/api/cart/items"),
+  addCartItem: (skuId: number, quantity: number) =>
+    requestJson<CartItem[]>("/api/cart/items", {
+      method: "POST",
+      body: JSON.stringify({ skuId, quantity })
+    }),
+  updateCartItem: (skuId: number, quantity: number) =>
+    requestJson<CartItem[]>(`/api/cart/items/${skuId}`, {
+      method: "PUT",
+      body: JSON.stringify({ quantity })
+    }),
+  removeCartItem: (skuId: number) =>
+    requestJson<CartItem[]>(`/api/cart/items/${skuId}`, {
+      method: "DELETE"
+    }),
+  createOrder: (skuIds: number[]) =>
+    requestJson<OrderResponse>("/api/orders", {
+      method: "POST",
+      body: JSON.stringify({ source: "CART", skuIds })
+    }),
+  buyNow: (skuId: number, quantity: number) =>
+    requestJson<OrderResponse>("/api/orders/buy-now", {
+      method: "POST",
+      body: JSON.stringify({ skuId, quantity })
+    }),
+  orders: () => requestJson<OrderResponse[]>("/api/orders"),
+  order: (orderNo: string) => requestJson<OrderResponse>(`/api/orders/${orderNo}`),
+  payMock: (orderNo: string) =>
+    requestJson<PaymentResponse>("/api/payments/mock-pay", {
+      method: "POST",
+      body: JSON.stringify({ orderNo })
+    })
+};
+
+export type { ApiResponse };
