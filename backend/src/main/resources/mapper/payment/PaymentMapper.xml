@@ -16,6 +16,8 @@
             channel,
             status,
             transaction_id,
+            provider_trade_no,
+            provider_payload,
             paid_at
         ) VALUES (
             #{paymentNo},
@@ -26,6 +28,8 @@
             #{channel},
             #{status},
             #{transactionId},
+            #{providerTradeNo},
+            #{providerPayload},
             #{paidAt}
         )
     </insert>
@@ -46,6 +50,8 @@
             channel,
             status,
             transaction_id,
+            provider_trade_no,
+            provider_payload,
             paid_at,
             created_at,
             updated_at
@@ -53,5 +59,69 @@
         WHERE order_id = #{orderId}
           AND status = 'SUCCESS'
     </select>
+
+    <select id="findByPaymentNo"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.payment.model.Payment">
+        SELECT
+            id,
+            payment_no,
+            order_id,
+            order_no,
+            user_id,
+            amount,
+            channel,
+            status,
+            transaction_id,
+            provider_trade_no,
+            provider_payload,
+            paid_at,
+            created_at,
+            updated_at
+        FROM payment
+        WHERE payment_no = #{paymentNo}
+    </select>
+
+    <!--
+        Payment success is updated by paymentNo and only from non-success states.
+        This guards repeated provider callbacks from creating a second stock confirmation path.
+    -->
+    <update id="markPaymentSuccess">
+        UPDATE payment
+        SET status = 'SUCCESS',
+            provider_trade_no = #{providerTradeNo},
+            transaction_id = #{transactionId},
+            paid_at = #{paidAt},
+            updated_at = CURRENT_TIMESTAMP(6)
+        WHERE payment_no = #{paymentNo}
+          AND status != 'SUCCESS'
+    </update>
+
+    <insert id="insertCallbackLog"
+            parameterType="com.recommendation.intelligentoutfitrecommendationsystem.payment.model.PaymentCallbackLog"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO payment_callback_log (
+            channel,
+            payment_no,
+            order_no,
+            provider_trade_no,
+            event_type,
+            raw_body,
+            headers,
+            signature_valid,
+            handled,
+            failure_reason
+        ) VALUES (
+            #{channel},
+            #{paymentNo},
+            #{orderNo},
+            #{providerTradeNo},
+            #{eventType},
+            #{rawBody},
+            #{headers},
+            #{signatureValid},
+            #{handled},
+            #{failureReason}
+        )
+    </insert>
 
 </mapper>

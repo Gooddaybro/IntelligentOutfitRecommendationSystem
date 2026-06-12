@@ -69,6 +69,25 @@ export function ChatPanel({ onRecommendations }: ChatPanelProps) {
               : candidates;
             onRecommendations(filtered);
           }
+          if (event.type === "done") {
+            if (event.threadId) {
+              setThreadId(event.threadId);
+            }
+            if (event.answer) {
+              setMessages((current) => {
+                const next = [...current];
+                const last = next[next.length - 1];
+                next[next.length - 1] = { ...last, content: last.content || event.answer || "" };
+                return next;
+              });
+            }
+            const candidates = await api.recommendationCandidates(requestFilters);
+            onRecommendations(
+              event.spuIds.length
+                ? candidates.filter((candidate) => event.spuIds.includes(candidate.spuId))
+                : candidates
+            );
+          }
           if (event.type === "error") {
             setError(event.message);
           }

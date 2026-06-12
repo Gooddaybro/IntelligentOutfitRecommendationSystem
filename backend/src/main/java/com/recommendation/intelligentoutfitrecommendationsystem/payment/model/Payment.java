@@ -32,6 +32,10 @@ public class Payment {
 
     private String transactionId;
 
+    private String providerTradeNo;
+
+    private String providerPayload;
+
     private LocalDateTime paidAt;
 
     private LocalDateTime createdAt;

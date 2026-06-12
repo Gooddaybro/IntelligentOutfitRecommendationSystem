@@ -13,6 +13,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -80,6 +81,49 @@ class PaymentControllerTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.paymentNo").value(paymentNo))
                 .andExpect(jsonPath("$.data.status").value("SUCCESS"));
+    }
+
+    @Test
+    void unifiedPayCurrentUsersOrderWithMockChannelAndAllowsPaymentQuery() throws Exception {
+        String accessToken = registerAndLogin(nextUsername());
+        resetInventory(2005, 5);
+        addCartItem(accessToken, 2005, 1);
+        String orderNo = createOrder(accessToken, 2005);
+
+        String payBody = mockMvc.perform(post("/api/payments")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "orderNo": "%s",
+                                  "channel": "MOCK"
+                                }
+                                """.formatted(orderNo)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.orderNo").value(orderNo))
+                .andExpect(jsonPath("$.data.channel").value("MOCK"))
+                .andExpect(jsonPath("$.data.status").value("SUCCESS"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        String paymentNo = objectMapper.readTree(payBody).path("data").path("paymentNo").asText();
+
+        mockMvc.perform(get("/api/payments/{paymentNo}", paymentNo)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.paymentNo").value(paymentNo))
+                .andExpect(jsonPath("$.data.orderNo").value(orderNo));
+    }
+
+    @Test
+    void callbackEndpointIsPublicButDoesNotTrustPayload() throws Exception {
+        mockMvc.perform(post("/api/payments/callback/MOCK")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"paymentNo\":\"PAY_UNKNOWN\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.received").value(true))
+                .andExpect(jsonPath("$.data.channel").value("MOCK"));
     }
 
     @Test

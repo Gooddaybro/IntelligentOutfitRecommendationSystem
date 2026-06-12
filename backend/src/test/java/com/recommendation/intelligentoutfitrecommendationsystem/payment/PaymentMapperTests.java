@@ -6,6 +6,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.order.mapper.Ord
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.SalesOrder;
 import com.recommendation.intelligentoutfitrecommendationsystem.payment.mapper.PaymentMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.payment.model.Payment;
+import com.recommendation.intelligentoutfitrecommendationsystem.payment.model.PaymentCallbackLog;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -46,6 +47,54 @@ class PaymentMapperTests {
         assertThat(found.getOrderNo()).isEqualTo(order.getOrderNo());
         assertThat(found.getAmount()).isEqualByComparingTo("299.00");
         assertThat(found.getStatus()).isEqualTo("SUCCESS");
+    }
+
+    @Test
+    void insertsPendingPaymentThenUpdatesItToSuccess() {
+        Long userId = createUser();
+        SalesOrder order = insertOrder(userId);
+        Payment payment = payment(order, userId);
+        payment.setPaymentNo("PAYPENDING" + userId);
+        payment.setStatus("PENDING");
+        payment.setTransactionId(null);
+        payment.setPaidAt(null);
+
+        paymentMapper.insertPayment(payment);
+        Payment found = paymentMapper.findByPaymentNo(payment.getPaymentNo());
+
+        assertThat(found.getStatus()).isEqualTo("PENDING");
+        assertThat(found.getAmount()).isEqualByComparingTo(order.getTotalAmount());
+
+        int updated = paymentMapper.markPaymentSuccess(
+                payment.getPaymentNo(),
+                "mock-provider-" + userId,
+                "mock-transaction-" + userId,
+                LocalDateTime.now()
+        );
+
+        Payment successfulPayment = paymentMapper.findByPaymentNo(payment.getPaymentNo());
+        assertThat(updated).isEqualTo(1);
+        assertThat(successfulPayment.getStatus()).isEqualTo("SUCCESS");
+        assertThat(successfulPayment.getProviderTradeNo()).isEqualTo("mock-provider-" + userId);
+    }
+
+    @Test
+    void recordsCallbackLogForAuditAndIdempotencyAnalysis() {
+        Long userId = createUser();
+        PaymentCallbackLog log = new PaymentCallbackLog();
+        log.setChannel("MOCK");
+        log.setPaymentNo("PAYCALLBACK" + userId);
+        log.setOrderNo("ORDCALLBACK" + userId);
+        log.setProviderTradeNo("mock-provider-" + userId);
+        log.setEventType("PAYMENT_SUCCESS");
+        log.setRawBody("{\"paymentNo\":\"PAYCALLBACK\"}");
+        log.setHeaders("{\"x-mock-signature\":\"valid\"}");
+        log.setSignatureValid(true);
+        log.setHandled(false);
+
+        paymentMapper.insertCallbackLog(log);
+
+        assertThat(log.getId()).isPositive();
     }
 
     private SalesOrder insertOrder(Long userId) {

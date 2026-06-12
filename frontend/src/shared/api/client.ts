@@ -119,6 +119,12 @@ export const api = {
     }),
   orders: () => requestJson<OrderResponse[]>("/api/orders"),
   order: (orderNo: string) => requestJson<OrderResponse>(`/api/orders/${orderNo}`),
+  pay: (orderNo: string, channel: "MOCK" | "ALIPAY" | "WECHAT" = "MOCK") =>
+    requestJson<PaymentResponse>("/api/payments", {
+      method: "POST",
+      body: JSON.stringify({ orderNo, channel })
+    }),
+  payment: (paymentNo: string) => requestJson<PaymentResponse>(`/api/payments/${paymentNo}`),
   payMock: (orderNo: string) =>
     requestJson<PaymentResponse>("/api/payments/mock-pay", {
       method: "POST",

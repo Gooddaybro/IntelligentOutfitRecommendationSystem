@@ -6,10 +6,14 @@ import com.recommendation.intelligentoutfitrecommendationsystem.inventory.mapper
 import com.recommendation.intelligentoutfitrecommendationsystem.order.mapper.OrderMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.SalesOrder;
+import com.recommendation.intelligentoutfitrecommendationsystem.payment.dto.CreatePaymentRequest;
+import com.recommendation.intelligentoutfitrecommendationsystem.payment.dto.PaymentResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.payment.dto.MockPaymentRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.payment.mapper.PaymentMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.payment.model.Payment;
 import com.recommendation.intelligentoutfitrecommendationsystem.payment.service.PaymentService;
+import com.recommendation.intelligentoutfitrecommendationsystem.payment.strategy.MockPaymentStrategy;
+import com.recommendation.intelligentoutfitrecommendationsystem.payment.strategy.PaymentStrategyRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -41,15 +45,25 @@ class PaymentServiceTests {
     @Mock
     private InventoryMapper inventoryMapper;
 
+    @Mock
+    private PaymentStrategyRegistry paymentStrategyRegistry;
+
     @InjectMocks
     private PaymentService service;
 
     @Test
     void mockPayUnpaidOrderConfirmsStockCreatesPaymentAndMarksOrderPaid() {
+        stubMockStrategy();
         SalesOrder order = salesOrder(88L, 10L, "ORDPAY1", "UNPAID");
         when(orderMapper.findOrderByUserIdAndOrderNoForUpdate(10L, "ORDPAY1")).thenReturn(order);
         when(orderMapper.findItemsByOrderId(88L)).thenReturn(List.of(orderItem(2102L, 2)));
         when(inventoryMapper.confirmSoldStock(2102L, 2)).thenReturn(1);
+        when(paymentMapper.markPaymentSuccess(
+                any(String.class),
+                any(String.class),
+                any(String.class),
+                any(LocalDateTime.class)
+        )).thenReturn(1);
         when(orderMapper.updateOrderPaid(eq(88L), any(LocalDateTime.class))).thenReturn(1);
 
         var response = service.mockPay(10L, new MockPaymentRequest("ORDPAY1"));
@@ -99,6 +113,71 @@ class PaymentServiceTests {
                 .hasMessage("order not found: ORDPRIVATE1");
     }
 
+    @Test
+    void payWithMockChannelUsesUnifiedPathAndMarksOrderPaid() {
+        stubMockStrategy();
+        SalesOrder order = salesOrder(88L, 10L, "ORDPAY1", "UNPAID");
+        when(orderMapper.findOrderByUserIdAndOrderNoForUpdate(10L, "ORDPAY1")).thenReturn(order);
+        when(orderMapper.findItemsByOrderId(88L)).thenReturn(List.of(orderItem(2102L, 2)));
+        when(inventoryMapper.confirmSoldStock(2102L, 2)).thenReturn(1);
+        when(paymentMapper.markPaymentSuccess(
+                any(String.class),
+                any(String.class),
+                any(String.class),
+                any(LocalDateTime.class)
+        )).thenReturn(1);
+        when(orderMapper.updateOrderPaid(eq(88L), any(LocalDateTime.class))).thenReturn(1);
+
+        PaymentResponse response = service.pay(10L, new CreatePaymentRequest("ORDPAY1", "MOCK"));
+
+        verify(paymentMapper).insertPayment(any(Payment.class));
+        verify(paymentMapper).markPaymentSuccess(
+                eq(response.paymentNo()),
+                any(String.class),
+                any(String.class),
+                any(LocalDateTime.class)
+        );
+        assertThat(response.channel()).isEqualTo("MOCK");
+        assertThat(response.status()).isEqualTo("SUCCESS");
+    }
+
+    @Test
+    void mockPayDelegatesToUnifiedPayPath() {
+        stubMockStrategy();
+        SalesOrder order = salesOrder(88L, 10L, "ORDPAY1", "UNPAID");
+        when(orderMapper.findOrderByUserIdAndOrderNoForUpdate(10L, "ORDPAY1")).thenReturn(order);
+        when(orderMapper.findItemsByOrderId(88L)).thenReturn(List.of(orderItem(2102L, 2)));
+        when(inventoryMapper.confirmSoldStock(2102L, 2)).thenReturn(1);
+        when(paymentMapper.markPaymentSuccess(
+                any(String.class),
+                any(String.class),
+                any(String.class),
+                any(LocalDateTime.class)
+        )).thenReturn(1);
+        when(orderMapper.updateOrderPaid(eq(88L), any(LocalDateTime.class))).thenReturn(1);
+
+        PaymentResponse response = service.mockPay(10L, new MockPaymentRequest("ORDPAY1"));
+
+        assertThat(response.channel()).isEqualTo("MOCK");
+        verify(paymentMapper).insertPayment(any(Payment.class));
+    }
+
+    @Test
+    void strategyRegistryReturnsMockStrategyByChannel() {
+        PaymentStrategyRegistry registry = new PaymentStrategyRegistry(List.of(new MockPaymentStrategy()));
+
+        assertThat(registry.getRequired("MOCK").channel()).isEqualTo("MOCK");
+    }
+
+    @Test
+    void strategyRegistryRejectsUnsupportedChannel() {
+        PaymentStrategyRegistry registry = new PaymentStrategyRegistry(List.of(new MockPaymentStrategy()));
+
+        assertThatThrownBy(() -> registry.getRequired("ALIPAY"))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("unsupported payment channel: ALIPAY");
+    }
+
     private SalesOrder salesOrder(Long id, Long userId, String orderNo, String status) {
         SalesOrder order = new SalesOrder();
         order.setId(id);
@@ -137,5 +216,9 @@ class PaymentServiceTests {
         payment.setTransactionId("mock-transaction-existing");
         payment.setPaidAt(LocalDateTime.now());
         return payment;
+    }
+
+    private void stubMockStrategy() {
+        when(paymentStrategyRegistry.getRequired("MOCK")).thenReturn(new MockPaymentStrategy());
     }
 }

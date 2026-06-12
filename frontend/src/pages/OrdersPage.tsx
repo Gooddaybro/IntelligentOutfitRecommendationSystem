@@ -21,7 +21,7 @@ export function OrdersPage() {
     setIsBusy(true);
     setError("");
     try {
-      await api.payMock(orderNo);
+      await api.pay(orderNo, "MOCK");
       await loadOrders();
     } catch (payError) {
       setError(payError instanceof Error ? payError.message : "支付失败");
