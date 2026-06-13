@@ -83,7 +83,7 @@ public class AssistantService {
         String answer = requireAnswer(pythonResponse);
         conversationService.appendMessage(userId, threadId, "assistant", answer, requestId);
 
-        List<Long> recommendedSpuIds = toRecommendedSpuIds(pythonResponse.productRefs());
+        List<Long> recommendedSpuIds = toRecommendedSpuIds(pythonResponse.productRefs(), context.candidates());
         return new AssistantChatResponse(threadId, answer, recommendedSpuIds, context.candidates().size());
     }
 
@@ -241,15 +241,28 @@ public class AssistantService {
         return pythonResponse.answer();
     }
 
-    private List<Long> toRecommendedSpuIds(List<PythonProductRef> productRefs) {
+    private List<Long> toRecommendedSpuIds(
+            List<PythonProductRef> productRefs,
+            List<RecommendationCandidate> candidates
+    ) {
         if (productRefs == null || productRefs.isEmpty()) {
             return List.of();
         }
         return productRefs.stream()
+                .filter(ref -> isKnownCandidateRef(ref, candidates))
                 .map(PythonProductRef::spuId)
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();
+    }
+
+    private boolean isKnownCandidateRef(PythonProductRef ref, List<RecommendationCandidate> candidates) {
+        if (ref == null || ref.spuId() == null || ref.skuId() == null || candidates == null || candidates.isEmpty()) {
+            return false;
+        }
+        return candidates.stream()
+                .anyMatch(candidate -> ref.spuId().equals(candidate.getSpuId())
+                        && ref.skuId().equals(candidate.getSkuId()));
     }
 
     private String titleFrom(String message) {
@@ -325,7 +338,7 @@ public class AssistantService {
             AssistantStreamDoneEvent done = new AssistantStreamDoneEvent(
                     threadId,
                     answer,
-                    toRecommendedSpuIds(response.productRefs()),
+                    toRecommendedSpuIds(response.productRefs(), context.candidates()),
                     context.candidates().size(),
                     response.intent()
             );

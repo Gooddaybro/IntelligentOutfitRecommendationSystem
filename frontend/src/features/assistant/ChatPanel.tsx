@@ -1,28 +1,76 @@
 import { Send, SlidersHorizontal, Square } from "lucide-react";
-import { FormEvent, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { api } from "../../shared/api/client";
 import { streamAssistantChat } from "../../shared/api/assistantStream";
 import type { AssistantChatRequest, RecommendationCandidate } from "../../shared/api/types";
+import type { Dispatch, FormEvent, MutableRefObject, SetStateAction } from "react";
 
-type ChatMessage = {
+export type ChatMessage = {
   role: "user" | "assistant";
   content: string;
 };
 
-type ChatPanelProps = {
-  onRecommendations: (items: RecommendationCandidate[]) => void;
+export type ChatFilters = {
+  category: string;
+  style: string;
+  season: string;
+  budgetMax: string;
 };
 
-export function ChatPanel({ onRecommendations }: ChatPanelProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: "assistant", content: "告诉我你的场景、风格、预算或身材偏好，我会先从 Java 商品库筛选，再给你推荐。" }
-  ]);
-  const [draft, setDraft] = useState("");
-  const [filters, setFilters] = useState({ category: "", style: "", season: "", budgetMax: "" });
-  const [threadId, setThreadId] = useState<string | undefined>();
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [error, setError] = useState("");
-  const abortRef = useRef<AbortController | null>(null);
+export type ChatPanelState = {
+  messages: ChatMessage[];
+  setMessages: Dispatch<SetStateAction<ChatMessage[]>>;
+  draft: string;
+  setDraft: Dispatch<SetStateAction<string>>;
+  filters: ChatFilters;
+  setFilters: Dispatch<SetStateAction<ChatFilters>>;
+  threadId?: string;
+  setThreadId: Dispatch<SetStateAction<string | undefined>>;
+  isStreaming: boolean;
+  setIsStreaming: Dispatch<SetStateAction<boolean>>;
+  error: string;
+  setError: Dispatch<SetStateAction<string>>;
+  abortRef: MutableRefObject<AbortController | null>;
+};
+
+export type RecommendationResultMeta = {
+  hasAiResult: boolean;
+  hasStrongMatch: boolean;
+};
+
+export const initialChatMessages: ChatMessage[] = [
+  { role: "assistant", content: "告诉我你的场景、风格、预算或身材偏好，我会先从 Java 商品库筛选，再给你推荐。" }
+];
+
+export const initialChatFilters: ChatFilters = { category: "", style: "", season: "", budgetMax: "" };
+
+type ChatPanelProps = {
+  onRecommendations: (items: RecommendationCandidate[], meta?: RecommendationResultMeta) => void;
+  state?: ChatPanelState;
+};
+
+export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
+  const [internalMessages, setInternalMessages] = useState<ChatMessage[]>(initialChatMessages);
+  const [internalDraft, setInternalDraft] = useState("");
+  const [internalFilters, setInternalFilters] = useState<ChatFilters>(initialChatFilters);
+  const [internalThreadId, setInternalThreadId] = useState<string | undefined>();
+  const [internalIsStreaming, setInternalIsStreaming] = useState(false);
+  const [internalError, setInternalError] = useState("");
+  const internalAbortRef = useRef<AbortController | null>(null);
+
+  const messages = state?.messages ?? internalMessages;
+  const setMessages = state?.setMessages ?? setInternalMessages;
+  const draft = state?.draft ?? internalDraft;
+  const setDraft = state?.setDraft ?? setInternalDraft;
+  const filters = state?.filters ?? internalFilters;
+  const setFilters = state?.setFilters ?? setInternalFilters;
+  const threadId = state?.threadId ?? internalThreadId;
+  const setThreadId = state?.setThreadId ?? setInternalThreadId;
+  const isStreaming = state?.isStreaming ?? internalIsStreaming;
+  const setIsStreaming = state?.setIsStreaming ?? setInternalIsStreaming;
+  const error = state?.error ?? internalError;
+  const setError = state?.setError ?? setInternalError;
+  const abortRef = state?.abortRef ?? internalAbortRef;
 
   const requestFilters = useMemo<Partial<AssistantChatRequest>>(
     () => ({
@@ -33,6 +81,40 @@ export function ChatPanel({ onRecommendations }: ChatPanelProps) {
     }),
     [filters]
   );
+
+  function orderCandidatesByRecommendedSpuIds(candidates: RecommendationCandidate[], spuIds: number[]) {
+    if (!spuIds.length) {
+      return candidates;
+    }
+
+    const idOrder = new Map(spuIds.map((id, index) => [id, index]));
+    return [...candidates].sort((first, second) => {
+      const firstOrder = idOrder.get(first.spuId);
+      const secondOrder = idOrder.get(second.spuId);
+
+      if (firstOrder === undefined && secondOrder === undefined) {
+        return 0;
+      }
+
+      if (firstOrder === undefined) {
+        return 1;
+      }
+
+      if (secondOrder === undefined) {
+        return -1;
+      }
+
+      return firstOrder - secondOrder;
+    });
+  }
+
+  async function updateRecommendations(spuIds: number[]) {
+    const candidates = await api.recommendationCandidates(requestFilters);
+    onRecommendations(orderCandidatesByRecommendedSpuIds(candidates, spuIds), {
+      hasAiResult: true,
+      hasStrongMatch: spuIds.length > 0
+    });
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -63,11 +145,7 @@ export function ChatPanel({ onRecommendations }: ChatPanelProps) {
             });
           }
           if (event.type === "recommendation") {
-            const candidates = await api.recommendationCandidates(requestFilters);
-            const filtered = event.spuIds.length
-              ? candidates.filter((candidate) => event.spuIds.includes(candidate.spuId))
-              : candidates;
-            onRecommendations(filtered);
+            await updateRecommendations(event.spuIds);
           }
           if (event.type === "done") {
             if (event.threadId) {
@@ -81,12 +159,7 @@ export function ChatPanel({ onRecommendations }: ChatPanelProps) {
                 return next;
               });
             }
-            const candidates = await api.recommendationCandidates(requestFilters);
-            onRecommendations(
-              event.spuIds.length
-                ? candidates.filter((candidate) => event.spuIds.includes(candidate.spuId))
-                : candidates
-            );
+            await updateRecommendations(event.spuIds);
           }
           if (event.type === "error") {
             setError(event.message);
@@ -95,6 +168,16 @@ export function ChatPanel({ onRecommendations }: ChatPanelProps) {
         abortRef.current.signal
       );
     } catch (streamError) {
+      if (streamError instanceof Error && streamError.name === "AbortError") {
+        setMessages((current) => {
+          const next = [...current];
+          const last = next[next.length - 1];
+          next[next.length - 1] = { ...last, content: last.content || "已停止生成。" };
+          return next;
+        });
+        return;
+      }
+
       setError(streamError instanceof Error ? streamError.message : "AI 响应失败");
       const fallback = await api.chat({ ...requestFilters, threadId, message });
       setThreadId(fallback.threadId);
@@ -103,12 +186,7 @@ export function ChatPanel({ onRecommendations }: ChatPanelProps) {
         next[next.length - 1] = { role: "assistant", content: fallback.answer };
         return next;
       });
-      const candidates = await api.recommendationCandidates(requestFilters);
-      onRecommendations(
-        fallback.recommendedSpuIds.length
-          ? candidates.filter((candidate) => fallback.recommendedSpuIds.includes(candidate.spuId))
-          : candidates
-      );
+      await updateRecommendations(fallback.recommendedSpuIds);
     } finally {
       setIsStreaming(false);
       abortRef.current = null;

@@ -1,6 +1,11 @@
 import { Bot, LogOut, PackageSearch, ReceiptText, ShoppingCart } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AuthPanel } from "../features/auth/AuthPanel";
+import {
+  initialChatFilters,
+  initialChatMessages
+} from "../features/assistant/ChatPanel";
+import type { ChatFilters, ChatMessage, ChatPanelState, RecommendationResultMeta } from "../features/assistant/ChatPanel";
 import { CartDrawer } from "../features/cart/CartDrawer";
 import { ConfirmActionDialog } from "../features/commerce-action/ConfirmActionDialog";
 import type { PendingCommerceAction } from "../features/commerce-action/commerceActions";
@@ -9,7 +14,7 @@ import { CartPage } from "../pages/CartPage";
 import { OrdersPage } from "../pages/OrdersPage";
 import { ProductBrowsePage } from "../pages/ProductBrowsePage";
 import { api, clearAuthTokens, getAccessToken, setAuthTokens } from "../shared/api/client";
-import type { CartItem, CurrentUserResponse, OrderResponse } from "../shared/api/types";
+import type { CartItem, CurrentUserResponse, OrderResponse, RecommendationCandidate } from "../shared/api/types";
 
 type ViewKey = "ai" | "browse" | "cart" | "orders";
 
@@ -21,8 +26,53 @@ export function App() {
   const [status, setStatus] = useState("");
   const [authError, setAuthError] = useState("");
   const [isBusy, setIsBusy] = useState(false);
+  const [aiMessages, setAiMessages] = useState<ChatMessage[]>(initialChatMessages);
+  const [aiDraft, setAiDraft] = useState("");
+  const [aiFilters, setAiFilters] = useState<ChatFilters>(initialChatFilters);
+  const [aiThreadId, setAiThreadId] = useState<string | undefined>();
+  const [aiIsStreaming, setAiIsStreaming] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const aiAbortRef = useRef<AbortController | null>(null);
+  const [aiRecommendations, setAiRecommendations] = useState<RecommendationCandidate[]>([]);
+  const [aiRecommendationMeta, setAiRecommendationMeta] = useState<RecommendationResultMeta | undefined>();
+  const [aiRecommendationsLoaded, setAiRecommendationsLoaded] = useState(false);
+  const [aiRecommendationsLoading, setAiRecommendationsLoading] = useState(false);
 
   const cartCount = useMemo(() => cartItems.reduce((total, item) => total + item.quantity, 0), [cartItems]);
+
+  const aiChatState = useMemo<ChatPanelState>(
+    () => ({
+      messages: aiMessages,
+      setMessages: setAiMessages,
+      draft: aiDraft,
+      setDraft: setAiDraft,
+      filters: aiFilters,
+      setFilters: setAiFilters,
+      threadId: aiThreadId,
+      setThreadId: setAiThreadId,
+      isStreaming: aiIsStreaming,
+      setIsStreaming: setAiIsStreaming,
+      error: aiError,
+      setError: setAiError,
+      abortRef: aiAbortRef
+    }),
+    [aiDraft, aiError, aiFilters, aiIsStreaming, aiMessages, aiThreadId]
+  );
+
+  const resetAiShoppingState = useCallback(() => {
+    aiAbortRef.current?.abort();
+    aiAbortRef.current = null;
+    setAiMessages(initialChatMessages);
+    setAiDraft("");
+    setAiFilters(initialChatFilters);
+    setAiThreadId(undefined);
+    setAiIsStreaming(false);
+    setAiError("");
+    setAiRecommendations([]);
+    setAiRecommendationMeta(undefined);
+    setAiRecommendationsLoaded(false);
+    setAiRecommendationsLoading(false);
+  }, []);
 
   const refreshCart = useCallback(async () => {
     if (!getAccessToken()) {
@@ -42,8 +92,9 @@ export function App() {
     } catch {
       clearAuthTokens();
       setUser(null);
+      resetAiShoppingState();
     }
-  }, [refreshCart]);
+  }, [refreshCart, resetAiShoppingState]);
 
   useEffect(() => {
     void loadUser();
@@ -105,6 +156,7 @@ export function App() {
     clearAuthTokens();
     setUser(null);
     setCartItems([]);
+    resetAiShoppingState();
     setView("ai");
   }
 
@@ -154,6 +206,15 @@ export function App() {
       {view === "ai" && (
         <AiShoppingPage
           cartItems={cartItems}
+          chatState={aiChatState}
+          recommendations={aiRecommendations}
+          setRecommendations={setAiRecommendations}
+          recommendationMeta={aiRecommendationMeta}
+          setRecommendationMeta={setAiRecommendationMeta}
+          recommendationsLoaded={aiRecommendationsLoaded}
+          setRecommendationsLoaded={setAiRecommendationsLoaded}
+          isRecommendationsLoading={aiRecommendationsLoading}
+          setIsRecommendationsLoading={setAiRecommendationsLoading}
           onAction={setPendingAction}
           onRefreshCart={refreshCart}
           onOpenCart={() => setView("cart")}

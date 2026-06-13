@@ -192,6 +192,15 @@ p {
   color: #b42318;
 }
 
+.recommendation-notice {
+  background: #fff8e6;
+  border: 1px solid #f2d58d;
+  border-radius: 8px;
+  color: #6f4f00;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+}
+
 .status-line {
   background: #e7f3ee;
   border: 1px solid #a8d8c5;

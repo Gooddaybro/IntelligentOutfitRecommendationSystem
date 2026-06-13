@@ -160,6 +160,61 @@ class AssistantServiceTests {
     }
 
     @Test
+    void ignoresPythonProductRefsOutsideCurrentCandidates() {
+        AssistantChatRequest request = new AssistantChatRequest(
+                "th_existing",
+                "recommend a jacket",
+                "outerwear",
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        AssistantContext context = new AssistantContext(
+                null,
+                null,
+                null,
+                List.of(),
+                List.of(new RecommendationCandidate(
+                        1001L,
+                        2001L,
+                        "SPU-1001",
+                        "秋季男士通勤外套",
+                        "外套",
+                        null,
+                        "regular",
+                        "黑色",
+                        "L",
+                        "棉",
+                        "autumn",
+                        "commute",
+                        new BigDecimal("299.0"),
+                        "in_stock",
+                        new BigDecimal("299.0"),
+                        new BigDecimal("399.0"),
+                        8
+                ))
+        );
+
+        when(assistantContextService.buildContext(10L, "th_existing", request)).thenReturn(context);
+        when(pythonAssistantClient.chat(any(PythonChatRequest.class)))
+                .thenReturn(new PythonChatResponse(
+                        "req-ai-service-test",
+                        "A jacket fits this request.",
+                        "recommendation",
+                        List.of(
+                                new PythonProductRef(9999L, 8888L, "hallucinated product", null),
+                                new PythonProductRef(1001L, 2001L, "known candidate", null)
+                        )
+                ));
+
+        AssistantChatResponse response = newAssistantService().chat(10L, request);
+
+        assertThat(response.recommendedSpuIds()).containsExactly(1001L);
+    }
+
+    @Test
     void streamsPythonTokensAndStoresAssistantMessageOnlyAfterDone() {
         AssistantChatRequest request = new AssistantChatRequest(
                 "th_stream_existing",
