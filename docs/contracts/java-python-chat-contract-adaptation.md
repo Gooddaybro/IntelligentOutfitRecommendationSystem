@@ -64,7 +64,7 @@ Java 调用 Python `POST /chat` 时，请求 JSON 应按下面结构发送：
 }
 ```
 
-Python `POST /chat` 成功响应按下面结构返回；Java 目前只把 `answer` 和 `product_refs[*].spu_id` 暴露到前端同步响应：
+Python `POST /chat` 成功响应按下面结构返回。Java 会把 `answer`、候选池过滤后的 `product_refs[*].spu_id`，以及 `product_refs[*]` 中的推荐理由和排序分暴露到前端响应：
 
 ```json
 {
@@ -83,6 +83,8 @@ Python `POST /chat` 成功响应按下面结构返回；Java 目前只把 `answe
   "debug": null
 }
 ```
+
+Java 暴露给前端的 `recommendedSpuIds` 和 `recommendedItems` 不是直接信任 Python 的 `product_refs`。Java 会先确认 `product_refs[*].spu_id` 和 `product_refs[*].sku_id` 同时存在于本轮 Java 传给 Python 的候选池中；候选池外的商品引用会被丢弃。过滤通过后，`reason` 和 `rank_score` 才会进入前端可见的 `recommendedItems[]`。
 
 ## 3. 设计原则
 
@@ -209,7 +211,8 @@ public record PythonChatResponse(
 | `profile + bodyData + preferences` | `user_context` | 合并为扁平用户画像对象。 |
 | `AssistantContext.candidates()` | `candidates` | 转换成 Python 专用候选商品 DTO。 |
 | 固定默认值 | `debug` | 第一版默认 `false`。 |
-| `PythonChatResponse.productRefs[*].spuId` | `AssistantChatResponse.recommendedSpuIds` | 前端第一版只需要商品 SPU 引用，推荐理由后续可扩展。 |
+| `PythonChatResponse.productRefs[*].spuId` | `AssistantChatResponse.recommendedSpuIds` | 兼容旧前端和旧测试的 SPU id 列表。 |
+| `PythonChatResponse.productRefs[*]` | `AssistantChatResponse.recommendedItems` | 推荐理由展示字段，包含 `spuId`、`skuId`、`reason`、`rankScore`。必须先经过 Java 候选池过滤。 |
 
 ## 6. 历史消息转换建议
 
@@ -262,15 +265,38 @@ assistant: 下一轮回答
 - `debug` 默认为 `false`。
 - `userContext.userId` 等于当前登录用户 ID。
 - `productRefs[*].spuId` 会映射为前端响应里的 `recommendedSpuIds`。
+- `productRefs[*].reason` 和 `productRefs[*].rankScore` 会映射为前端响应里的 `recommendedItems`，且只允许候选池内 `spuId`/`skuId` 通过。
+
+### 7.3 2026-06-19 合同回归测试补充
+
+本轮补充的回归点：
+
+- `AssistantControllerTests` 覆盖 `/api/assistant/chat` 和 `/api/assistant/chat/stream`。测试中 Python 假响应同时返回一个合法候选引用 `1002/2101` 和一个候选池外引用 `9999/8888`，Java 响应只允许出现 `recommendedSpuIds=[1002]` 和候选池内的 `recommendedItems`，不能透出 `9999`。
+- `AssistantServiceTests` 覆盖 Python 流式调用失败场景。Java 可以保存用户消息用于排障，但不能把失败流伪装成 assistant 回答写入会话历史。
+- `AssistantServiceTests` 覆盖 `recommendedItems` 映射，确认推荐理由和 `skuId` 只从候选池内的 Python `product_refs` 透出。
+- `RestPythonAssistantClientTests` 和 `PythonSseEventParserTests` 继续覆盖 snake_case 请求体、`product_refs` 反序列化和 Python SSE 事件解析。
+
+这组测试保护的边界：
+
+- Python 可以参与推荐排序，但最终商品 ID 是否能展示给前端由 Java 候选池决定。
+- SSE `done` 事件里的 `recommended_spu_ids` 和 `recommended_items` 必须经过同样的候选池过滤。
+- 外部 AI 流失败时返回可诊断错误，不制造假的成功会话。
 
 ## 8. 验证命令
 
-实现完成后使用 JDK 21 跑完整验证：
+实现完成后使用 JDK 21 跑完整验证。Windows PowerShell：
 
 ```powershell
 $env:JAVA_HOME='D:\Program Files\Java\jdk-21'
 $env:Path="$env:JAVA_HOME\bin;$env:Path"
 .\mvnw.cmd verify
+```
+
+macOS/Linux 下本轮合同回归测试命令：
+
+```bash
+cd backend
+bash ./mvnw test -Dtest=AssistantControllerTests,AssistantServiceTests,RestPythonAssistantClientTests,PythonSseEventParserTests
 ```
 
 ## 9. 实施边界

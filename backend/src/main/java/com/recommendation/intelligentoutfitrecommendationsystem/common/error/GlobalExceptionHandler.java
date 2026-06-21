@@ -1,6 +1,8 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.common.error;
 
 import com.recommendation.intelligentoutfitrecommendationsystem.common.api.ApiResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -12,6 +14,10 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private static final String EXTERNAL_SERVICE_MESSAGE = "External service is temporarily unavailable.";
+    private static final String INTERNAL_ERROR_MESSAGE = "Request failed. Please try again later.";
 
     @ExceptionHandler(BadRequestException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
@@ -28,7 +34,8 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ExternalServiceException.class)
     @ResponseStatus(HttpStatus.BAD_GATEWAY)
     public ApiResponse<Void> handleExternalService(ExternalServiceException exception) {
-        return ApiResponse.error("external_service_error", exception.getMessage());
+        LOGGER.warn("External service request failed with {}", exception.getClass().getSimpleName());
+        return ApiResponse.error("external_service_error", EXTERNAL_SERVICE_MESSAGE);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -39,5 +46,12 @@ public class GlobalExceptionHandler {
                 .map(error -> error.getField() + " " + error.getDefaultMessage())
                 .orElse("request validation failed");
         return ApiResponse.error("validation_failed", message);
+    }
+
+    @ExceptionHandler(Exception.class)
+    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    public ApiResponse<Void> handleUnexpected(Exception exception) {
+        LOGGER.error("Unhandled request failure with {}", exception.getClass().getName());
+        return ApiResponse.error("internal_server_error", INTERNAL_ERROR_MESSAGE);
     }
 }

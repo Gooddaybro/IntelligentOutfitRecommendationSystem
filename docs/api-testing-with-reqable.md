@@ -2,6 +2,43 @@
 
 本文用于手动验证当前 Java 后端接口。先启动 Spring Boot 应用，再按下面顺序测试。
 
+## 0. 推荐测试顺序
+
+如果你只是想快速判断“后端主链路是否可用”，按这个顺序测：
+
+```text
+1. 注册
+2. 登录，复制 accessToken
+3. /api/users/me 校验鉴权
+4. /api/products 校验商品库
+5. /api/assistant/chat 或 /api/assistant/chat/stream 校验 AI 入口
+6. /api/cart/items 加购物车
+7. /api/orders 或 /api/orders/buy-now 创建订单
+8. /api/payments/mock-pay 模拟支付
+```
+
+Reqable 里建议建一个环境：
+
+```text
+base_url = http://127.0.0.1:8080
+access_token = 登录后复制 data.accessToken
+refresh_token = 登录后复制 data.refreshToken
+thread_id = assistant/chat 返回的 data.threadId
+order_no = 创建订单后复制 data.orderNo
+```
+
+所有需要登录的请求都加：
+
+```http
+Authorization: Bearer {{access_token}}
+```
+
+判断边界是否正确时，重点看：
+
+- 前端或 Reqable 请求体不能传 `userId`、订单金额、支付状态。
+- 商品价格、库存、订单金额必须来自 Java 后端响应。
+- Python AI 不启动时，商品、购物车、订单、支付接口仍应可用。
+
 ## 1. 环境变量
 
 ```text
@@ -187,6 +224,30 @@ Authorization: Bearer {{access_token}}
 
 期望：`200 OK`。归档后再次查询会话列表，列表中不再出现该 `threadId`。
 
+## 8.1 测试商品和图片
+
+```http
+GET {{base_url}}/api/products
+```
+
+期望：`200 OK`，`data[*].mainImageUrl` 应返回本地静态图片路径，例如：
+
+```text
+/images/products/tshirt-basic-main.svg
+/images/products/jacket-commute-main.svg
+/images/products/pants-straight-main.svg
+```
+
+再直接请求其中一张图片：
+
+```http
+GET {{base_url}}/images/products/jacket-commute-main.svg
+```
+
+期望：`200 OK`，响应内容是 SVG。若返回 404，优先检查数据库 `product_spu.main_image_url`、`product_image.image_url` 是否已执行 Flyway `V9__use_local_svg_product_images.sql`，以及后端 `src/main/resources/static/images/products/` 下是否有对应文件。
+
+前端本地开发时，Vite 也会从 `frontend/public/images/products/` 提供同名图片。因此网页里看到的 `/images/products/*.svg` 可以由前端 dev server 或 Java 后端正确加载。
+
 ## 9. 测试 AI 同步问答
 
 注意：这个接口会真实调用 `application.properties` 里的 Python 地址：
@@ -195,7 +256,7 @@ Authorization: Bearer {{access_token}}
 app.ai.python-base-url=http://localhost:8000
 ```
 
-如果 Python 服务没有启动，期望返回 `502 Bad Gateway` 和 `errorCode=external_service_error`。如果 Python 已启动并提供 `POST /chat`，请求如下：
+如果 Python 服务没有启动，期望返回 `502 Bad Gateway`、`errorCode=external_service_error`，并使用固定安全文案，不返回 Python 连接细节、堆栈或 provider 原始错误。如果 Python 已启动并提供 `POST /chat`，请求如下：
 
 ```http
 POST {{base_url}}/api/assistant/chat
@@ -216,7 +277,24 @@ Content-Type: application/json
 }
 ```
 
-期望：`200 OK`，返回 `data.threadId`、`data.answer`、`data.recommendedSpuIds`、`data.candidatesCount`。
+期望：`200 OK`，返回：
+
+- `data.threadId`
+- `data.answer`
+- `data.recommendedSpuIds`
+- `data.recommendedItems`
+- `data.candidatesCount`
+
+`data.recommendedItems[*]` 应包含：
+
+```json
+{
+  "spuId": 1002,
+  "skuId": 2004,
+  "reason": "符合秋季通勤、regular 版型和预算条件",
+  "rankScore": 0.95
+}
+```
 
 然后用返回的 `threadId` 查询消息历史：
 
@@ -246,7 +324,11 @@ Python `/chat` 第一版建议返回：
 }
 ```
 
-Java 会把 `product_refs[*].spu_id` 转成 `/api/assistant/chat` 响应里的 `data.recommendedSpuIds`。
+Java 会先用本轮 Java 候选池过滤 Python 返回的 `product_refs`。过滤通过后：
+
+- `product_refs[*].spu_id` 会转成 `/api/assistant/chat` 响应里的 `data.recommendedSpuIds`。
+- `product_refs[*].spu_id`、`sku_id`、`reason`、`rank_score` 会转成 `data.recommendedItems[]`。
+- 候选池外的 `spu_id`/`sku_id` 不会透出给前端。
 
 ## 10. 测试 AI 流式问答
 
@@ -295,7 +377,7 @@ event:token
 data:{"content":"我建议"}
 
 event:done
-data:{"thread_id":"th_...","answer":"我建议您穿 L 码。","recommended_spu_ids":[],"candidates_count":12,"intent":"size_recommendation"}
+data:{"thread_id":"th_...","answer":"我建议您穿 L 码。","recommended_spu_ids":[],"recommended_items":[],"candidates_count":12,"intent":"size_recommendation"}
 ```
 
 如果 Python 生成失败，期望：
@@ -311,6 +393,16 @@ Java 行为边界：
 - Java 会先保存 user 消息，再调用 Python `/chat/stream`。
 - Java 只在 Python `done` 后保存完整 assistant 消息。
 - 前端主动取消请求属于正常业务行为，不应视为服务端错误。
+
+Reqable 里查看 SSE 时，重点检查：
+
+- 响应头是 `text/event-stream`。
+- 先出现 `meta` 或类似线程信息事件。
+- 中间可以有多个 `token`。
+- 最后必须有 `done` 或 `error`。
+- `data:` 后面的内容应是单行 JSON，不应出现多行 JSON。
+- `done` 里的推荐商品 id 只能来自 Java 候选商品，不应凭空出现。
+- `done` 里的 `recommended_items` 可以包含推荐理由和排序分，前端推荐卡片会展示 `reason`。
 
 ## 11. 测试购物车
 
@@ -411,6 +503,47 @@ Content-Type: application/json
 期望：`400 Bad Request`，`errorCode=validation_failed`。
 
 把 `quantity` 改成 `100` 时也应返回 `400 Bad Request`，当前购物车数量上限为 `99`。
+
+## 11.1 Reqable 常见排错
+
+### 401 Unauthorized
+
+通常是没有带：
+
+```http
+Authorization: Bearer {{access_token}}
+```
+
+或者 token 已过期。重新调用登录接口，复制新的 `data.accessToken`。
+
+### 400 validation_failed
+
+通常是请求体字段不符合后端校验，例如：
+
+- `quantity=0`
+- `quantity>99`
+- 缺少必填字段
+- 字段类型错误
+
+### 502 external_service_error
+
+通常是 Java 调 Python AI 服务失败。响应文案应是固定安全文案，不应包含 Python URL、堆栈、API key、prompt 或 provider 原始错误。先确认：
+
+```text
+http://localhost:8000/health
+```
+
+如果 Python 没启动，AI 聊天失败是预期行为；商品、购物车、订单、支付不应受影响。
+
+### SSE 看不到流式 token
+
+检查请求头：
+
+```http
+Accept: text/event-stream
+```
+
+再检查 Python 是否提供 `/chat/stream`，以及 Java 配置的 `app.ai.python-base-url` 是否正确。
 
 ## 12. 测试订单购物车结算和立即购买
 

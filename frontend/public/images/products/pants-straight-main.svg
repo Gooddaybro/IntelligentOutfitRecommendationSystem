@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" role="img" aria-label="Straight casual pants">
+  <rect width="480" height="480" fill="#eef2f4"/>
+  <rect x="42" y="42" width="396" height="396" rx="34" fill="#f8faf9"/>
+  <path d="M172 95h136l18 288h-78l-8-178-8 178h-78l18-288Z" fill="#303a42" stroke="#1d282f" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M172 124h136" stroke="#8aa0a8" stroke-width="12" stroke-linecap="round"/>
+  <path d="M240 137v68" stroke="#5f8d74" stroke-width="10" stroke-linecap="round"/>
+  <path d="M191 164h28M261 164h28" stroke="#c8d2d6" stroke-width="9" stroke-linecap="round"/>
+  <path d="M154 383h78M248 383h78" stroke="#c8d2d6" stroke-width="11" stroke-linecap="round"/>
+  <circle cx="362" cy="119" r="24" fill="#8a6f56"/>
+</svg>

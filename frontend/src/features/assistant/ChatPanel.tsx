@@ -2,7 +2,7 @@ import { Send, SlidersHorizontal, Square } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { api } from "../../shared/api/client";
 import { streamAssistantChat } from "../../shared/api/assistantStream";
-import type { AssistantChatRequest, RecommendationCandidate } from "../../shared/api/types";
+import type { AssistantChatRequest, RecommendationCandidate, RecommendedItem } from "../../shared/api/types";
 import type { Dispatch, FormEvent, MutableRefObject, SetStateAction } from "react";
 
 export type ChatMessage = {
@@ -36,6 +36,7 @@ export type ChatPanelState = {
 export type RecommendationResultMeta = {
   hasAiResult: boolean;
   hasStrongMatch: boolean;
+  recommendedItems?: RecommendedItem[];
 };
 
 export const initialChatMessages: ChatMessage[] = [
@@ -82,15 +83,25 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
     [filters]
   );
 
-  function orderCandidatesByRecommendedSpuIds(candidates: RecommendationCandidate[], spuIds: number[]) {
-    if (!spuIds.length) {
-      return candidates;
+  function orderCandidatesByRecommendations(
+    candidates: RecommendationCandidate[],
+    spuIds: number[],
+    recommendedItems: RecommendedItem[] = []
+  ) {
+    const idOrder = new Map(spuIds.map((id, index) => [id, index]));
+    const skuOrder = new Map(
+      recommendedItems
+        .filter((item) => item.skuId !== undefined)
+        .map((item, index) => [`${item.spuId}:${item.skuId}`, index])
+    );
+
+    if (!idOrder.size && !skuOrder.size) {
+      return attachRecommendationReasons(candidates, recommendedItems);
     }
 
-    const idOrder = new Map(spuIds.map((id, index) => [id, index]));
     return [...candidates].sort((first, second) => {
-      const firstOrder = idOrder.get(first.spuId);
-      const secondOrder = idOrder.get(second.spuId);
+      const firstOrder = skuOrder.get(`${first.spuId}:${first.skuId}`) ?? idOrder.get(first.spuId);
+      const secondOrder = skuOrder.get(`${second.spuId}:${second.skuId}`) ?? idOrder.get(second.spuId);
 
       if (firstOrder === undefined && secondOrder === undefined) {
         return 0;
@@ -105,14 +116,35 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
       }
 
       return firstOrder - secondOrder;
-    });
+    }).map((candidate) => attachRecommendationReason(candidate, recommendedItems));
   }
 
-  async function updateRecommendations(spuIds: number[]) {
+  function attachRecommendationReasons(candidates: RecommendationCandidate[], recommendedItems: RecommendedItem[]) {
+    return candidates.map((candidate) => attachRecommendationReason(candidate, recommendedItems));
+  }
+
+  function attachRecommendationReason(candidate: RecommendationCandidate, recommendedItems: RecommendedItem[]) {
+    const matched =
+      recommendedItems.find((item) => item.skuId !== undefined && item.spuId === candidate.spuId && item.skuId === candidate.skuId) ??
+      recommendedItems.find((item) => item.spuId === candidate.spuId);
+
+    if (!matched) {
+      return candidate;
+    }
+
+    return {
+      ...candidate,
+      recommendationReason: matched.reason,
+      rankScore: matched.rankScore
+    };
+  }
+
+  async function updateRecommendations(spuIds: number[], recommendedItems: RecommendedItem[] = []) {
     const candidates = await api.recommendationCandidates(requestFilters);
-    onRecommendations(orderCandidatesByRecommendedSpuIds(candidates, spuIds), {
+    onRecommendations(orderCandidatesByRecommendations(candidates, spuIds, recommendedItems), {
       hasAiResult: true,
-      hasStrongMatch: spuIds.length > 0
+      hasStrongMatch: spuIds.length > 0 || recommendedItems.length > 0,
+      recommendedItems
     });
   }
 
@@ -145,7 +177,7 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
             });
           }
           if (event.type === "recommendation") {
-            await updateRecommendations(event.spuIds);
+            await updateRecommendations(event.spuIds, event.recommendedItems);
           }
           if (event.type === "done") {
             if (event.threadId) {
@@ -159,7 +191,7 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
                 return next;
               });
             }
-            await updateRecommendations(event.spuIds);
+            await updateRecommendations(event.spuIds, event.recommendedItems);
           }
           if (event.type === "error") {
             setError(event.message);
@@ -186,7 +218,7 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
         next[next.length - 1] = { role: "assistant", content: fallback.answer };
         return next;
       });
-      await updateRecommendations(fallback.recommendedSpuIds);
+      await updateRecommendations(fallback.recommendedSpuIds, fallback.recommendedItems ?? []);
     } finally {
       setIsStreaming(false);
       abortRef.current = null;
@@ -199,44 +231,53 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
         <label>
           <SlidersHorizontal size={16} />
           <input
+            data-testid="chat-filter-category"
             placeholder="分类"
             value={filters.category}
             onChange={(event) => setFilters((current) => ({ ...current, category: event.target.value }))}
           />
         </label>
         <input
+          data-testid="chat-filter-style"
           placeholder="风格"
           value={filters.style}
           onChange={(event) => setFilters((current) => ({ ...current, style: event.target.value }))}
         />
         <input
+          data-testid="chat-filter-season"
           placeholder="季节"
           value={filters.season}
           onChange={(event) => setFilters((current) => ({ ...current, season: event.target.value }))}
         />
         <input
+          data-testid="chat-filter-budget"
           placeholder="预算上限"
           value={filters.budgetMax}
           onChange={(event) => setFilters((current) => ({ ...current, budgetMax: event.target.value }))}
           inputMode="numeric"
         />
       </div>
-      <div className="message-list">
+      <div className="message-list" data-testid="chat-message-list">
         {messages.map((message, index) => (
-          <div key={`${message.role}-${index}`} className={`message ${message.role}`}>
+          <div key={`${message.role}-${index}`} className={`message ${message.role}`} data-testid={`chat-message-${message.role}`}>
             {message.content || "正在生成..."}
           </div>
         ))}
       </div>
       {error && <p className="error-text">{error}</p>}
       <form className="chat-input" onSubmit={submit}>
-        <textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="例如：明天面试，想要显瘦、预算 500 以内" />
+        <textarea
+          data-testid="ai-chat-input"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder="例如：明天面试，想要显瘦、预算 500 以内"
+        />
         {isStreaming ? (
-          <button type="button" onClick={() => abortRef.current?.abort()} title="停止生成">
+          <button data-testid="ai-chat-stop" type="button" onClick={() => abortRef.current?.abort()} title="停止生成">
             <Square size={18} />
           </button>
         ) : (
-          <button className="primary-button" type="submit" title="发送">
+          <button className="primary-button" data-testid="ai-chat-submit" type="submit" title="发送">
             <Send size={18} />
           </button>
         )}

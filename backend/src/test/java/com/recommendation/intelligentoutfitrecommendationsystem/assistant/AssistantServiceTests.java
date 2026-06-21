@@ -37,7 +37,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -127,6 +129,9 @@ class AssistantServiceTests {
         assertThat(response.threadId()).isEqualTo("th_service_001");
         assertThat(response.answer()).contains("wool blend jacket");
         assertThat(response.recommendedSpuIds()).containsExactly(1001L);
+        assertThat(response.recommendedItems())
+                .extracting("spuId", "skuId", "reason")
+                .containsExactly(tuple(1001L, 2001L, "fits the requested commute style"));
 
         InOrder order = inOrder(conversationService, assistantContextService, pythonAssistantClient);
         order.verify(conversationService).createConversation(10L, "recommend a warm jacket");
@@ -212,6 +217,9 @@ class AssistantServiceTests {
         AssistantChatResponse response = newAssistantService().chat(10L, request);
 
         assertThat(response.recommendedSpuIds()).containsExactly(1001L);
+        assertThat(response.recommendedItems())
+                .extracting("spuId", "skuId", "reason")
+                .containsExactly(tuple(1001L, 2001L, "known candidate"));
     }
 
     @Test
@@ -272,6 +280,56 @@ class AssistantServiceTests {
                 "assistant",
                 "我建议您穿 L 码。",
                 "req-stream-service-test"
+        );
+    }
+
+    @Test
+    void streamErrorDoesNotStoreAssistantMessage() {
+        AssistantChatRequest request = new AssistantChatRequest(
+                "th_stream_error",
+                "推荐一件通勤外套",
+                "outerwear",
+                "commute",
+                "autumn",
+                null,
+                "regular",
+                800
+        );
+        AssistantContext context = new AssistantContext(
+                null,
+                null,
+                null,
+                List.of(),
+                List.of()
+        );
+        AtomicReference<PythonAssistantStreamHandler> handlerRef = new AtomicReference<>();
+        MDC.put("requestId", "req-stream-error-test");
+
+        when(assistantContextService.buildContext(10L, "th_stream_error", request)).thenReturn(context);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            handlerRef.set(invocation.getArgument(1));
+            return null;
+        }).when(pythonAssistantStreamClient).streamChat(any(PythonChatRequest.class), any(PythonAssistantStreamHandler.class));
+
+        SseEmitter emitter = newAssistantService().streamChat(10L, request);
+
+        assertThat(emitter).isNotNull();
+        assertThat(handlerRef).hasValueSatisfying(handler ->
+                handler.onError("python_stream_error", "AI assistant stream failed")
+        );
+        verify(conversationService).appendMessage(
+                10L,
+                "th_stream_error",
+                "user",
+                "推荐一件通勤外套",
+                "req-stream-error-test"
+        );
+        verify(conversationService, never()).appendMessage(
+                eq(10L),
+                eq("th_stream_error"),
+                eq("assistant"),
+                any(),
+                eq("req-stream-error-test")
         );
     }
 

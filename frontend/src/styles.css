@@ -378,6 +378,25 @@ p {
   gap: 8px;
 }
 
+.recommendation-reason {
+  background: #f6f8f5;
+  border-left: 3px solid #5f8d74;
+  border-radius: 6px;
+  color: #34423b;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding: 8px 10px;
+}
+
+.recommendation-reason span {
+  color: #66736d;
+  display: block;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
 .product-meta span,
 .product-footer span {
   background: #eef2f4;

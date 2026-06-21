@@ -2,6 +2,8 @@
 
 本文档用于本地前后端联调，覆盖启动检查、鉴权、商品、AI 导购、购物车、订单和模拟支付流程。
 
+自动化 E2E 质量门禁的补齐方案见 `docs/superpowers/specs/2026-06-19-frontend-e2e-quality-gate-design.md`。
+
 ## 1. 环境准备
 
 1. 确认 Java 后端使用 JDK 21。
@@ -111,7 +113,15 @@
    Invoke-RestMethod "$base/api/products/1001"
    ```
 
-   预期结果：商品列表、候选 SKU、商品详情均返回后端商品库数据。
+   预期结果：商品列表、候选 SKU、商品详情均返回后端商品库数据。商品图片字段应是本地静态路径，例如 `/images/products/tshirt-basic-main.svg` 或 `/images/products/jacket-commute-main.svg`。
+
+   如需单独验证图片：
+
+   ```powershell
+   Invoke-WebRequest "$base/images/products/jacket-commute-main.svg"
+   ```
+
+   预期结果：HTTP 200，浏览器 Network 中同一路径也应返回 200。如果这里 404，先检查数据库图片 URL 是否仍是旧的 `.jpg`，以及 Flyway `V9__use_local_svg_product_images.sql` 是否已执行。
 
 4. 校验购物车。
 
@@ -175,6 +185,8 @@
 
    - `/api/assistant/chat/stream` 返回 SSE 流，或在异常时前端回退调用 `/api/assistant/chat`。
    - 推荐卡片展示的 `skuId`、价格和库存来自 Java 后端候选商品。
+   - 推荐卡片展示 `recommendedItems[*].reason` 对应的推荐理由，例如风格匹配、预算匹配、颜色匹配或库存可用。
+   - 推荐卡片图片应加载 `/images/products/*.svg`，Network 状态应为 200，不应为 404。
    - 点击加入购物车或立即购买时，前端必须弹出确认，不应自动下单。
 
 4. 传统浏览页。
@@ -199,8 +211,89 @@
 
    - 订单列表来自 `GET /api/orders`。
    - 单个订单详情来自 `GET /api/orders/{orderNo}`。
-   - 模拟支付调用 `POST /api/payments/mock-pay`，只提交 `orderNo`。
+   - 模拟支付可调用 `POST /api/payments/mock-pay`，只提交 `orderNo`；当前前端订单页使用 `POST /api/payments` 并提交 `orderNo` 和 `channel=MOCK`。
    - 支付后订单状态变更为已支付状态，金额由后端返回，不由前端计算。
+
+## 4.1 网页联调最小路径
+
+如果只想确认前后端主流程是否通，可以按这个网页路径操作：
+
+```text
+1. 打开 http://localhost:5173
+2. 注册一个新用户，或用已有用户登录
+3. 进入 AI 推荐页
+4. 输入：通勤、预算 300、想要简洁一点
+5. 看聊天区域是否出现回答
+6. 看推荐卡片是否显示商品名、价格、库存、推荐理由和商品图片
+7. 点击加入购物车
+8. 确认弹窗出现后先点取消，确认购物车数量不变
+9. 再点击加入购物车并确认
+10. 进入购物车页，确认 SKU 和数量正确
+11. 点击结算，进入订单页
+12. 点击 mock 支付，确认订单状态更新
+```
+
+浏览器 DevTools 的 Network 面板应看到：
+
+```text
+POST /api/auth/register 或 /api/auth/login
+GET  /api/users/me
+POST /api/assistant/chat/stream
+GET  /api/products 或 /api/products/recommendation-candidates
+GET  /images/products/*.svg
+POST /api/cart/items
+GET  /api/cart/items
+POST /api/orders 或 /api/orders/buy-now
+POST /api/payments 或 /api/payments/mock-pay
+```
+
+关键检查：
+
+- `POST /api/cart/items` 请求体只应有 `skuId` 和 `quantity`。
+- `POST /api/orders` 请求体只应有 `source` 和 `skuIds`。
+- `POST /api/orders/buy-now` 请求体只应有 `skuId` 和 `quantity`。
+- `POST /api/payments/mock-pay` 请求体只应有 `orderNo`。
+- 当前前端订单页的 `POST /api/payments` 请求体只应有 `orderNo` 和 `channel=MOCK`。
+- 前端不应提交价格、金额、userId、订单状态或支付状态。
+- 推荐理由应来自 assistant 响应里的 `recommendedItems`，不是前端自己拼出来。
+- 商品图片请求应返回 200；如果图片地址是 `/images/products/*.jpg`，说明数据库迁移或测试数据还没更新到本地 SVG 路径。
+
+## 4.2 网页联调失败时怎么定位
+
+1. 登录后又回到登录页。
+
+   检查 Network 里的 `GET /api/users/me` 是否 401。如果是，重新登录并确认 localStorage 里有 token。
+
+2. AI 推荐没有回答。
+
+   检查 `POST /api/assistant/chat/stream`：
+
+   - 如果是 502，优先启动 Python AI 服务。
+   - 如果有 SSE `error`，看 Java 后端日志和 Python 日志。
+   - 如果 Python 没启动，商品浏览、购物车、订单仍应继续可用。
+
+3. 推荐卡片没有出现。
+
+   检查 `/api/products/recommendation-candidates` 是否返回候选商品；再检查 assistant `done` 事件里是否有推荐 `spuIds`。
+
+4. 推荐理由没有出现。
+
+   检查 assistant `done` 事件或同步响应里是否有 `recommended_items`/`recommendedItems`。如果只有 `recommended_spu_ids`/`recommendedSpuIds`，商品仍可展示，但不会显示推荐理由。
+
+5. 商品图片看不到。
+
+   先在 Network 里点开图片请求：
+
+   - 404：检查数据库 `main_image_url` 是否是 `/images/products/*.svg`，并确认后端 `src/main/resources/static/images/products/`、前端 `public/images/products/` 有同名文件。
+   - 200 但页面不显示：检查图片元素是否被 CSS 压到 0 尺寸，或浏览器是否加载了旧缓存。
+
+6. 加购物车失败。
+
+   检查请求是否带 `Authorization`，以及 `skuId` 是否来自后端商品数据。
+
+7. 订单金额不对。
+
+   不看前端计算，直接看 `POST /api/orders` 或 `POST /api/orders/buy-now` 的响应。金额应由 Java 后端返回。
 
 ## 5. 回归验证命令
 
@@ -218,7 +311,15 @@ $env:Path="$env:JAVA_HOME\bin;$env:Path"
 ```powershell
 cd frontend
 npm test -- --run
+npm run test:e2e
 npm run build
+```
+
+后续接入 Playwright 后，前端还应补充：
+
+```powershell
+cd frontend
+npm run test:e2e
 ```
 
 ## 6. 常见失败定位
@@ -238,4 +339,3 @@ npm run build
 4. AI 聊天失败。
 
    检查 Python AI 服务是否监听 `http://localhost:8000`。商品、购物车、订单和支付仍应只通过 Java 后端完成。
-

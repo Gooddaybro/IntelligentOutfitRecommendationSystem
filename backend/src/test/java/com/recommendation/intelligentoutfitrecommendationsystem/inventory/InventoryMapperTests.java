@@ -5,11 +5,19 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.jdbc.Sql;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @ActiveProfiles("test")
 @SpringBootTest
+@Sql(statements = {
+        "UPDATE inventory SET available_stock = 8, locked_stock = 0, sold_stock = 0 WHERE sku_id = 2003",
+        "UPDATE inventory SET available_stock = 0, locked_stock = 0, sold_stock = 0 WHERE sku_id = 2004",
+        "UPDATE inventory SET available_stock = 7, locked_stock = 0, sold_stock = 0 WHERE sku_id = 2102",
+        "UPDATE inventory SET available_stock = 5, locked_stock = 0, sold_stock = 0 WHERE sku_id = 2103",
+        "UPDATE inventory SET available_stock = 4, locked_stock = 0, sold_stock = 0 WHERE sku_id = 2203"
+})
 class InventoryMapperTests {
 
     @Autowired

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" role="img" aria-label="Basic cotton T-shirt">
+  <rect width="480" height="480" fill="#eef2f4"/>
+  <rect x="42" y="42" width="396" height="396" rx="34" fill="#f8faf9"/>
+  <path d="M154 140 204 98h72l50 42 62 34-34 74-56-25v146H182V223l-56 25-34-74 62-34Z" fill="#f4f7f5" stroke="#2d3b3f" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M205 99c8 24 24 37 35 37s27-13 35-37" fill="none" stroke="#8aa0a8" stroke-width="10" stroke-linecap="round"/>
+  <path d="M182 236h116" stroke="#c8d2d6" stroke-width="10" stroke-linecap="round"/>
+  <path d="M182 275h116" stroke="#d9e1e4" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="369" cy="119" r="24" fill="#5f8d74"/>
+  <path d="M94 382h292" stroke="#c8d2d6" stroke-width="12" stroke-linecap="round"/>
+</svg>

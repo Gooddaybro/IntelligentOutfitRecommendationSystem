@@ -89,7 +89,7 @@ class ProductCatalogServiceTests {
                         "基础款纯棉T恤",
                         "T恤",
                         "100%纯棉基础款T恤，适合日常内搭和单穿。",
-                        "/images/products/tshirt-basic-main.jpg",
+                        "/images/products/tshirt-basic-main.svg",
                         "合身",
                         null,
                         null,

@@ -75,7 +75,7 @@ export function AiShoppingPage({
         }}
         state={chatState}
       />
-      <section className="recommendation-panel">
+      <section className="recommendation-panel" data-testid="recommendation-panel">
         <div className="section-heading">
           <div>
             <p className="eyebrow">推荐卡片</p>
@@ -100,12 +100,12 @@ export function AiShoppingPage({
             <p className="eyebrow">购物车</p>
             <h2>当前选择</h2>
           </div>
-          <button onClick={onOpenCart}>结算</button>
+          <button data-testid="open-cart-from-ai" onClick={onOpenCart}>结算</button>
         </div>
-        <div className="mini-list">
+        <div className="mini-list" data-testid="mini-cart-list">
           {cartItems.length === 0 && <p className="muted">还没有商品。</p>}
           {cartItems.map((item) => (
-            <div key={item.skuId} className="mini-row">
+            <div key={item.skuId} className="mini-row" data-testid="mini-cart-row">
               <span>{item.name}</span>
               <strong>x {item.quantity}</strong>
             </div>

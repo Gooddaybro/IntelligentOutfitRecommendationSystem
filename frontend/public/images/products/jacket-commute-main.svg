@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" role="img" aria-label="Commute lightweight jacket">
+  <rect width="480" height="480" fill="#eef2f4"/>
+  <rect x="42" y="42" width="396" height="396" rx="34" fill="#f8faf9"/>
+  <path d="M168 128 213 94h54l45 34 46 49-42 42-26-31 22 190H168l22-190-26 31-42-42 46-49Z" fill="#27343b" stroke="#1a252a" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M213 96 240 162l27-66" fill="none" stroke="#d7dee2" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M240 162v216" stroke="#5f8d74" stroke-width="10" stroke-linecap="round"/>
+  <path d="M188 256h36M256 256h36" stroke="#8aa0a8" stroke-width="9" stroke-linecap="round"/>
+  <path d="M172 378h136" stroke="#c8d2d6" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="366" cy="118" r="24" fill="#b8a05e"/>
+</svg>

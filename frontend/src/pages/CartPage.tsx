@@ -54,9 +54,9 @@ export function CartPage({ items, onItemsChange, onOrderCreated }: CartPageProps
           </div>
           <strong>￥{total.toFixed(2)}</strong>
         </div>
-        <div className="cart-list">
+        <div className="cart-list" data-testid="cart-list">
           {items.map((item) => (
-            <article key={item.skuId} className="cart-row">
+            <article key={item.skuId} className="cart-row" data-testid="cart-row">
               <input
                 type="checkbox"
                 checked={selectedSkuIds.includes(item.skuId)}
@@ -89,7 +89,12 @@ export function CartPage({ items, onItemsChange, onOrderCreated }: CartPageProps
           ))}
         </div>
         {error && <p className="error-text">{error}</p>}
-        <button className="primary-button checkout-button" disabled={selectedSkuIds.length === 0 || isBusy} onClick={() => void createOrder()}>
+        <button
+          className="primary-button checkout-button"
+          data-testid="checkout-submit"
+          disabled={selectedSkuIds.length === 0 || isBusy}
+          onClick={() => void createOrder()}
+        >
           创建订单
         </button>
       </section>

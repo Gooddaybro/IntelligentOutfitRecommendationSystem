@@ -451,9 +451,9 @@ INSERT INTO size_rule (id, code, name, category_id, rule_json, description) VALU
 (3, 'default_pants', '默认长裤尺码规则', 5, '{"type":"height_weight","ranges":[{"size":"M","heightMin":165,"heightMax":175},{"size":"L","heightMin":170,"heightMax":182}]}', '长裤基础尺码规则');
 
 INSERT INTO product_spu (id, spu_code, name, category_id, description, main_image_url, fit_type_id, status) VALUES
-(1001, 'TSHIRT_BASIC_001', '基础款纯棉T恤', 2, '100%纯棉基础款T恤，适合日常内搭和单穿。', '/images/products/tshirt-basic-main.jpg', 1, 'on_sale'),
-(1002, 'JACKET_COMMUTE_001', '通勤轻薄外套', 3, '轻薄通勤外套，适合春秋通勤和日常外出。', '/images/products/jacket-commute-main.jpg', 1, 'on_sale'),
-(1003, 'PANTS_STRAIGHT_001', '直筒休闲长裤', 5, '直筒休闲长裤，适合日常和通勤场景。', '/images/products/pants-straight-main.jpg', 3, 'on_sale');
+(1001, 'TSHIRT_BASIC_001', '基础款纯棉T恤', 2, '100%纯棉基础款T恤，适合日常内搭和单穿。', '/images/products/tshirt-basic-main.svg', 1, 'on_sale'),
+(1002, 'JACKET_COMMUTE_001', '通勤轻薄外套', 3, '轻薄通勤外套，适合春秋通勤和日常外出。', '/images/products/jacket-commute-main.svg', 1, 'on_sale'),
+(1003, 'PANTS_STRAIGHT_001', '直筒休闲长裤', 5, '直筒休闲长裤，适合日常和通勤场景。', '/images/products/pants-straight-main.svg', 3, 'on_sale');
 
 INSERT INTO product_sku (id, sku_code, spu_id, color_id, size_id, sale_price, original_price, status) VALUES
 (2001, 'TS-BASIC-001-BLK-S', 1001, 1, 1, 99.00, 129.00, 'on_sale'),
@@ -469,9 +469,9 @@ INSERT INTO product_sku (id, sku_code, spu_id, color_id, size_id, sale_price, or
 (2203, 'PANTS-STRAIGHT-001-BLUE-L', 1003, 6, 3, 199.00, 259.00, 'on_sale');
 
 INSERT INTO product_image (spu_id, sku_id, image_url, image_type, sort_order) VALUES
-(1001, NULL, '/images/products/tshirt-basic-main.jpg', 'main', 1),
-(1002, NULL, '/images/products/jacket-commute-main.jpg', 'main', 1),
-(1003, NULL, '/images/products/pants-straight-main.jpg', 'main', 1);
+(1001, NULL, '/images/products/tshirt-basic-main.svg', 'main', 1),
+(1002, NULL, '/images/products/jacket-commute-main.svg', 'main', 1),
+(1003, NULL, '/images/products/pants-straight-main.svg', 'main', 1);
 
 INSERT INTO product_material (spu_id, material_id, percentage) VALUES
 (1001, 1, 100),

@@ -163,7 +163,7 @@ class OrderMapperTests {
         item.setSalePrice(new BigDecimal("299.00"));
         item.setQuantity(1);
         item.setLineAmount(new BigDecimal("299.00"));
-        item.setMainImageUrl("/images/products/jacket-commute-main.jpg");
+        item.setMainImageUrl("/images/products/jacket-commute-main.svg");
         return item;
     }
 

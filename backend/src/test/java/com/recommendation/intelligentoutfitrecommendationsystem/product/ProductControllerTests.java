@@ -25,7 +25,8 @@ class ProductControllerTests {
         mockMvc.perform(get("/api/products").param("keyword", "TSHIRT_BASIC_001"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data[0].spuCode").value("TSHIRT_BASIC_001"));
+                .andExpect(jsonPath("$.data[0].spuCode").value("TSHIRT_BASIC_001"))
+                .andExpect(jsonPath("$.data[0].mainImageUrl").value("/images/products/tshirt-basic-main.svg"));
     }
 
     @Test
@@ -33,6 +34,7 @@ class ProductControllerTests {
         mockMvc.perform(get("/api/products/{spuId}", 1001))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.spuCode").value("TSHIRT_BASIC_001"))
+                .andExpect(jsonPath("$.data.mainImageUrl").value("/images/products/tshirt-basic-main.svg"))
                 .andExpect(jsonPath("$.data.styleTags", hasItem("casual")));
     }
 
@@ -44,6 +46,7 @@ class ProductControllerTests {
                         .param("season", "autumn")
                         .param("budgetMax", "400"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[*].spuCode", hasItem("JACKET_COMMUTE_001")));
+                .andExpect(jsonPath("$.data[*].spuCode", hasItem("JACKET_COMMUTE_001")))
+                .andExpect(jsonPath("$.data[0].mainImageUrl").value("/images/products/jacket-commute-main.svg"));
     }
 }

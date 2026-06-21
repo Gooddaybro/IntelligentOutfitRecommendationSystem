@@ -30,10 +30,20 @@ export function AuthPanel({ error, isBusy, onLogin, onRegister }: AuthPanelProps
         <h1>登录后开始对话式购衣</h1>
       </div>
       <div className="segmented">
-        <button className={mode === "login" ? "active" : ""} onClick={() => setMode("login")} type="button">
+        <button
+          className={mode === "login" ? "active" : ""}
+          data-testid="auth-login-mode"
+          onClick={() => setMode("login")}
+          type="button"
+        >
           登录
         </button>
-        <button className={mode === "register" ? "active" : ""} onClick={() => setMode("register")} type="button">
+        <button
+          className={mode === "register" ? "active" : ""}
+          data-testid="auth-register-mode"
+          onClick={() => setMode("register")}
+          type="button"
+        >
           注册
         </button>
       </div>
@@ -42,7 +52,13 @@ export function AuthPanel({ error, isBusy, onLogin, onRegister }: AuthPanelProps
           <span>用户名</span>
           <div className="input-with-icon">
             <UserRound size={16} />
-            <input value={username} onChange={(event) => setUsername(event.target.value)} minLength={3} required />
+            <input
+              data-testid="auth-username"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              minLength={3}
+              required
+            />
           </div>
         </label>
         <label>
@@ -50,6 +66,7 @@ export function AuthPanel({ error, isBusy, onLogin, onRegister }: AuthPanelProps
           <div className="input-with-icon">
             <LockKeyhole size={16} />
             <input
+              data-testid="auth-password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               type="password"
@@ -61,11 +78,16 @@ export function AuthPanel({ error, isBusy, onLogin, onRegister }: AuthPanelProps
         {mode === "register" && (
           <label>
             <span>邮箱</span>
-            <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" />
+            <input
+              data-testid="auth-email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              type="email"
+            />
           </label>
         )}
         {error && <p className="error-text">{error}</p>}
-        <button className="primary-button" type="submit" disabled={isBusy}>
+        <button className="primary-button" data-testid="auth-submit" type="submit" disabled={isBusy}>
           {isBusy ? "处理中" : mode === "login" ? "登录" : "注册并登录"}
         </button>
       </form>

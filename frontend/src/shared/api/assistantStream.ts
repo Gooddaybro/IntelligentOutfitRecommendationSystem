@@ -1,14 +1,62 @@
 import { getAccessToken } from "./client";
-import type { AssistantChatRequest } from "./types";
+import type { AssistantChatRequest, RecommendedItem } from "./types";
 
 export type AssistantStreamEvent =
   | { type: "thread"; threadId: string }
   | { type: "token"; text: string }
-  | { type: "recommendation"; spuIds: number[] }
-  | { type: "done"; threadId?: string; answer?: string; spuIds: number[] }
+  | { type: "recommendation"; spuIds: number[]; recommendedItems?: RecommendedItem[] }
+  | { type: "done"; threadId?: string; answer?: string; spuIds: number[]; recommendedItems?: RecommendedItem[] }
   | { type: "error"; message: string };
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
+
+function normalizeRecommendedItems(payload: unknown): RecommendedItem[] {
+  const source =
+    (payload as { recommendedItems?: unknown }).recommendedItems ??
+    (payload as { recommended_items?: unknown }).recommended_items ??
+    [];
+
+  if (!Array.isArray(source)) {
+    return [];
+  }
+
+  const normalized: RecommendedItem[] = [];
+
+  source.forEach((item) => {
+    const raw = item as {
+      spuId?: number | string;
+      spu_id?: number | string;
+      skuId?: number | string;
+      sku_id?: number | string;
+      reason?: string;
+      rankScore?: number | string;
+      rank_score?: number | string;
+    };
+    const spuId = raw.spuId ?? raw.spu_id;
+    const skuId = raw.skuId ?? raw.sku_id;
+    const rankScore = raw.rankScore ?? raw.rank_score;
+
+    if (spuId === undefined || spuId === null) {
+      return;
+    }
+
+    const normalizedItem: RecommendedItem = {
+      spuId: Number(spuId)
+    };
+    if (skuId !== undefined && skuId !== null) {
+      normalizedItem.skuId = Number(skuId);
+    }
+    if (raw.reason !== undefined) {
+      normalizedItem.reason = raw.reason;
+    }
+    if (rankScore !== undefined && rankScore !== null) {
+      normalizedItem.rankScore = Number(rankScore);
+    }
+    normalized.push(normalizedItem);
+  });
+
+  return normalized;
+}
 
 export function parseSseEventBlock(block: string): AssistantStreamEvent | null {
   const lines = block.split("\n");
@@ -50,7 +98,12 @@ export function parseSseEventBlock(block: string): AssistantStreamEvent | null {
       ? payload
       : (payload as { recommendedSpuIds?: number[]; recommended_spu_ids?: number[] }).recommendedSpuIds ??
         (payload as { recommended_spu_ids?: number[] }).recommended_spu_ids;
-    return { type: "recommendation", spuIds: Array.isArray(ids) ? ids.map(Number) : [] };
+    const recommendedItems = normalizeRecommendedItems(payload);
+    return {
+      type: "recommendation",
+      spuIds: Array.isArray(ids) ? ids.map(Number) : recommendedItems.map((item) => item.spuId),
+      recommendedItems
+    };
   }
 
   if (eventName === "done") {
@@ -61,12 +114,14 @@ export function parseSseEventBlock(block: string): AssistantStreamEvent | null {
       recommendedSpuIds?: number[];
       recommended_spu_ids?: number[];
     };
-    const ids = donePayload.recommendedSpuIds ?? donePayload.recommended_spu_ids ?? [];
+    const recommendedItems = normalizeRecommendedItems(donePayload);
+    const ids = donePayload.recommendedSpuIds ?? donePayload.recommended_spu_ids ?? recommendedItems.map((item) => item.spuId);
     return {
       type: "done",
       threadId: donePayload.threadId ?? donePayload.thread_id,
       answer: donePayload.answer,
-      spuIds: Array.isArray(ids) ? ids.map(Number) : []
+      spuIds: Array.isArray(ids) ? ids.map(Number) : [],
+      recommendedItems
     };
   }
 

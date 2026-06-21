@@ -47,7 +47,15 @@ Verification:
 ```powershell
 cd frontend
 npm test -- --run
+npm run test:e2e
 npm run build
 ```
 
 By default, Vite proxies `/api` to `http://localhost:8080`. Use `VITE_API_BASE_URL` when the backend is deployed elsewhere.
+
+## Quality Closure Backlog
+
+The next approved work should follow:
+
+- `docs/superpowers/plans/2026-06-19-ai-commerce-quality-closure.md`
+- `docs/superpowers/specs/2026-06-19-frontend-e2e-quality-gate-design.md`

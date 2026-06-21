@@ -6,6 +6,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantChatResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantContext;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantRecommendationItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantStreamDoneEvent;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantStreamErrorEvent;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantStreamMetaEvent;
@@ -32,8 +33,10 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -83,8 +86,14 @@ public class AssistantService {
         String answer = requireAnswer(pythonResponse);
         conversationService.appendMessage(userId, threadId, "assistant", answer, requestId);
 
-        List<Long> recommendedSpuIds = toRecommendedSpuIds(pythonResponse.productRefs(), context.candidates());
-        return new AssistantChatResponse(threadId, answer, recommendedSpuIds, context.candidates().size());
+        List<AssistantRecommendationItem> recommendedItems = toRecommendedItems(pythonResponse.productRefs(), context.candidates());
+        return new AssistantChatResponse(
+                threadId,
+                answer,
+                toRecommendedSpuIds(recommendedItems),
+                recommendedItems,
+                context.candidates().size()
+        );
     }
 
     /**
@@ -241,19 +250,41 @@ public class AssistantService {
         return pythonResponse.answer();
     }
 
-    private List<Long> toRecommendedSpuIds(
+    private List<AssistantRecommendationItem> toRecommendedItems(
             List<PythonProductRef> productRefs,
             List<RecommendationCandidate> candidates
     ) {
         if (productRefs == null || productRefs.isEmpty()) {
             return List.of();
         }
+        Set<String> seen = new LinkedHashSet<>();
         return productRefs.stream()
                 .filter(ref -> isKnownCandidateRef(ref, candidates))
-                .map(PythonProductRef::spuId)
-                .filter(Objects::nonNull)
+                .filter(ref -> seen.add(ref.spuId() + ":" + ref.skuId()))
+                .map(ref -> new AssistantRecommendationItem(
+                        ref.spuId(),
+                        ref.skuId(),
+                        normalizeRecommendationReason(ref.reason()),
+                        ref.rankScore()
+                ))
+                .toList();
+    }
+
+    private List<Long> toRecommendedSpuIds(List<AssistantRecommendationItem> recommendedItems) {
+        if (recommendedItems == null || recommendedItems.isEmpty()) {
+            return List.of();
+        }
+        return recommendedItems.stream()
+                .map(AssistantRecommendationItem::spuId)
                 .distinct()
                 .toList();
+    }
+
+    private String normalizeRecommendationReason(String reason) {
+        if (reason == null || reason.isBlank()) {
+            return "符合本轮 Java 候选商品条件。";
+        }
+        return reason.trim();
     }
 
     private boolean isKnownCandidateRef(PythonProductRef ref, List<RecommendationCandidate> candidates) {
@@ -335,10 +366,12 @@ public class AssistantService {
             }
             String answer = requireAnswer(response);
             conversationService.appendMessage(userId, threadId, "assistant", answer, requestId);
+            List<AssistantRecommendationItem> recommendedItems = toRecommendedItems(response.productRefs(), context.candidates());
             AssistantStreamDoneEvent done = new AssistantStreamDoneEvent(
                     threadId,
                     answer,
-                    toRecommendedSpuIds(response.productRefs(), context.candidates()),
+                    toRecommendedSpuIds(recommendedItems),
+                    recommendedItems,
                     context.candidates().size(),
                     response.intent()
             );

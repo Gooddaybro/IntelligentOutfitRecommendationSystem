@@ -44,9 +44,9 @@ export function OrdersPage() {
           </button>
         </div>
         {error && <p className="error-text">{error}</p>}
-        <div className="order-list">
+        <div className="order-list" data-testid="order-list">
           {orders.map((order) => (
-            <article key={order.orderNo} className="order-row">
+            <article key={order.orderNo} className="order-row" data-testid="order-row">
               <div>
                 <p className="eyebrow">{order.status}</p>
                 <h3>{order.orderNo}</h3>
@@ -54,7 +54,12 @@ export function OrdersPage() {
               </div>
               <strong>￥{order.totalAmount}</strong>
               {order.status === "UNPAID" && (
-                <button className="primary-button" onClick={() => void pay(order.orderNo)} disabled={isBusy}>
+                <button
+                  className="primary-button"
+                  data-testid="mock-pay-submit"
+                  onClick={() => void pay(order.orderNo)}
+                  disabled={isBusy}
+                >
                   <CreditCard size={16} />
                   Mock 支付
                 </button>

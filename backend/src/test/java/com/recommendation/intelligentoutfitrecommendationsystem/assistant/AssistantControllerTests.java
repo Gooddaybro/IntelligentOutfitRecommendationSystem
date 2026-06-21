@@ -77,7 +77,7 @@ class AssistantControllerTests {
                         .content("""
                                 {
                                   "message": "recommend a jacket for autumn commute",
-                                  "category": "outerwear",
+                                  "category": "外套",
                                   "style": "commute",
                                   "season": "autumn",
                                   "fit": "regular",
@@ -87,7 +87,10 @@ class AssistantControllerTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.threadId").isNotEmpty())
                 .andExpect(jsonPath("$.data.answer").value("A structured jacket is a good match."))
-                .andExpect(jsonPath("$.data.recommendedSpuIds", contains(1001)))
+                .andExpect(jsonPath("$.data.recommendedSpuIds", contains(1002)))
+                .andExpect(jsonPath("$.data.recommendedItems[0].spuId").value(1002))
+                .andExpect(jsonPath("$.data.recommendedItems[0].skuId").value(2101))
+                .andExpect(jsonPath("$.data.recommendedItems[0].reason").value("fits the requested commute style"))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
@@ -114,7 +117,7 @@ class AssistantControllerTests {
                         .content("""
                                 {
                                   "message": "recommend a jacket for autumn commute",
-                                  "category": "outerwear",
+                                  "category": "外套",
                                   "style": "commute",
                                   "season": "autumn",
                                   "fit": "regular",
@@ -136,7 +139,11 @@ class AssistantControllerTests {
                 .contains("event:token")
                 .contains("A structured")
                 .contains("event:done")
-                .contains("A structured jacket is a good match.");
+                .contains("A structured jacket is a good match.")
+                .contains("\"recommended_spu_ids\":[1002]")
+                .contains("\"recommended_items\"")
+                .contains("fits the requested commute style")
+                .doesNotContain("9999");
     }
 
     private String registerAndLogin(String username) throws Exception {
@@ -181,7 +188,10 @@ class AssistantControllerTests {
                     request.requestId(),
                     "A structured jacket is a good match.",
                     "recommendation",
-                    List.of(new PythonProductRef(1001L, 2001L, "fits the requested commute style", null))
+                    List.of(
+                            new PythonProductRef(9999L, 8888L, "hallucinated product must be ignored", null),
+                            new PythonProductRef(1002L, 2101L, "fits the requested commute style", null)
+                    )
             );
         }
 
@@ -195,7 +205,10 @@ class AssistantControllerTests {
                         request.requestId(),
                         "A structured jacket is a good match.",
                         "recommendation",
-                        List.of(new PythonProductRef(1001L, 2001L, "fits the requested commute style", null))
+                        List.of(
+                                new PythonProductRef(9999L, 8888L, "hallucinated product must be ignored", null),
+                                new PythonProductRef(1002L, 2101L, "fits the requested commute style", null)
+                        )
                 ));
             };
         }

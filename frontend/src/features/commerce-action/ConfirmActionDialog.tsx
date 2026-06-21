@@ -15,7 +15,7 @@ export function ConfirmActionDialog({ action, isBusy, onCancel, onConfirm }: Con
 
   return (
     <div className="modal-backdrop" role="presentation">
-      <section className="confirm-dialog" role="dialog" aria-modal="true" aria-label="确认交易动作">
+      <section className="confirm-dialog" data-testid="confirm-action-dialog" role="dialog" aria-modal="true" aria-label="确认交易动作">
         <div>
           <p className="eyebrow">需要你确认</p>
           <h2>{actionConfirmText(action)}</h2>
@@ -36,11 +36,16 @@ export function ConfirmActionDialog({ action, isBusy, onCancel, onConfirm }: Con
           </div>
         </dl>
         <div className="dialog-actions">
-          <button onClick={onCancel} disabled={isBusy}>
+          <button data-testid="confirm-action-cancel" onClick={onCancel} disabled={isBusy}>
             <X size={16} />
             取消
           </button>
-          <button className="primary-button" onClick={() => void onConfirm()} disabled={isBusy}>
+          <button
+            className="primary-button"
+            data-testid="confirm-action-submit"
+            onClick={() => void onConfirm()}
+            disabled={isBusy}
+          >
             <Check size={16} />
             确认
           </button>

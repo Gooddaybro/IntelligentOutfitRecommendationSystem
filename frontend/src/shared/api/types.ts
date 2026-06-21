@@ -46,6 +46,15 @@ export type RecommendationCandidate = {
   minPrice?: number;
   maxPrice?: number;
   totalAvailableStock?: number;
+  recommendationReason?: string;
+  rankScore?: number;
+};
+
+export type RecommendedItem = {
+  spuId: number;
+  skuId?: number;
+  reason?: string;
+  rankScore?: number;
 };
 
 export type ProductDetail = ProductSearchItem & {
@@ -125,6 +134,7 @@ export type AssistantChatResponse = {
   threadId: string;
   answer: string;
   recommendedSpuIds: number[];
+  recommendedItems?: RecommendedItem[];
   candidatesCount: number;
 };
 

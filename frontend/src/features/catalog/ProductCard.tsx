@@ -9,7 +9,7 @@ type ProductCardProps = {
 
 export function ProductCard({ candidate, onAction }: ProductCardProps) {
   return (
-    <article className="product-card">
+    <article className="product-card" data-testid="recommendation-card" data-sku-id={candidate.skuId}>
       <div className="product-image">
         {candidate.mainImageUrl ? <img src={candidate.mainImageUrl} alt={candidate.name} /> : <span>暂无图片</span>}
       </div>
@@ -27,12 +27,27 @@ export function ProductCard({ candidate, onAction }: ProductCardProps) {
           <strong>￥{candidate.salePrice}</strong>
           <span>{candidate.stockStatus || "库存以结算为准"}</span>
         </div>
+        {candidate.recommendationReason && (
+          <p className="recommendation-reason" data-testid="recommendation-reason">
+            {candidate.recommendationReason}
+            {candidate.rankScore !== undefined && <span>匹配度 {Math.round(candidate.rankScore * 100)}%</span>}
+          </p>
+        )}
         <div className="product-actions">
-          <button onClick={() => onAction(buildAddToCartAction(candidate))} title="加入购物车">
+          <button
+            data-testid="add-to-cart-action"
+            onClick={() => onAction(buildAddToCartAction(candidate))}
+            title="加入购物车"
+          >
             <ShoppingCart size={16} />
             加购
           </button>
-          <button className="primary-button" onClick={() => onAction(buildBuyNowAction(candidate))} title="立即购买">
+          <button
+            className="primary-button"
+            data-testid="buy-now-action"
+            onClick={() => onAction(buildBuyNowAction(candidate))}
+            title="立即购买"
+          >
             <ShoppingBag size={16} />
             购买
           </button>
