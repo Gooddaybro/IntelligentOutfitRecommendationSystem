@@ -34,12 +34,12 @@ class MySqlFlywayMigrationTests extends BaseMySqlContainerTest {
                   AND COLUMN_NAME = 'close_reason'
                 """, Integer.class);
 
-        assertThat(chatSessionCount).isZero();
-        assertThat(chatMessageCount).isZero();
-        assertThat(cartItemCount).isZero();
-        assertThat(salesOrderCount).isZero();
-        assertThat(orderItemCount).isZero();
-        assertThat(paymentCount).isZero();
+        assertThat(chatSessionCount).isPositive();
+        assertThat(chatMessageCount).isPositive();
+        assertThat(cartItemCount).isPositive();
+        assertThat(salesOrderCount).isPositive();
+        assertThat(orderItemCount).isPositive();
+        assertThat(paymentCount).isPositive();
         assertThat(closedAtColumnCount).isOne();
         assertThat(closeReasonColumnCount).isOne();
     }
