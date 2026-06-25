@@ -19,11 +19,32 @@ public class FavoriteController {
         this.favoriteService = favoriteService;
     }
 
+    /**
+     * 添加收藏数据
+     *
+     * @param authentication
+     * @param productId
+     * @return
+     */
     @PostMapping("/{productId}")
     public ApiResponse<List<UserFavorite>> addFavoriteIrem(Authentication authentication, @PathVariable Long productId) {
         CurrentUser currentUser = CurrentUser.from(authentication);
-        List<CurrentUser> currentUsers = favoriteService.addFavorite(currentUser.userId(), productId);
+        List<UserFavorite> currentUsers = favoriteService.addFavorite(currentUser.userId(), productId);
         return ApiResponse.ok(currentUsers);
+    }
+
+    /**
+     * 删除收藏数据
+     *
+     * @param authentication
+     * @param spuId
+     * @return
+     */
+    @DeleteMapping("/{spuId}")
+    public ApiResponse<List<UserFavorite>> deleteFavorite(Authentication authentication, @PathVariable Long spuId) {
+        CurrentUser currentUser = CurrentUser.from(authentication);
+        List<UserFavorite> cur = favoriteService.deleteFavorite(currentUser.userId(), spuId);
+        return ApiResponse.ok(cur);
     }
 
 
