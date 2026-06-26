@@ -1,5 +1,8 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.product.service;
 
+import com.recommendation.intelligentoutfitrecommendationsystem.common.cache.CacheKeyConstants;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.cache.CacheTtlProperties;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.cache.RedisCacheService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.dto.RecommendationCandidateQuery;
@@ -22,9 +25,17 @@ import java.util.Map;
 public class ProductCatalogService {
 
     private final ProductMapper productMapper;
+    private final RedisCacheService redisCacheService;
+    private final CacheTtlProperties cacheTtlProperties;
 
-    public ProductCatalogService(ProductMapper productMapper) {
+    public ProductCatalogService(
+            ProductMapper productMapper,
+            RedisCacheService redisCacheService,
+            CacheTtlProperties cacheTtlProperties
+    ) {
         this.productMapper = productMapper;
+        this.redisCacheService = redisCacheService;
+        this.cacheTtlProperties = cacheTtlProperties;
     }
 
     public List<ProductSearchItem> searchProducts(String keyword) {
@@ -34,6 +45,11 @@ public class ProductCatalogService {
     public ProductDetail getProductDetail(Long spuId) {
         if (spuId == null || spuId <= 0) {
             throw new BadRequestException("spuId must be positive");
+        }
+        String cacheKey = CacheKeyConstants.productDetail(spuId);
+        var cachedDetail = redisCacheService.getValue(cacheKey, ProductDetail.class);
+        if (cachedDetail.isPresent()) {
+            return cachedDetail.get();
         }
         ProductDetail detail = productMapper.findProductDetailBase(spuId);
         if (detail == null) {
@@ -45,6 +61,7 @@ public class ProductCatalogService {
         detail.setSeasons(productMapper.findSeasons(spuId));
         detail.setStyleTags(productMapper.findStyleTags(spuId));
         detail.setAttributes(toAttributesMap(productMapper.findAttributes(spuId)));
+        redisCacheService.setValue(cacheKey, detail, cacheTtlProperties.productDetailTtl());
         return detail;
     }
 

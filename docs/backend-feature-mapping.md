@@ -422,7 +422,10 @@ X-Internal-Token
 5. order-service：订单和库存锁定
 6. mock-payment：模拟支付
 7. SSE / WebSocket：流式返回
-8. MQ：复杂推荐异步任务
+8. Redis：商品详情缓存、用户画像缓存、推荐候选缓存、AI 聊天接口限流
+9. MQ：复杂推荐异步任务
+
+Redis 第一版开发计划见 `docs/superpowers/plans/2026-06-26-redis-cache-rate-limit-mvp.md`。
 
 ## 后续维护方式
 

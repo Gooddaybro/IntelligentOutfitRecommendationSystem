@@ -1,5 +1,8 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.product;
 
+import com.recommendation.intelligentoutfitrecommendationsystem.common.cache.CacheKeyConstants;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.cache.CacheTtlProperties;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.cache.RedisCacheService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.dto.RecommendationCandidateQuery;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.mapper.ProductMapper;
@@ -8,17 +11,22 @@ import com.recommendation.intelligentoutfitrecommendationsystem.product.model.Pr
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.SkuSearchItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.service.ProductCatalogService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -28,8 +36,17 @@ class ProductCatalogServiceTests {
     @Mock
     private ProductMapper productMapper;
 
-    @InjectMocks
+    @Mock
+    private RedisCacheService redisCacheService;
+
     private ProductCatalogService service;
+
+    @BeforeEach
+    void setUp() {
+        CacheTtlProperties cacheTtlProperties = new CacheTtlProperties();
+        cacheTtlProperties.setProductDetailJitterMinutes(0);
+        service = new ProductCatalogService(productMapper, redisCacheService, cacheTtlProperties);
+    }
 
     @Test
     void findSkuNormalizesSizeBeforeQueryingMapper() {
@@ -82,22 +99,10 @@ class ProductCatalogServiceTests {
 
     @Test
     void getProductDetailAssemblesMultiValueAttributes() {
+        when(redisCacheService.getValue(CacheKeyConstants.productDetail(1001L), ProductDetail.class))
+                .thenReturn(Optional.empty());
         when(productMapper.findProductDetailBase(1001L))
-                .thenReturn(new ProductDetail(
-                        1001L,
-                        "TSHIRT_BASIC_001",
-                        "基础款纯棉T恤",
-                        "T恤",
-                        "100%纯棉基础款T恤，适合日常内搭和单穿。",
-                        "/images/products/tshirt-basic-main.svg",
-                        "合身",
-                        null,
-                        null,
-                        null,
-                        null,
-                        BigDecimal.valueOf(99),
-                        BigDecimal.valueOf(99)
-                ));
+                .thenReturn(productDetail());
         when(productMapper.findMaterials(1001L)).thenReturn(List.of("纯棉"));
         when(productMapper.findSeasons(1001L)).thenReturn(List.of("summer", "all_season"));
         when(productMapper.findStyleTags(1001L)).thenReturn(List.of("casual", "minimal"));
@@ -110,5 +115,42 @@ class ProductCatalogServiceTests {
         assertThat(detail.getSeasons()).containsExactly("summer", "all_season");
         assertThat(detail.getStyleTags()).containsExactly("casual", "minimal");
         assertThat(detail.getAttributes()).containsEntry("厚度", "常规");
+        verify(redisCacheService).setValue(
+                eq(CacheKeyConstants.productDetail(1001L)),
+                eq(detail),
+                any(Duration.class)
+        );
+    }
+
+    @Test
+    void getProductDetailReturnsCachedDetailWithoutQueryingMapper() {
+        ProductDetail cachedDetail = productDetail();
+        cachedDetail.setMaterials(List.of("纯棉"));
+        when(redisCacheService.getValue(CacheKeyConstants.productDetail(1001L), ProductDetail.class))
+                .thenReturn(Optional.of(cachedDetail));
+
+        var detail = service.getProductDetail(1001L);
+
+        assertThat(detail.getSpuCode()).isEqualTo("TSHIRT_BASIC_001");
+        verify(productMapper, never()).findProductDetailBase(1001L);
+        verify(redisCacheService, never()).setValue(any(), any(), any());
+    }
+
+    private ProductDetail productDetail() {
+        return new ProductDetail(
+                1001L,
+                "TSHIRT_BASIC_001",
+                "基础款纯棉T恤",
+                "T恤",
+                "100%纯棉基础款T恤，适合日常内搭和单穿。",
+                "/images/products/tshirt-basic-main.svg",
+                "合身",
+                null,
+                null,
+                null,
+                null,
+                BigDecimal.valueOf(99),
+                BigDecimal.valueOf(99)
+        );
     }
 }

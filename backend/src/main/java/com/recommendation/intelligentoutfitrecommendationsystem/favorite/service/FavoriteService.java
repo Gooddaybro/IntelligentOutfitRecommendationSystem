@@ -8,6 +8,11 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.List;
 
+/**
+ * 用户收藏服务。
+ *
+ * 收藏只记录用户对商品 SPU 的轻量偏好，不参与订单、库存和支付事实计算。
+ */
 @Service
 public class FavoriteService {
     private final FavoriteMapper favoriteMapper;
