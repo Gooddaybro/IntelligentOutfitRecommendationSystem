@@ -2,6 +2,8 @@
 
 本文用于手动验证当前 Java 后端接口。先启动 Spring Boot 应用，再按下面顺序测试。
 
+Redis 缓存与 AI 限流的专项验证见 `docs/redis-cache-rate-limit-manual-test.md`。
+
 ## 0. 推荐测试顺序
 
 如果你只是想快速判断“后端主链路是否可用”，按这个顺序测：

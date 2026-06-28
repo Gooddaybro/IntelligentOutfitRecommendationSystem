@@ -38,6 +38,12 @@ public class GlobalExceptionHandler {
         return ApiResponse.error("external_service_error", EXTERNAL_SERVICE_MESSAGE);
     }
 
+    @ExceptionHandler(RateLimitExceededException.class)
+    @ResponseStatus(HttpStatus.TOO_MANY_REQUESTS)
+    public ApiResponse<Void> handleRateLimit(RateLimitExceededException exception) {
+        return ApiResponse.error("rate_limit_exceeded", exception.getMessage());
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResponse<Void> handleValidation(MethodArgumentNotValidException exception) {

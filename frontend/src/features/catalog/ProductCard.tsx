@@ -8,10 +8,17 @@ type ProductCardProps = {
 };
 
 export function ProductCard({ candidate, onAction }: ProductCardProps) {
+  const matchLabel = candidate.rankScore !== undefined ? `AI 匹配 ${Math.round(candidate.rankScore * 100)}%` : "AI 推荐";
+
   return (
     <article className="product-card" data-testid="recommendation-card" data-sku-id={candidate.skuId}>
       <div className="product-image">
-        {candidate.mainImageUrl ? <img src={candidate.mainImageUrl} alt={candidate.name} /> : <span>暂无图片</span>}
+        {(candidate.rankScore !== undefined || candidate.recommendationReason) && <span className="ai-match-badge">{matchLabel}</span>}
+        {candidate.mainImageUrl ? (
+          <img src={candidate.mainImageUrl} alt={candidate.name} onError={(event) => { event.currentTarget.style.display = "none"; }} />
+        ) : (
+          <span>暂无图片</span>
+        )}
       </div>
       <div className="product-body">
         <div>
@@ -29,8 +36,8 @@ export function ProductCard({ candidate, onAction }: ProductCardProps) {
         </div>
         {candidate.recommendationReason && (
           <p className="recommendation-reason" data-testid="recommendation-reason">
+            <strong>推荐理由</strong>
             {candidate.recommendationReason}
-            {candidate.rankScore !== undefined && <span>匹配度 {Math.round(candidate.rankScore * 100)}%</span>}
           </p>
         )}
         <div className="product-actions">

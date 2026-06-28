@@ -82,6 +82,13 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
     }),
     [filters]
   );
+  const activePreferenceItems = [
+    filters.category && `分类：${filters.category}`,
+    filters.style && `风格：${filters.style}`,
+    filters.season && `季节：${filters.season}`,
+    filters.budgetMax && `预算：￥${filters.budgetMax} 以内`
+  ].filter(Boolean);
+  const latestUserMessage = [...messages].reverse().find((message) => message.role === "user")?.content;
 
   function orderCandidatesByRecommendations(
     candidates: RecommendationCandidate[],
@@ -227,6 +234,30 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
 
   return (
     <section className="chat-panel">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">AI 需求分析</p>
+          <h2>当前穿搭线索</h2>
+        </div>
+      </div>
+      <div className="ai-insight">
+        {activePreferenceItems.length > 0 || latestUserMessage ? (
+          <>
+            <p>AI 正在根据这些线索筛选商品：</p>
+            <ul>
+              {activePreferenceItems.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+              {latestUserMessage && <li>最近需求：{latestUserMessage}</li>}
+            </ul>
+          </>
+        ) : (
+          <>
+            <p>等待你的穿搭需求</p>
+            <span>输入场景、预算、风格后，AI 会在这里整理你的偏好线索。</span>
+          </>
+        )}
+      </div>
       <div className="filter-row">
         <label>
           <SlidersHorizontal size={16} />

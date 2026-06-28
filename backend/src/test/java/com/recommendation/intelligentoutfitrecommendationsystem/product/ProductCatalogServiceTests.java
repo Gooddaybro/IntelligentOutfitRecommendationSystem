@@ -25,6 +25,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -45,6 +46,7 @@ class ProductCatalogServiceTests {
     void setUp() {
         CacheTtlProperties cacheTtlProperties = new CacheTtlProperties();
         cacheTtlProperties.setProductDetailJitterMinutes(0);
+        cacheTtlProperties.setRecommendationCandidatesJitterMinutes(0);
         service = new ProductCatalogService(productMapper, redisCacheService, cacheTtlProperties);
     }
 
@@ -69,32 +71,32 @@ class ProductCatalogServiceTests {
     @Test
     void findRecommendationCandidatesUsesQueryDto() {
         var query = new RecommendationCandidateQuery("外套", "commute", "autumn", null, null, 400);
+        when(redisCacheService.getList(anyString(), eq(RecommendationCandidate.class)))
+                .thenReturn(Optional.empty());
         when(productMapper.findRecommendationCandidates(query))
-                .thenReturn(List.of(new RecommendationCandidate(
-                        1002L,
-                        2101L,
-                        "JACKET_COMMUTE_001",
-                        "通勤夹克",
-                        "外套",
-                        "https://example.com/jacket.jpg",
-                        "regular",
-                        "黑色",
-                        "M",
-                        "聚酯纤维",
-                        "autumn",
-                        "commute",
-                        BigDecimal.valueOf(299),
-                        "in_stock",
-                        BigDecimal.valueOf(299),
-                        BigDecimal.valueOf(399),
-                        11
-                )));
+                .thenReturn(List.of(recommendationCandidate()));
 
         var candidates = service.findRecommendationCandidates(query);
 
         assertThat(candidates).extracting(RecommendationCandidate::getSpuCode)
                 .containsExactly("JACKET_COMMUTE_001");
         verify(productMapper).findRecommendationCandidates(query);
+        verify(redisCacheService).setValue(anyString(), eq(candidates), any(Duration.class));
+    }
+
+    @Test
+    void findRecommendationCandidatesReturnsCachedListWithoutQueryingMapper() {
+        var query = new RecommendationCandidateQuery("外套", "commute", "autumn", null, null, 400);
+        List<RecommendationCandidate> cachedCandidates = List.of(recommendationCandidate());
+        when(redisCacheService.getList(anyString(), eq(RecommendationCandidate.class)))
+                .thenReturn(Optional.of(cachedCandidates));
+
+        var candidates = service.findRecommendationCandidates(query);
+
+        assertThat(candidates).extracting(RecommendationCandidate::getSpuCode)
+                .containsExactly("JACKET_COMMUTE_001");
+        verify(productMapper, never()).findRecommendationCandidates(query);
+        verify(redisCacheService, never()).setValue(any(), any(), any());
     }
 
     @Test
@@ -151,6 +153,28 @@ class ProductCatalogServiceTests {
                 null,
                 BigDecimal.valueOf(99),
                 BigDecimal.valueOf(99)
+        );
+    }
+
+    private RecommendationCandidate recommendationCandidate() {
+        return new RecommendationCandidate(
+                1002L,
+                2101L,
+                "JACKET_COMMUTE_001",
+                "通勤夹克",
+                "外套",
+                "https://example.com/jacket.jpg",
+                "regular",
+                "黑色",
+                "M",
+                "聚酯纤维",
+                "autumn",
+                "commute",
+                BigDecimal.valueOf(299),
+                "in_stock",
+                BigDecimal.valueOf(299),
+                BigDecimal.valueOf(399),
+                11
         );
     }
 }

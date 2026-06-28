@@ -3,6 +3,9 @@ package com.recommendation.intelligentoutfitrecommendationsystem.user.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.cache.CacheKeyConstants;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.cache.CacheTtlProperties;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.cache.RedisCacheService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserBodyDataRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserBodyDataResponse;
@@ -33,20 +36,38 @@ public class UserProfileService {
     };
 
     private final UserProfileMapper userProfileMapper;
+    private final RedisCacheService redisCacheService;
+    private final CacheTtlProperties cacheTtlProperties;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public UserProfileService(UserProfileMapper userProfileMapper) {
+    public UserProfileService(
+            UserProfileMapper userProfileMapper,
+            RedisCacheService redisCacheService,
+            CacheTtlProperties cacheTtlProperties
+    ) {
         this.userProfileMapper = userProfileMapper;
+        this.redisCacheService = redisCacheService;
+        this.cacheTtlProperties = cacheTtlProperties;
     }
 
     @Transactional(readOnly = true)
     public UserProfileResponse getProfile(Long userId) {
+        String cacheKey = CacheKeyConstants.userProfile(userId);
+        var cachedProfile = redisCacheService.getValue(cacheKey, UserProfileResponse.class);
+        if (cachedProfile.isPresent()) {
+            return cachedProfile.get();
+        }
+
         UserProfile profile = userProfileMapper.findProfileByUserId(userId);
+        UserProfileResponse response;
         if (profile == null) {
             // 首次进入资料页时返回空画像对象，前端可直接渲染编辑表单。
-            return new UserProfileResponse(userId, null, null, null, null);
+            response = new UserProfileResponse(userId, null, null, null, null);
+        } else {
+            response = toProfileResponse(userId, profile);
         }
-        return toProfileResponse(userId, profile);
+        redisCacheService.setValue(cacheKey, response, cacheTtlProperties.userProfileTtl());
+        return response;
     }
 
     @Transactional
@@ -63,6 +84,8 @@ public class UserProfileService {
         } else {
             userProfileMapper.updateProfile(profile);
         }
+        // 先写 MySQL，再删除缓存，保证用户画像事实源仍然是数据库。
+        redisCacheService.delete(CacheKeyConstants.userProfile(userId));
         return toProfileResponse(userId, profile);
     }
 

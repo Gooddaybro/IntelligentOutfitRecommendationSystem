@@ -67,7 +67,11 @@ export function CartPage({ items, onItemsChange, onOrderCreated }: CartPageProps
                 }
               />
               <div className="product-image small">
-                {item.mainImageUrl ? <img src={item.mainImageUrl} alt={item.name} /> : <span>暂无图片</span>}
+                {item.mainImageUrl ? (
+                  <img src={item.mainImageUrl} alt={item.name} onError={(event) => { event.currentTarget.style.display = "none"; }} />
+                ) : (
+                  <span>暂无图片</span>
+                )}
               </div>
               <div className="cart-main">
                 <h3>{item.name}</h3>

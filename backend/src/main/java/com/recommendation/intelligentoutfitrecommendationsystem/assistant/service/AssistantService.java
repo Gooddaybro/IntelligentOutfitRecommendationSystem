@@ -53,6 +53,7 @@ public class AssistantService {
 
     private final ConversationService conversationService;
     private final AssistantContextService assistantContextService;
+    private final AssistantRateLimitService assistantRateLimitService;
     private final PythonAssistantClient pythonAssistantClient;
     private final PythonAssistantStreamClient pythonAssistantStreamClient;
     private final Executor assistantStreamingExecutor;
@@ -61,6 +62,7 @@ public class AssistantService {
     public AssistantService(
             ConversationService conversationService,
             AssistantContextService assistantContextService,
+            AssistantRateLimitService assistantRateLimitService,
             PythonAssistantClient pythonAssistantClient,
             PythonAssistantStreamClient pythonAssistantStreamClient,
             @Qualifier("assistantStreamingExecutor") Executor assistantStreamingExecutor,
@@ -68,6 +70,7 @@ public class AssistantService {
     ) {
         this.conversationService = conversationService;
         this.assistantContextService = assistantContextService;
+        this.assistantRateLimitService = assistantRateLimitService;
         this.pythonAssistantClient = pythonAssistantClient;
         this.pythonAssistantStreamClient = pythonAssistantStreamClient;
         this.assistantStreamingExecutor = assistantStreamingExecutor;
@@ -75,6 +78,7 @@ public class AssistantService {
     }
 
     public AssistantChatResponse chat(Long userId, AssistantChatRequest request) {
+        assistantRateLimitService.assertAllowed(userId);
         String threadId = resolveThreadId(userId, request);
         String requestId = MDC.get("requestId");
 
@@ -106,6 +110,7 @@ public class AssistantService {
      * @return Spring MVC SSE emitter，由后台执行器继续推送 token/done/error
      */
     public SseEmitter streamChat(Long userId, AssistantChatRequest request) {
+        assistantRateLimitService.assertAllowed(userId);
         String threadId = resolveThreadId(userId, request);
         String requestId = MDC.get("requestId");
 

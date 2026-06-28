@@ -1,4 +1,4 @@
-import { Bot, LogOut, PackageSearch, ReceiptText, ShoppingCart } from "lucide-react";
+import { Bot, Layers3, LogOut, PackageSearch, ReceiptText, ShoppingCart } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useAssistantShoppingState } from "../features/assistant/assistantState";
 import { AuthPanel } from "../features/auth/AuthPanel";
@@ -53,19 +53,22 @@ export function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div>
-          <p className="eyebrow">Intelligent Outfit Recommendation System</p>
-          <h1>AI 服装导购工作台</h1>
+        <div className="brand-lockup">
+          <Layers3 size={26} />
+          <div>
+            <p className="brand-title">AI Outfit <span>Stylist</span></p>
+            <p className="eyebrow">智能服装导购工作台</p>
+          </div>
         </div>
         <nav className="topnav" aria-label="主导航">
           <button
             className={view === "ai" ? "active" : ""}
             data-testid="nav-ai"
             onClick={() => setView("ai")}
-            title="AI 推荐"
+            title="AI 导购工作台"
           >
             <Bot size={18} />
-            <span>AI 推荐</span>
+            <span>AI 导购工作台</span>
           </button>
           <button
             className={view === "browse" ? "active" : ""}
@@ -74,7 +77,7 @@ export function App() {
             title="传统浏览"
           >
             <PackageSearch size={18} />
-            <span>传统浏览</span>
+            <span>商品中心</span>
           </button>
           <button
             className={view === "cart" ? "active" : ""}

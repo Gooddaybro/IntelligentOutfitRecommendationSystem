@@ -14,8 +14,13 @@ import com.recommendation.intelligentoutfitrecommendationsystem.product.model.Re
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.SkuSearchItem;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -87,8 +92,15 @@ public class ProductCatalogService {
         if (query.getBudgetMax() != null && query.getBudgetMax() < 0) {
             throw new BadRequestException("budgetMax must not be negative");
         }
+        String cacheKey = recommendationCandidatesCacheKey(query);
+        var cachedCandidates = redisCacheService.getList(cacheKey, RecommendationCandidate.class);
+        if (cachedCandidates.isPresent()) {
+            return cachedCandidates.get();
+        }
         // Java 只负责提供可靠候选商品池，最终自然语言解释和个性化排序交给 Python AI 服务。
-        return productMapper.findRecommendationCandidates(query);
+        List<RecommendationCandidate> candidates = productMapper.findRecommendationCandidates(query);
+        redisCacheService.setValue(cacheKey, candidates, cacheTtlProperties.recommendationCandidatesTtl());
+        return candidates;
     }
 
     private Map<String, String> toAttributesMap(List<ProductAttributeItem> attributes) {
@@ -97,5 +109,37 @@ public class ProductCatalogService {
             result.put(attribute.getAttrName(), attribute.getAttrValue());
         }
         return result;
+    }
+
+    private String recommendationCandidatesCacheKey(RecommendationCandidateQuery query) {
+        return CacheKeyConstants.recommendationCandidates(sha256Hex(canonicalRecommendationQuery(query)));
+    }
+
+    private String canonicalRecommendationQuery(RecommendationCandidateQuery query) {
+        return String.join("|",
+                "category=" + normalizeQueryPart(query.getCategory()),
+                "style=" + normalizeQueryPart(query.getStyle()),
+                "season=" + normalizeQueryPart(query.getSeason()),
+                "material=" + normalizeQueryPart(query.getMaterial()),
+                "fit=" + normalizeQueryPart(query.getFit()),
+                "budgetMax=" + (query.getBudgetMax() == null ? "" : query.getBudgetMax().toString())
+        );
+    }
+
+    private String normalizeQueryPart(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String sha256Hex(String value) {
+        try {
+            MessageDigest messageDigest = MessageDigest.getInstance("SHA-256");
+            byte[] digest = messageDigest.digest(value.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 algorithm is required for recommendation cache keys", exception);
+        }
     }
 }

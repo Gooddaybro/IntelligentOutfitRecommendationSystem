@@ -61,7 +61,11 @@ export function ProductBrowsePage({ onAction }: ProductBrowsePageProps) {
           {products.map((product) => (
             <article key={product.spuId} className="browse-summary-row">
               <div className="product-image small">
-                {product.mainImageUrl ? <img src={product.mainImageUrl} alt={product.name} /> : <span>暂无图片</span>}
+                {product.mainImageUrl ? (
+                  <img src={product.mainImageUrl} alt={product.name} onError={(event) => { event.currentTarget.style.display = "none"; }} />
+                ) : (
+                  <span>暂无图片</span>
+                )}
               </div>
               <div>
                 <h3>{product.name}</h3>

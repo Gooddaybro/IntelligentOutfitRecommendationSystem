@@ -10,6 +10,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.Py
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonProductRef;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.AssistantContextService;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.AssistantRateLimitService;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.AssistantService;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.ConversationResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.MessageResponse;
@@ -51,6 +52,9 @@ class AssistantServiceTests {
 
     @Mock
     private AssistantContextService assistantContextService;
+
+    @Mock
+    private AssistantRateLimitService assistantRateLimitService;
 
     @Mock
     private PythonAssistantClient pythonAssistantClient;
@@ -134,6 +138,7 @@ class AssistantServiceTests {
                 .containsExactly(tuple(1001L, 2001L, "fits the requested commute style"));
 
         InOrder order = inOrder(conversationService, assistantContextService, pythonAssistantClient);
+        verify(assistantRateLimitService).assertAllowed(10L);
         order.verify(conversationService).createConversation(10L, "recommend a warm jacket");
         order.verify(conversationService).appendMessage(10L, "th_service_001", "user", "recommend a warm jacket", "req-ai-service-test");
         order.verify(assistantContextService).buildContext(10L, "th_service_001", request);
@@ -217,6 +222,7 @@ class AssistantServiceTests {
         AssistantChatResponse response = newAssistantService().chat(10L, request);
 
         assertThat(response.recommendedSpuIds()).containsExactly(1001L);
+        verify(assistantRateLimitService).assertAllowed(10L);
         assertThat(response.recommendedItems())
                 .extracting("spuId", "skuId", "reason")
                 .containsExactly(tuple(1001L, 2001L, "known candidate"));
@@ -264,6 +270,7 @@ class AssistantServiceTests {
         });
 
         InOrder order = inOrder(conversationService, assistantContextService, pythonAssistantStreamClient);
+        verify(assistantRateLimitService).assertAllowed(10L);
         order.verify(conversationService).requireConversation(10L, "th_stream_existing");
         order.verify(conversationService).appendMessage(
                 10L,
@@ -317,6 +324,7 @@ class AssistantServiceTests {
         assertThat(handlerRef).hasValueSatisfying(handler ->
                 handler.onError("python_stream_error", "AI assistant stream failed")
         );
+        verify(assistantRateLimitService).assertAllowed(10L);
         verify(conversationService).appendMessage(
                 10L,
                 "th_stream_error",
@@ -337,6 +345,7 @@ class AssistantServiceTests {
         return new AssistantService(
                 conversationService,
                 assistantContextService,
+                assistantRateLimitService,
                 pythonAssistantClient,
                 pythonAssistantStreamClient,
                 directExecutor,
