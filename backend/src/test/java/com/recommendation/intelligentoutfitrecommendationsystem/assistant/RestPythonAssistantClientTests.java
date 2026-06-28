@@ -95,7 +95,11 @@ class RestPythonAssistantClientTests {
                         "regular",
                         List.of("autumn"),
                         List.of("commute"),
-                        null
+                        null,
+                        "SPU-123",
+                        "SKU-456",
+                        7,
+                        List.of("适用场景:通勤")
                 )),
                 false
         );

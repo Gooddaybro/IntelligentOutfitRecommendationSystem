@@ -31,6 +31,7 @@ export type ProductSearchItem = {
 export type RecommendationCandidate = {
   spuId: number;
   skuId: number;
+  skuCode?: string;
   spuCode: string;
   name: string;
   categoryName: string;
@@ -41,11 +42,13 @@ export type RecommendationCandidate = {
   materials?: string;
   seasons?: string;
   styleTags?: string;
+  attributeTags?: string;
   salePrice: number;
   stockStatus?: string;
   minPrice?: number;
   maxPrice?: number;
   totalAvailableStock?: number;
+  availableStock?: number;
   recommendationReason?: string;
   rankScore?: number;
 };

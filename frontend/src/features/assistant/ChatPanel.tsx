@@ -45,6 +45,12 @@ export const initialChatMessages: ChatMessage[] = [
 
 export const initialChatFilters: ChatFilters = { category: "", style: "", season: "", budgetMax: "" };
 
+export function inferBudgetMaxFromMessage(message: string): number | undefined {
+  const match = message.match(/(?:预算\s*)?(\d{2,5})\s*(?:以内|以下|内)|不超过\s*(\d{2,5})/);
+  const value = match?.[1] ?? match?.[2];
+  return value ? Number(value) : undefined;
+}
+
 type ChatPanelProps = {
   onRecommendations: (items: RecommendationCandidate[], meta?: RecommendationResultMeta) => void;
   state?: ChatPanelState;
@@ -89,6 +95,13 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
     filters.budgetMax && `预算：￥${filters.budgetMax} 以内`
   ].filter(Boolean);
   const latestUserMessage = [...messages].reverse().find((message) => message.role === "user")?.content;
+
+  function buildEffectiveRequestFilters(message: string) {
+    return {
+      ...requestFilters,
+      budgetMax: requestFilters.budgetMax ?? inferBudgetMaxFromMessage(message)
+    };
+  }
 
   function orderCandidatesByRecommendations(
     candidates: RecommendationCandidate[],
@@ -146,8 +159,12 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
     };
   }
 
-  async function updateRecommendations(spuIds: number[], recommendedItems: RecommendedItem[] = []) {
-    const candidates = await api.recommendationCandidates(requestFilters);
+  async function updateRecommendations(
+    spuIds: number[],
+    recommendedItems: RecommendedItem[] = [],
+    effectiveRequestFilters: Partial<AssistantChatRequest> = requestFilters
+  ) {
+    const candidates = await api.recommendationCandidates(effectiveRequestFilters);
     onRecommendations(orderCandidatesByRecommendations(candidates, spuIds, recommendedItems), {
       hasAiResult: true,
       hasStrongMatch: spuIds.length > 0 || recommendedItems.length > 0,
@@ -167,10 +184,11 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
     setMessages((current) => [...current, { role: "user", content: message }, { role: "assistant", content: "" }]);
     setIsStreaming(true);
     abortRef.current = new AbortController();
+    const effectiveRequestFilters = buildEffectiveRequestFilters(message);
 
     try {
       await streamAssistantChat(
-        { ...requestFilters, threadId, message },
+        { ...effectiveRequestFilters, threadId, message },
         async (event) => {
           if (event.type === "thread") {
             setThreadId(event.threadId);
@@ -184,7 +202,7 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
             });
           }
           if (event.type === "recommendation") {
-            await updateRecommendations(event.spuIds, event.recommendedItems);
+            await updateRecommendations(event.spuIds, event.recommendedItems, effectiveRequestFilters);
           }
           if (event.type === "done") {
             if (event.threadId) {
@@ -198,7 +216,7 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
                 return next;
               });
             }
-            await updateRecommendations(event.spuIds, event.recommendedItems);
+            await updateRecommendations(event.spuIds, event.recommendedItems, effectiveRequestFilters);
           }
           if (event.type === "error") {
             setError(event.message);
@@ -218,14 +236,14 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
       }
 
       setError(streamError instanceof Error ? streamError.message : "AI 响应失败");
-      const fallback = await api.chat({ ...requestFilters, threadId, message });
+      const fallback = await api.chat({ ...effectiveRequestFilters, threadId, message });
       setThreadId(fallback.threadId);
       setMessages((current) => {
         const next = [...current];
         next[next.length - 1] = { role: "assistant", content: fallback.answer };
         return next;
       });
-      await updateRecommendations(fallback.recommendedSpuIds, fallback.recommendedItems ?? []);
+      await updateRecommendations(fallback.recommendedSpuIds, fallback.recommendedItems ?? [], effectiveRequestFilters);
     } finally {
       setIsStreaming(false);
       abortRef.current = null;

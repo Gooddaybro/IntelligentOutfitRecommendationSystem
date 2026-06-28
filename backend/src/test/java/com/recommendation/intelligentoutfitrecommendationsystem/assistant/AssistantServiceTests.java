@@ -113,7 +113,10 @@ class AssistantServiceTests {
                         "in_stock",
                         new BigDecimal("299.0"),
                         new BigDecimal("399.0"),
-                        8
+                        8,
+                        "JACKET-COMMUTE-BLK-L",
+                        8,
+                        "场景:通勤,风格:百搭,厚度:轻薄,搭配难度:好搭"
                 ))
         );
         MDC.put("requestId", "req-ai-service-test");
@@ -167,6 +170,11 @@ class AssistantServiceTests {
         assertThat(pythonRequest.candidates().get(0).stockStatus()).isEqualTo("in_stock");
         assertThat(pythonRequest.candidates().get(0).color()).isEqualTo("黑色");
         assertThat(pythonRequest.candidates().get(0).size()).isEqualTo("L");
+        assertThat(pythonRequest.candidates().get(0).spuCode()).isEqualTo("SPU-1001");
+        assertThat(pythonRequest.candidates().get(0).skuCode()).isEqualTo("JACKET-COMMUTE-BLK-L");
+        assertThat(pythonRequest.candidates().get(0).availableStock()).isEqualTo(8);
+        assertThat(pythonRequest.candidates().get(0).attributeTags())
+                .containsExactly("场景:通勤", "风格:百搭", "厚度:轻薄", "搭配难度:好搭");
     }
 
     @Test
@@ -203,7 +211,10 @@ class AssistantServiceTests {
                         "in_stock",
                         new BigDecimal("299.0"),
                         new BigDecimal("399.0"),
-                        8
+                        8,
+                        "JACKET-COMMUTE-BLK-L",
+                        8,
+                        "适用场景:通勤"
                 ))
         );
 

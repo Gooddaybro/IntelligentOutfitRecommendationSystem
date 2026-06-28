@@ -33,4 +33,7 @@ public class RecommendationCandidate {
     private BigDecimal minPrice;
     private BigDecimal maxPrice;
     private Integer totalAvailableStock;
+    private String skuCode;
+    private Integer availableStock;
+    private String attributeTags;
 }

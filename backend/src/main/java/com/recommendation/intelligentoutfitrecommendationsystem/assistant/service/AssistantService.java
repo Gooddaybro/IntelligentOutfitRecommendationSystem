@@ -228,7 +228,11 @@ public class AssistantService {
                         candidate.getFitType(),
                         csvValues(candidate.getSeasons()),
                         csvValues(candidate.getStyleTags()),
-                        candidate.getMainImageUrl()
+                        candidate.getMainImageUrl(),
+                        candidate.getSpuCode(),
+                        candidate.getSkuCode(),
+                        candidate.getAvailableStock(),
+                        csvValues(candidate.getAttributeTags())
                 ))
                 .toList();
     }

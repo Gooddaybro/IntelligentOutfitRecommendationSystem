@@ -22,6 +22,10 @@ public record PythonProductCandidate(
         @JsonProperty("fit_type") String fitType,
         @JsonProperty("season") List<String> season,
         @JsonProperty("style_tags") List<String> styleTags,
-        @JsonProperty("main_image_url") String mainImageUrl
+        @JsonProperty("main_image_url") String mainImageUrl,
+        @JsonProperty("spu_code") String spuCode,
+        @JsonProperty("sku_code") String skuCode,
+        @JsonProperty("available_stock") Integer availableStock,
+        @JsonProperty("attribute_tags") List<String> attributeTags
 ) {
 }

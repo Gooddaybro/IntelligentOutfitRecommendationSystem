@@ -174,7 +174,10 @@ class ProductCatalogServiceTests {
                 "in_stock",
                 BigDecimal.valueOf(299),
                 BigDecimal.valueOf(399),
-                11
+                11,
+                "JACKET_COMMUTE_001-BLK-M",
+                11,
+                "适用场景:通勤"
         );
     }
 }

@@ -22,6 +22,9 @@
         <result property="minPrice" column="min_price"/>
         <result property="maxPrice" column="max_price"/>
         <result property="totalAvailableStock" column="total_available_stock"/>
+        <result property="skuCode" column="sku_code"/>
+        <result property="availableStock" column="available_stock"/>
+        <result property="attributeTags" column="attribute_tags"/>
     </resultMap>
 
     <select id="searchProducts" resultType="com.recommendation.intelligentoutfitrecommendationsystem.product.model.ProductSearchItem">
@@ -96,7 +99,7 @@
 
     <!--
         给商城前端和 Python AI 推荐服务提供候选商品池。
-        这里只筛出上架、有库存、符合用户筛选条件的 SPU；自然语言解释和个性化排序由 Python AI 服务完成。
+        这里返回 SKU 级候选，保证 Python 推荐出的 sku_id、颜色、尺码、库存都能追溯到真实可购买规格。
     -->
     <select id="findRecommendationCandidates" resultMap="RecommendationCandidateMap">
         <bind name="categoryValue" value="query.category == null ? null : query.category.trim()" />
@@ -106,14 +109,15 @@
         <bind name="fitValue" value="query.fit == null ? null : query.fit.trim()" />
         SELECT
             p.id AS spu_id,
-            MIN(sku.id) AS sku_id,
+            sku.id AS sku_id,
+            sku.sku_code,
             p.spu_code,
             p.name,
             c.name AS category_name,
             p.main_image_url,
             f.name AS fit_type,
-            MIN(co.name) AS color,
-            MIN(so.code) AS size,
+            co.name AS color,
+            so.code AS size,
             (
                 <!-- 候选列表使用逗号拼接，减少 Python AI 服务构建候选摘要时的二次查询。 -->
                 SELECT GROUP_CONCAT(m.name ORDER BY m.id SEPARATOR ',')
@@ -133,11 +137,33 @@
                 JOIN style_tag st ON st.id = pst.style_tag_id
                 WHERE pst.spu_id = p.id
             ) AS style_tags,
-            MIN(sku.sale_price) AS sale_price,
-            CASE WHEN COALESCE(SUM(inv.available_stock), 0) &gt; 0 THEN 'in_stock' ELSE 'out_of_stock' END AS stock_status,
-            MIN(sku.sale_price) AS min_price,
-            MAX(sku.sale_price) AS max_price,
-            COALESCE(SUM(inv.available_stock), 0) AS total_available_stock
+            (
+                SELECT GROUP_CONCAT(CONCAT(pa.attr_name, ':', pa.attr_value) ORDER BY pa.id SEPARATOR ',')
+                FROM product_attribute pa
+                WHERE pa.spu_id = p.id
+            ) AS attribute_tags,
+            sku.sale_price,
+            CASE WHEN COALESCE(inv.available_stock, 0) &gt; 0 THEN 'in_stock' ELSE 'out_of_stock' END AS stock_status,
+            (
+                SELECT MIN(inner_sku.sale_price)
+                FROM product_sku inner_sku
+                WHERE inner_sku.spu_id = p.id
+                  AND inner_sku.status = 'on_sale'
+            ) AS min_price,
+            (
+                SELECT MAX(inner_sku.sale_price)
+                FROM product_sku inner_sku
+                WHERE inner_sku.spu_id = p.id
+                  AND inner_sku.status = 'on_sale'
+            ) AS max_price,
+            (
+                SELECT COALESCE(SUM(inner_inv.available_stock), 0)
+                FROM product_sku inner_sku
+                LEFT JOIN inventory inner_inv ON inner_inv.sku_id = inner_sku.id
+                WHERE inner_sku.spu_id = p.id
+                  AND inner_sku.status = 'on_sale'
+            ) AS total_available_stock,
+            COALESCE(inv.available_stock, 0) AS available_stock
         FROM product_spu p
         JOIN category c ON c.id = p.category_id
         LEFT JOIN fit_type f ON f.id = p.fit_type_id
@@ -177,14 +203,13 @@
                 WHERE pm.spu_id = p.id AND m.name = #{materialValue}
             )
         </if>
-        GROUP BY p.id, p.spu_code, p.name, c.name, p.main_image_url, f.name
         <!-- 推荐候选必须有可售库存，避免 AI 推荐用户无法购买的商品。 -->
-        HAVING COALESCE(SUM(inv.available_stock), 0) &gt; 0
+          AND COALESCE(inv.available_stock, 0) &gt; 0
         <if test="query.budgetMax != null">
-            AND MIN(sku.sale_price) &lt;= #{query.budgetMax}
+          AND sku.sale_price &lt;= #{query.budgetMax}
         </if>
         <!-- 库存优先、价格次之、ID 兜底，保证候选结果稳定且更偏向可购买商品。 -->
-        ORDER BY total_available_stock DESC, min_price ASC, p.id ASC
+        ORDER BY available_stock DESC, sku.sale_price ASC, p.id ASC, sku.id ASC
     </select>
 
     <select id="findMaterials" resultType="java.lang.String">

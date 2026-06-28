@@ -7,6 +7,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -47,6 +48,9 @@ class ProductControllerTests {
                         .param("budgetMax", "400"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[*].spuCode", hasItem("JACKET_COMMUTE_001")))
+                .andExpect(jsonPath("$.data[0].skuCode").isNotEmpty())
+                .andExpect(jsonPath("$.data[0].availableStock").isNumber())
+                .andExpect(jsonPath("$.data[0].attributeTags", containsString("场景:通勤")))
                 .andExpect(jsonPath("$.data[0].mainImageUrl").value("/images/products/jacket-commute-main.svg"));
     }
 }

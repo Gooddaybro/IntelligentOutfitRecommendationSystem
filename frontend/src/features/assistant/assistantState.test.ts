@@ -3,6 +3,7 @@ import {
   assistantShoppingReducer,
   initialAssistantShoppingState
 } from "./assistantState";
+import { inferBudgetMaxFromMessage } from "./ChatPanel";
 
 describe("assistant shopping state", () => {
   it("updates chat fields through reducer transitions", () => {
@@ -26,5 +27,11 @@ describe("assistant shopping state", () => {
 
     expect(withRecommendations.recommendationMeta?.recommendedItems?.[0].reason).toBe("预算匹配");
     expect(assistantShoppingReducer(withRecommendations, { type: "reset" })).toEqual(initialAssistantShoppingState);
+  });
+
+  it("infers budget max from natural language prompt", () => {
+    expect(inferBudgetMaxFromMessage("学生党想要平价百搭，预算500以内")).toBe(500);
+    expect(inferBudgetMaxFromMessage("不超过 300")).toBe(300);
+    expect(inferBudgetMaxFromMessage("显高显瘦")).toBeUndefined();
   });
 });
