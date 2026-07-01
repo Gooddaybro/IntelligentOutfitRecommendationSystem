@@ -22,4 +22,19 @@ public class RecommendationCandidateQuery {
      * 预算上限，对应商品销售价的数据库货币单位。
      */
     private Integer budgetMax;
+    /**
+     * Target gender for hard candidate filtering: male or female.
+     */
+    private String gender;
+
+    public RecommendationCandidateQuery(
+            String category,
+            String style,
+            String season,
+            String material,
+            String fit,
+            Integer budgetMax
+    ) {
+        this(category, style, season, material, fit, budgetMax, null);
+    }
 }

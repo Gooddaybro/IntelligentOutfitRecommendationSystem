@@ -5,10 +5,13 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.servic
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationService;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.dto.RecommendationCandidateQuery;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.service.ProductCatalogService;
+import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserBodyDataResponse;
+import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserProfileResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.service.UserProfileService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -78,5 +81,116 @@ class AssistantContextServiceTests {
         ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
         verify(productCatalogService).findRecommendationCandidates(captor.capture());
         assertThat(captor.getValue().getBudgetMax()).isEqualTo(300);
+    }
+
+    @Test
+    void messageMaleDemandSetsRecommendationGenderToMale() {
+        UserProfileService userProfileService = mock(UserProfileService.class);
+        ProductCatalogService productCatalogService = mock(ProductCatalogService.class);
+        ConversationService conversationService = mock(ConversationService.class);
+        AssistantContextService service = new AssistantContextService(
+                userProfileService,
+                productCatalogService,
+                conversationService
+        );
+        AssistantChatRequest request = new AssistantChatRequest(
+                null,
+                "男生 显高显瘦",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
+        when(productCatalogService.findRecommendationCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
+
+        service.buildContext(10L, "thread-gender", request);
+
+        ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
+        verify(productCatalogService).findRecommendationCandidates(captor.capture());
+        assertThat(captor.getValue().getGender()).isEqualTo("male");
+    }
+
+    @Test
+    void messageFemaleRecipientOverridesMaleProfileGender() {
+        UserProfileService userProfileService = mock(UserProfileService.class);
+        ProductCatalogService productCatalogService = mock(ProductCatalogService.class);
+        ConversationService conversationService = mock(ConversationService.class);
+        AssistantContextService service = new AssistantContextService(
+                userProfileService,
+                productCatalogService,
+                conversationService
+        );
+        AssistantChatRequest request = new AssistantChatRequest(
+                null,
+                "给女朋友买一件通勤半裙",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        when(userProfileService.getProfile(10L))
+                .thenReturn(new UserProfileResponse(10L, "demo", null, "male", null));
+        when(userProfileService.getBodyData(10L))
+                .thenReturn(new UserBodyDataResponse(10L, null, null, "male", null, null, null, null, null));
+        when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
+        when(productCatalogService.findRecommendationCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
+
+        service.buildContext(10L, "thread-gender", request);
+
+        ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
+        verify(productCatalogService).findRecommendationCandidates(captor.capture());
+        assertThat(captor.getValue().getGender()).isEqualTo("female");
+    }
+
+    @Test
+    void profileGenderIsUsedWhenMessageDoesNotMentionGender() {
+        UserProfileService userProfileService = mock(UserProfileService.class);
+        ProductCatalogService productCatalogService = mock(ProductCatalogService.class);
+        ConversationService conversationService = mock(ConversationService.class);
+        AssistantContextService service = new AssistantContextService(
+                userProfileService,
+                productCatalogService,
+                conversationService
+        );
+        AssistantChatRequest request = new AssistantChatRequest(
+                null,
+                "想要一件通勤外套",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        when(userProfileService.getProfile(10L))
+                .thenReturn(new UserProfileResponse(10L, "demo", null, "female", null));
+        when(userProfileService.getBodyData(10L))
+                .thenReturn(new UserBodyDataResponse(
+                        10L,
+                        BigDecimal.valueOf(164),
+                        BigDecimal.valueOf(52),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null
+                ));
+        when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
+        when(productCatalogService.findRecommendationCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
+
+        service.buildContext(10L, "thread-gender", request);
+
+        ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
+        verify(productCatalogService).findRecommendationCandidates(captor.capture());
+        assertThat(captor.getValue().getGender()).isEqualTo("female");
     }
 }

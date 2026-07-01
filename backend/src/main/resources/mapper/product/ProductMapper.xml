@@ -107,6 +107,7 @@
         <bind name="seasonValue" value="query.season == null ? null : query.season.trim()" />
         <bind name="materialValue" value="query.material == null ? null : query.material.trim()" />
         <bind name="fitValue" value="query.fit == null ? null : query.fit.trim()" />
+        <bind name="genderValue" value="query.gender == null ? null : query.gender.trim().toLowerCase()" />
         SELECT
             p.id AS spu_id,
             sku.id AS sku_id,
@@ -201,6 +202,15 @@
                 FROM product_material pm
                 JOIN material m ON m.id = pm.material_id
                 WHERE pm.spu_id = p.id AND m.name = #{materialValue}
+            )
+        </if>
+        <if test="genderValue != null and genderValue != ''">
+            AND EXISTS (
+                SELECT 1
+                FROM product_attribute gender_attr
+                WHERE gender_attr.spu_id = p.id
+                  AND gender_attr.attr_name = '适用性别'
+                  AND gender_attr.attr_value IN (#{genderValue}, 'unisex')
             )
         </if>
         <!-- 推荐候选必须有可售库存，避免 AI 推荐用户无法购买的商品。 -->

@@ -131,6 +131,7 @@ public class ProductCatalogService {
                 "season=" + normalizeQueryPart(query.getSeason()),
                 "material=" + normalizeQueryPart(query.getMaterial()),
                 "fit=" + normalizeQueryPart(query.getFit()),
+                "gender=" + normalizeQueryPart(query.getGender()),
                 "budgetMax=" + (query.getBudgetMax() == null ? "" : query.getBudgetMax().toString())
         );
     }

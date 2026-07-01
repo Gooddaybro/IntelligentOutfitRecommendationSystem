@@ -14,6 +14,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.product.model.Sk
 import com.recommendation.intelligentoutfitrecommendationsystem.product.service.ProductCatalogService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -128,6 +129,27 @@ class ProductCatalogServiceTests {
                 .containsExactly("JACKET_COMMUTE_001");
         verify(productMapper, never()).findRecommendationCandidates(query);
         verify(redisCacheService, never()).setValue(any(), any(), any());
+    }
+
+    @Test
+    void findRecommendationCandidatesUsesDifferentCacheKeysForDifferentGenderFilters() {
+        var maleQuery = new RecommendationCandidateQuery(null, null, null, null, null, 400, "male");
+        var femaleQuery = new RecommendationCandidateQuery(null, null, null, null, null, 400, "female");
+        when(redisCacheService.getList(anyString(), eq(RecommendationCandidate.class)))
+                .thenReturn(Optional.empty());
+        when(productMapper.findRecommendationCandidates(maleQuery))
+                .thenReturn(List.of(recommendationCandidate()));
+        when(productMapper.findRecommendationCandidates(femaleQuery))
+                .thenReturn(List.of(recommendationCandidate()));
+
+        service.findRecommendationCandidates(maleQuery);
+        service.findRecommendationCandidates(femaleQuery);
+
+        ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
+        verify(redisCacheService, org.mockito.Mockito.times(2))
+                .getList(keyCaptor.capture(), eq(RecommendationCandidate.class));
+        assertThat(keyCaptor.getAllValues()).hasSize(2);
+        assertThat(keyCaptor.getAllValues().get(0)).isNotEqualTo(keyCaptor.getAllValues().get(1));
     }
 
     @Test

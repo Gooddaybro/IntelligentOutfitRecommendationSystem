@@ -17,9 +17,22 @@ public record AssistantChatRequest(
         String season,
         String material,
         String fit,
+        String gender,
         /**
          * 预算上限，对应商品销售价的数据库货币单位。
          */
         @PositiveOrZero Integer budgetMax
 ) {
+    public AssistantChatRequest(
+            String threadId,
+            String message,
+            String category,
+            String style,
+            String season,
+            String material,
+            String fit,
+            Integer budgetMax
+    ) {
+        this(threadId, message, category, style, season, material, fit, null, budgetMax);
+    }
 }

@@ -111,4 +111,24 @@ class ProductCatalogMapperTests {
                         .contains("材质特征:柔软")
                         .contains("搭配难度:好搭"));
     }
+
+    @Test
+    void findRecommendationCandidatesStronglyFiltersFemaleProductsForMaleDemand() {
+        var query = new RecommendationCandidateQuery(null, null, null, null, null, 400, "male");
+
+        var candidates = mapper.findRecommendationCandidates(query);
+
+        assertThat(candidates).isNotEmpty();
+        assertThat(candidates).noneMatch(candidate -> candidate.getSpuCode().contains("SKIRT"));
+    }
+
+    @Test
+    void findRecommendationCandidatesAllowsFemaleProductsForFemaleDemand() {
+        var query = new RecommendationCandidateQuery(null, null, null, null, null, 400, "female");
+
+        var candidates = mapper.findRecommendationCandidates(query);
+
+        assertThat(candidates).anyMatch(candidate -> candidate.getSpuCode().contains("SKIRT"));
+        assertThat(candidates).noneMatch(candidate -> candidate.getSpuCode().contains("OXFORD_SHIRT"));
+    }
 }
