@@ -11,6 +11,10 @@ public final class CacheKeyConstants {
         return "product:detail:" + spuId;
     }
 
+    public static String productSearch(String normalizedKeyword) {
+        return "product:search:" + normalizedKeyword;
+    }
+
     public static String userProfile(Long userId) {
         return "user:profile:" + userId;
     }

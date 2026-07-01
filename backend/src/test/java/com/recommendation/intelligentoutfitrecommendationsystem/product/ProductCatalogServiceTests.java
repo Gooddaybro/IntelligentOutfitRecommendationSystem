@@ -8,6 +8,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.product.dto.Reco
 import com.recommendation.intelligentoutfitrecommendationsystem.product.mapper.ProductMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.ProductAttributeItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.ProductDetail;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.model.ProductSearchItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.SkuSearchItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.service.ProductCatalogService;
@@ -66,6 +67,36 @@ class ProductCatalogServiceTests {
         assertThatThrownBy(() -> service.findSku(1001L, " ", "L"))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessage("color must not be blank");
+    }
+
+    @Test
+    void searchProductsReturnsCachedListWithoutQueryingMapper() {
+        List<ProductSearchItem> cachedProducts = List.of(productSearchItem());
+        when(redisCacheService.getList(anyString(), eq(ProductSearchItem.class)))
+                .thenReturn(Optional.of(cachedProducts));
+
+        var products = service.searchProducts(" TSHIRT_BASIC_001 ");
+
+        assertThat(products).extracting(ProductSearchItem::getSpuCode)
+                .containsExactly("TSHIRT_BASIC_001");
+        verify(productMapper, never()).searchProducts(any());
+        verify(redisCacheService, never()).setValue(any(), any(), any());
+    }
+
+    @Test
+    void searchProductsCachesMapperResultOnMiss() {
+        List<ProductSearchItem> mapperProducts = List.of(productSearchItem());
+        when(redisCacheService.getList(anyString(), eq(ProductSearchItem.class)))
+                .thenReturn(Optional.empty());
+        when(productMapper.searchProducts("TSHIRT_BASIC_001"))
+                .thenReturn(mapperProducts);
+
+        var products = service.searchProducts(" TSHIRT_BASIC_001 ");
+
+        assertThat(products).extracting(ProductSearchItem::getSpuCode)
+                .containsExactly("TSHIRT_BASIC_001");
+        verify(productMapper).searchProducts("TSHIRT_BASIC_001");
+        verify(redisCacheService).setValue(anyString(), eq(mapperProducts), any(Duration.class));
     }
 
     @Test
@@ -151,6 +182,19 @@ class ProductCatalogServiceTests {
                 null,
                 null,
                 null,
+                BigDecimal.valueOf(99),
+                BigDecimal.valueOf(99)
+        );
+    }
+
+    private ProductSearchItem productSearchItem() {
+        return new ProductSearchItem(
+                1001L,
+                "TSHIRT_BASIC_001",
+                "Basic T-shirt",
+                "T-shirt",
+                "/images/products/tshirt-basic-main.svg",
+                "regular",
                 BigDecimal.valueOf(99),
                 BigDecimal.valueOf(99)
         );

@@ -44,7 +44,16 @@ public class ProductCatalogService {
     }
 
     public List<ProductSearchItem> searchProducts(String keyword) {
-        return productMapper.searchProducts(keyword);
+        String normalizedKeyword = normalizeQueryPart(keyword);
+        String mapperKeyword = keyword == null ? null : keyword.trim();
+        String cacheKey = CacheKeyConstants.productSearch(normalizedKeyword);
+        var cachedProducts = redisCacheService.getList(cacheKey, ProductSearchItem.class);
+        if (cachedProducts.isPresent()) {
+            return cachedProducts.get();
+        }
+        List<ProductSearchItem> products = productMapper.searchProducts(mapperKeyword);
+        redisCacheService.setValue(cacheKey, products, cacheTtlProperties.productSearchTtl());
+        return products;
     }
 
     public ProductDetail getProductDetail(Long spuId) {

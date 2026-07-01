@@ -12,6 +12,8 @@ import java.util.concurrent.ThreadLocalRandom;
 public class CacheTtlProperties {
     private long productDetailMinutes = 60;
     private long productDetailJitterMinutes = 5;
+    private long productSearchMinutes = 5;
+    private long productSearchJitterMinutes = 1;
     private long userProfileMinutes = 20;
     private long userProfileJitterMinutes = 5;
     private long recommendationCandidatesMinutes = 10;
@@ -20,6 +22,10 @@ public class CacheTtlProperties {
 
     public Duration productDetailTtl() {
         return minutesWithJitter(productDetailMinutes, productDetailJitterMinutes);
+    }
+
+    public Duration productSearchTtl() {
+        return minutesWithJitter(productSearchMinutes, productSearchJitterMinutes);
     }
 
     public Duration userProfileTtl() {
@@ -40,6 +46,14 @@ public class CacheTtlProperties {
 
     public void setProductDetailJitterMinutes(long productDetailJitterMinutes) {
         this.productDetailJitterMinutes = productDetailJitterMinutes;
+    }
+
+    public void setProductSearchMinutes(long productSearchMinutes) {
+        this.productSearchMinutes = productSearchMinutes;
+    }
+
+    public void setProductSearchJitterMinutes(long productSearchJitterMinutes) {
+        this.productSearchJitterMinutes = productSearchJitterMinutes;
     }
 
     public void setUserProfileMinutes(long userProfileMinutes) {
