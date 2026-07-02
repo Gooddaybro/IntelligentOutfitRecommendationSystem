@@ -1,0 +1,23 @@
+CREATE TABLE behavior_event (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    event_id VARCHAR(64) NOT NULL,
+    user_id BIGINT NOT NULL,
+    event_type VARCHAR(64) NOT NULL,
+    source VARCHAR(32) NOT NULL,
+    spu_id BIGINT NULL,
+    sku_id BIGINT NULL,
+    thread_id VARCHAR(64) NULL,
+    request_id VARCHAR(64) NULL,
+    order_no VARCHAR(64) NULL,
+    quantity INT NULL,
+    event_time DATETIME(6) NOT NULL,
+    metadata_json JSON NULL,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    UNIQUE KEY uk_behavior_event_id (event_id),
+    KEY idx_behavior_user_time (user_id, event_time),
+    KEY idx_behavior_user_type_time (user_id, event_type, event_time),
+    KEY idx_behavior_spu_time (spu_id, event_time),
+    CONSTRAINT fk_behavior_event_user FOREIGN KEY (user_id) REFERENCES user_account(id) ON DELETE CASCADE,
+    CONSTRAINT fk_behavior_event_spu FOREIGN KEY (spu_id) REFERENCES product_spu(id),
+    CONSTRAINT fk_behavior_event_sku FOREIGN KEY (sku_id) REFERENCES product_sku(id)
+);

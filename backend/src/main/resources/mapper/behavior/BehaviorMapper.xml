@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recommendation.intelligentoutfitrecommendationsystem.behavior.mapper.BehaviorMapper">
+
+    <insert id="insert"
+            parameterType="com.recommendation.intelligentoutfitrecommendationsystem.behavior.model.BehaviorEvent"
+            useGeneratedKeys="true"
+            keyProperty="id">
+        INSERT INTO behavior_event (
+            event_id,
+            user_id,
+            event_type,
+            source,
+            spu_id,
+            sku_id,
+            thread_id,
+            request_id,
+            order_no,
+            quantity,
+            event_time,
+            metadata_json
+        ) VALUES (
+            #{eventId},
+            #{userId},
+            #{eventType},
+            #{source},
+            #{spuId},
+            #{skuId},
+            #{threadId},
+            #{requestId},
+            #{orderNo},
+            #{quantity},
+            #{eventTime},
+            #{metadataJson}
+        )
+        ON DUPLICATE KEY UPDATE
+            id = id
+    </insert>
+
+    <!--
+        行为摘要只读取近期商品行为，并从 Java 商品事实表补齐分类和风格标签。
+        Python AI 服务只消费聚合后的上下文，不直接读取行为流水或商品数据库。
+    -->
+    <select id="findRecentSignals"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.behavior.model.BehaviorProductSignal">
+        SELECT
+            be.event_type,
+            be.spu_id,
+            be.sku_id,
+            c.name AS category_name,
+            GROUP_CONCAT(st.code ORDER BY st.id SEPARATOR ',') AS style_tags,
+            be.event_time
+        FROM behavior_event be
+        JOIN product_spu p ON p.id = be.spu_id
+        JOIN category c ON c.id = p.category_id
+        LEFT JOIN product_style_tag pst ON pst.spu_id = p.id
+        LEFT JOIN style_tag st ON st.id = pst.style_tag_id
+        WHERE be.user_id = #{userId}
+          AND be.event_time &gt;= #{since}
+          AND be.spu_id IS NOT NULL
+        GROUP BY be.id, be.event_type, be.spu_id, be.sku_id, c.name, be.event_time
+        ORDER BY be.event_time DESC, be.id DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>
