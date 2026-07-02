@@ -13,6 +13,16 @@ public record AssistantChatResponse(
         String answer,
         List<Long> recommendedSpuIds,
         List<AssistantRecommendationItem> recommendedItems,
-        int candidatesCount
+        int candidatesCount,
+        DemandIntent resolvedIntent
 ) {
+    public AssistantChatResponse(
+            String threadId,
+            String answer,
+            List<Long> recommendedSpuIds,
+            List<AssistantRecommendationItem> recommendedItems,
+            int candidatesCount
+    ) {
+        this(threadId, answer, recommendedSpuIds, recommendedItems, candidatesCount, null);
+    }
 }

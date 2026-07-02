@@ -96,7 +96,8 @@ public class AssistantService {
                 answer,
                 toRecommendedSpuIds(recommendedItems),
                 recommendedItems,
-                context.candidates().size()
+                context.candidates().size(),
+                context.demandIntent()
         );
     }
 
@@ -166,6 +167,7 @@ public class AssistantService {
                 toPythonChatHistory(context.chatHistory()),
                 toPythonUserContext(userId, context.profile(), context.bodyData(), context.preferences()),
                 toPythonCandidates(context.candidates()),
+                context.demandIntent(),
                 false
         );
     }
@@ -382,7 +384,8 @@ public class AssistantService {
                     toRecommendedSpuIds(recommendedItems),
                     recommendedItems,
                     context.candidates().size(),
-                    response.intent()
+                    response.intent(),
+                    context.demandIntent()
             );
             if (sendEvent(emitter, active, "done", done)) {
                 emitter.complete();

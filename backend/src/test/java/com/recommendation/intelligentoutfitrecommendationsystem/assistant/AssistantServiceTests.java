@@ -6,6 +6,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantChatResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantContext;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntent;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonProductRef;
@@ -88,6 +89,21 @@ class AssistantServiceTests {
                 LocalDateTime.now(),
                 null
         );
+        DemandIntent demandIntent = new DemandIntent(
+                DemandIntent.VERSION,
+                DemandIntent.SOURCE_JAVA_RULE,
+                "recommend a warm jacket",
+                "male",
+                "outerwear",
+                List.of(),
+                List.of("commute"),
+                600,
+                List.of(),
+                List.of("targetGender", "category", "budgetMax"),
+                List.of("style"),
+                new BigDecimal("0.88"),
+                List.of()
+        );
         AssistantContext context = new AssistantContext(
                 new UserProfileResponse(10L, "tester", null, null, null),
                 new UserBodyDataResponse(10L, new BigDecimal("175.5"), new BigDecimal("70.0"), "male", null, null, null, null, "regular"),
@@ -117,7 +133,8 @@ class AssistantServiceTests {
                         "JACKET-COMMUTE-BLK-L",
                         8,
                         "场景:通勤,风格:百搭,厚度:轻薄,搭配难度:好搭"
-                ))
+                )),
+                demandIntent
         );
         MDC.put("requestId", "req-ai-service-test");
 
@@ -139,6 +156,7 @@ class AssistantServiceTests {
         assertThat(response.recommendedItems())
                 .extracting("spuId", "skuId", "reason")
                 .containsExactly(tuple(1001L, 2001L, "fits the requested commute style"));
+        assertThat(response.resolvedIntent()).isSameAs(demandIntent);
 
         InOrder order = inOrder(conversationService, assistantContextService, pythonAssistantClient);
         verify(assistantRateLimitService).assertAllowed(10L);
@@ -156,6 +174,7 @@ class AssistantServiceTests {
         assertThat(pythonRequest.threadId()).isEqualTo("th_service_001");
         assertThat(pythonRequest.query()).isEqualTo("recommend a warm jacket");
         assertThat(pythonRequest.debug()).isFalse();
+        assertThat(pythonRequest.demandIntent()).isSameAs(demandIntent);
         assertThat(pythonRequest.chatHistory())
                 .extracting("userQuery", "assistantAnswer")
                 .containsExactly(tuple("上一轮的问题", "上一轮的回答"));

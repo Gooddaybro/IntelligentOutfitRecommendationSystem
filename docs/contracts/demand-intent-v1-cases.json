@@ -1,0 +1,35 @@
+[
+  {
+    "query": "女性裙子推荐",
+    "expected": {
+      "targetGender": "female",
+      "category": "半裙",
+      "scene": [],
+      "style": [],
+      "budgetMax": null,
+      "hardFilters": ["targetGender", "category"]
+    }
+  },
+  {
+    "query": "男性穿搭",
+    "expected": {
+      "targetGender": "male",
+      "category": null,
+      "scene": [],
+      "style": [],
+      "budgetMax": null,
+      "hardFilters": ["targetGender"]
+    }
+  },
+  {
+    "query": "女生上班通勤，预算500以内",
+    "expected": {
+      "targetGender": "female",
+      "category": null,
+      "scene": ["commute"],
+      "style": ["commute", "minimal"],
+      "budgetMax": 500,
+      "hardFilters": ["targetGender", "budgetMax"]
+    }
+  }
+]

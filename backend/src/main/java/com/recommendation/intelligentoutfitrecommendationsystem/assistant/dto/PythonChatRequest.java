@@ -17,6 +17,19 @@ public record PythonChatRequest(
         @JsonProperty("chat_history") List<PythonChatHistoryItem> chatHistory,
         @JsonProperty("user_context") PythonUserContext userContext,
         @JsonProperty("candidates") List<PythonProductCandidate> candidates,
+        @JsonProperty("demand_intent") DemandIntent demandIntent,
         @JsonProperty("debug") Boolean debug
 ) {
+    public PythonChatRequest(
+            String requestId,
+            String sessionId,
+            String threadId,
+            String query,
+            List<PythonChatHistoryItem> chatHistory,
+            PythonUserContext userContext,
+            List<PythonProductCandidate> candidates,
+            Boolean debug
+    ) {
+        this(requestId, sessionId, threadId, query, chatHistory, userContext, candidates, null, debug);
+    }
 }

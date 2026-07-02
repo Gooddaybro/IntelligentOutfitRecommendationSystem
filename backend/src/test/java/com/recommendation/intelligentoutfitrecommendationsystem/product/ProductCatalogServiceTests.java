@@ -117,6 +117,21 @@ class ProductCatalogServiceTests {
     }
 
     @Test
+    void findRecommendationCandidatesNormalizesSkirtCategoryAlias() {
+        var query = new RecommendationCandidateQuery("裙子", null, null, null, null, 400);
+        when(redisCacheService.getList(anyString(), eq(RecommendationCandidate.class)))
+                .thenReturn(Optional.empty());
+        when(productMapper.findRecommendationCandidates(any()))
+                .thenReturn(List.of(recommendationCandidate()));
+
+        service.findRecommendationCandidates(query);
+
+        ArgumentCaptor<RecommendationCandidateQuery> queryCaptor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
+        verify(productMapper).findRecommendationCandidates(queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getCategory()).isEqualTo("半裙");
+    }
+
+    @Test
     void findRecommendationCandidatesReturnsCachedListWithoutQueryingMapper() {
         var query = new RecommendationCandidateQuery("外套", "commute", "autumn", null, null, 400);
         List<RecommendationCandidate> cachedCandidates = List.of(recommendationCandidate());

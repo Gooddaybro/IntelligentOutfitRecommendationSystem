@@ -19,14 +19,15 @@ describe("parseSseEventBlock", () => {
   it("parses done events with answer and recommendation ids", () => {
     expect(
       parseSseEventBlock(
-        'event: done\ndata: {"thread_id":"th-1","answer":"建议选择通勤外套","recommended_spu_ids":[1001,1002],"recommended_items":[{"spuId":1001,"skuId":2001,"reason":"通勤场景匹配","rankScore":0.91}],"candidates_count":3,"intent":"recommendation"}'
+        'event: done\ndata: {"thread_id":"th-1","answer":"建议选择通勤外套","recommended_spu_ids":[1001,1002],"recommended_items":[{"spuId":1001,"skuId":2001,"reason":"通勤场景匹配","rankScore":0.91}],"candidates_count":3,"intent":"recommendation","resolved_intent":{"targetGender":"female","category":"半裙","budgetMax":500}}'
       )
     ).toEqual({
       type: "done",
       threadId: "th-1",
       answer: "建议选择通勤外套",
       spuIds: [1001, 1002],
-      recommendedItems: [{ spuId: 1001, skuId: 2001, reason: "通勤场景匹配", rankScore: 0.91 }]
+      recommendedItems: [{ spuId: 1001, skuId: 2001, reason: "通勤场景匹配", rankScore: 0.91 }],
+      resolvedIntent: { targetGender: "female", category: "半裙", budgetMax: 500 }
     });
   });
 
@@ -40,7 +41,8 @@ describe("parseSseEventBlock", () => {
       threadId: "th-2",
       answer: undefined,
       spuIds: [1002],
-      recommendedItems: [{ spuId: 1002, skuId: 2101, reason: "预算匹配", rankScore: 0.87 }]
+      recommendedItems: [{ spuId: 1002, skuId: 2101, reason: "预算匹配", rankScore: 0.87 }],
+      resolvedIntent: undefined
     });
   });
 

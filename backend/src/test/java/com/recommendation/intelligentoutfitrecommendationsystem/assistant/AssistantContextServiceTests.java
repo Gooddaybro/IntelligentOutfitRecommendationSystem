@@ -1,6 +1,7 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.assistant;
 
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantChatRequest;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantContext;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.AssistantContextService;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationService;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.dto.RecommendationCandidateQuery;
@@ -46,11 +47,13 @@ class AssistantContextServiceTests {
         when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
         when(productCatalogService.findRecommendationCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
 
-        service.buildContext(10L, "thread-budget", request);
+        AssistantContext context = service.buildContext(10L, "thread-budget", request);
 
         ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
         verify(productCatalogService).findRecommendationCandidates(captor.capture());
         assertThat(captor.getValue().getBudgetMax()).isEqualTo(500);
+        assertThat(context.demandIntent().budgetMax()).isEqualTo(500);
+        assertThat(context.demandIntent().hardFilters()).contains("budgetMax");
     }
 
     @Test
@@ -107,11 +110,84 @@ class AssistantContextServiceTests {
         when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
         when(productCatalogService.findRecommendationCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
 
-        service.buildContext(10L, "thread-gender", request);
+        AssistantContext context = service.buildContext(10L, "thread-gender", request);
 
         ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
         verify(productCatalogService).findRecommendationCandidates(captor.capture());
         assertThat(captor.getValue().getGender()).isEqualTo("male");
+        assertThat(context.demandIntent().targetGender()).isEqualTo("male");
+        assertThat(context.demandIntent().hardFilters()).containsExactly("targetGender");
+    }
+
+    @Test
+    void messageSkirtDemandSetsRecommendationCategoryToSkirtCategory() {
+        UserProfileService userProfileService = mock(UserProfileService.class);
+        ProductCatalogService productCatalogService = mock(ProductCatalogService.class);
+        ConversationService conversationService = mock(ConversationService.class);
+        AssistantContextService service = new AssistantContextService(
+                userProfileService,
+                productCatalogService,
+                conversationService
+        );
+        AssistantChatRequest request = new AssistantChatRequest(
+                null,
+                "女性裙子推荐",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
+        when(productCatalogService.findRecommendationCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
+
+        AssistantContext context = service.buildContext(10L, "thread-category", request);
+
+        ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
+        verify(productCatalogService).findRecommendationCandidates(captor.capture());
+        assertThat(captor.getValue().getCategory()).isEqualTo("半裙");
+        assertThat(context.demandIntent().targetGender()).isEqualTo("female");
+        assertThat(context.demandIntent().category()).isEqualTo("半裙");
+        assertThat(context.demandIntent().hardFilters()).containsExactly("targetGender", "category");
+    }
+
+    @Test
+    void demandIntentExtractsCommuteSceneStyleAndBudget() {
+        UserProfileService userProfileService = mock(UserProfileService.class);
+        ProductCatalogService productCatalogService = mock(ProductCatalogService.class);
+        ConversationService conversationService = mock(ConversationService.class);
+        AssistantContextService service = new AssistantContextService(
+                userProfileService,
+                productCatalogService,
+                conversationService
+        );
+        AssistantChatRequest request = new AssistantChatRequest(
+                null,
+                "女生上班通勤，预算500以内",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
+        when(productCatalogService.findRecommendationCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
+
+        AssistantContext context = service.buildContext(10L, "thread-intent", request);
+
+        ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
+        verify(productCatalogService).findRecommendationCandidates(captor.capture());
+        assertThat(captor.getValue().getGender()).isEqualTo("female");
+        assertThat(captor.getValue().getStyle()).isEqualTo("commute");
+        assertThat(captor.getValue().getBudgetMax()).isEqualTo(500);
+        assertThat(context.demandIntent().targetGender()).isEqualTo("female");
+        assertThat(context.demandIntent().scene()).containsExactly("commute");
+        assertThat(context.demandIntent().style()).containsExactly("commute", "minimal");
+        assertThat(context.demandIntent().budgetMax()).isEqualTo(500);
+        assertThat(context.demandIntent().hardFilters()).containsExactly("targetGender", "budgetMax");
     }
 
     @Test

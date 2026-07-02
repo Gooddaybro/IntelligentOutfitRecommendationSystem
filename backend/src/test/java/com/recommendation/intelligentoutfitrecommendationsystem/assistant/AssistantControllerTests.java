@@ -91,6 +91,8 @@ class AssistantControllerTests {
                 .andExpect(jsonPath("$.data.recommendedItems[0].spuId").value(1002))
                 .andExpect(jsonPath("$.data.recommendedItems[0].skuId").value(2101))
                 .andExpect(jsonPath("$.data.recommendedItems[0].reason").value("fits the requested commute style"))
+                .andExpect(jsonPath("$.data.resolvedIntent.category").value("外套"))
+                .andExpect(jsonPath("$.data.resolvedIntent.budgetMax").value(800))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
@@ -142,6 +144,7 @@ class AssistantControllerTests {
                 .contains("A structured jacket is a good match.")
                 .contains("\"recommended_spu_ids\":[1002]")
                 .contains("\"recommended_items\"")
+                .contains("\"resolved_intent\"")
                 .contains("fits the requested commute style")
                 .doesNotContain("9999");
     }

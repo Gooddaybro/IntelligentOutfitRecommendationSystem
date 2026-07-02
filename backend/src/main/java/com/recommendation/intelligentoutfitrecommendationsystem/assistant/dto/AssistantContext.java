@@ -18,6 +18,16 @@ public record AssistantContext(
         UserBodyDataResponse bodyData,
         UserPreferencesResponse preferences,
         List<MessageResponse> chatHistory,
-        List<RecommendationCandidate> candidates
+        List<RecommendationCandidate> candidates,
+        DemandIntent demandIntent
 ) {
+    public AssistantContext(
+            UserProfileResponse profile,
+            UserBodyDataResponse bodyData,
+            UserPreferencesResponse preferences,
+            List<MessageResponse> chatHistory,
+            List<RecommendationCandidate> candidates
+    ) {
+        this(profile, bodyData, preferences, chatHistory, candidates, DemandIntent.empty(null));
+    }
 }

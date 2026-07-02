@@ -2,6 +2,7 @@ package com.recommendation.intelligentoutfitrecommendationsystem.assistant;
 
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client.RestPythonAssistantClient;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client.PythonAssistantStreamHandler;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntent;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatHistoryItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatResponse;
@@ -101,6 +102,21 @@ class RestPythonAssistantClientTests {
                         7,
                         List.of("适用场景:通勤")
                 )),
+                new DemandIntent(
+                        DemandIntent.VERSION,
+                        DemandIntent.SOURCE_JAVA_RULE,
+                        "hello",
+                        "male",
+                        "外套",
+                        List.of("commute"),
+                        List.of("commute"),
+                        800,
+                        List.of(),
+                        List.of("targetGender", "category", "budgetMax"),
+                        List.of("scene", "style"),
+                        new BigDecimal("0.88"),
+                        List.of()
+                ),
                 false
         );
 
@@ -129,6 +145,10 @@ class RestPythonAssistantClientTests {
                 .contains("\"preferred_styles\":[\"commute\"]")
                 .contains("\"budget_max\":800.0")
                 .contains("\"candidates\"")
+                .contains("\"demand_intent\"")
+                .contains("\"targetGender\":\"male\"")
+                .contains("\"category\":\"外套\"")
+                .contains("\"budgetMax\":800")
                 .contains("\"spu_id\":123")
                 .contains("\"sku_id\":456")
                 .contains("\"sale_price\":299.0")

@@ -60,6 +60,22 @@ export type RecommendedItem = {
   rankScore?: number;
 };
 
+export type DemandIntent = {
+  version?: string;
+  source?: string;
+  rawQuery?: string;
+  targetGender?: string | null;
+  category?: string | null;
+  scene?: string[];
+  style?: string[];
+  budgetMax?: number | null;
+  attributes?: string[];
+  hardFilters?: string[];
+  softPreferences?: string[];
+  confidence?: number;
+  missingSlots?: string[];
+};
+
 export type ProductDetail = ProductSearchItem & {
   description?: string;
   materials?: string[];
@@ -130,6 +146,7 @@ export type AssistantChatRequest = {
   season?: string;
   material?: string;
   fit?: string;
+  gender?: "male" | "female";
   budgetMax?: number;
 };
 
@@ -139,6 +156,7 @@ export type AssistantChatResponse = {
   recommendedSpuIds: number[];
   recommendedItems?: RecommendedItem[];
   candidatesCount: number;
+  resolvedIntent?: DemandIntent;
 };
 
 export type ConversationMessage = {
