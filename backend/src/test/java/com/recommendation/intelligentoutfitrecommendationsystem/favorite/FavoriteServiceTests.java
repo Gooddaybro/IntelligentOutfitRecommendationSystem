@@ -1,5 +1,6 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.favorite;
 
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorEventService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.favorite.mapper.FavoriteMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.favorite.model.UserFavorite;
@@ -14,6 +15,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -24,8 +26,44 @@ class FavoriteServiceTests {
     @Mock
     private FavoriteMapper favoriteMapper;
 
+    @Mock
+    private BehaviorEventService behaviorEventService;
+
     @InjectMocks
     private FavoriteService service;
+
+    @Test
+    void addFavoriteRecordsBehaviorOnlyWhenFavoriteIsNew() {
+        UserFavorite favorite = new UserFavorite();
+        favorite.setUserId(10L);
+        favorite.setSpuId(1001L);
+        when(favoriteMapper.selectByUserIdAndProductId(10L, 1001L)).thenReturn(null);
+        when(favoriteMapper.selectByUserId(10L)).thenReturn(List.of(favorite));
+
+        List<UserFavorite> favorites = service.addFavorite(10L, 1001L);
+
+        assertThat(favorites).containsExactly(favorite);
+        verify(behaviorEventService).recordBusinessEvent(argThat(command ->
+                "FAVORITE_ADD".equals(command.eventType())
+                        && Long.valueOf(10L).equals(command.userId())
+                        && Long.valueOf(1001L).equals(command.spuId())
+        ));
+    }
+
+    @Test
+    void addFavoriteDoesNotRecordBehaviorWhenFavoriteAlreadyExists() {
+        UserFavorite existing = new UserFavorite();
+        existing.setUserId(10L);
+        existing.setSpuId(1001L);
+        when(favoriteMapper.selectByUserIdAndProductId(10L, 1001L)).thenReturn(existing);
+        when(favoriteMapper.selectByUserId(10L)).thenReturn(List.of(existing));
+
+        service.addFavorite(10L, 1001L);
+
+        verify(behaviorEventService, never()).recordBusinessEvent(argThat(command ->
+                "FAVORITE_ADD".equals(command.eventType())
+        ));
+    }
 
     @Test
     void deleteFavoriteRejectsNonPositiveUserId() {

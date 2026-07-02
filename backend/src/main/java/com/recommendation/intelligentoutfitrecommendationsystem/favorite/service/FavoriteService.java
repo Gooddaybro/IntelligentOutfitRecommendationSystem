@@ -1,5 +1,7 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.favorite.service;
 
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorEventCommand;
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorEventService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.favorite.mapper.FavoriteMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.favorite.model.UserFavorite;
@@ -17,8 +19,11 @@ import java.util.List;
 public class FavoriteService {
     private final FavoriteMapper favoriteMapper;
 
-    public FavoriteService(FavoriteMapper favoriteMapper) {
+    private final BehaviorEventService behaviorEventService;
+
+    public FavoriteService(FavoriteMapper favoriteMapper, BehaviorEventService behaviorEventService) {
         this.favoriteMapper = favoriteMapper;
+        this.behaviorEventService = behaviorEventService;
     }
 
     public List<UserFavorite> addFavorite(Long userId, Long productId) {
@@ -31,6 +36,19 @@ public class FavoriteService {
         userFavorite.setProductId(productId);
         userFavorite.setCreatedAt(LocalDateTime.now());
         favoriteMapper.insert(userFavorite);
+        behaviorEventService.recordBusinessEvent(new BehaviorEventCommand(
+                "favorite:add:" + userId + ":" + productId,
+                userId,
+                "FAVORITE_ADD",
+                null,
+                productId,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        ));
         return favoriteMapper.selectByUserId(userId);
     }
 

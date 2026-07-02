@@ -1,5 +1,6 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.payment;
 
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorEventService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
 import com.recommendation.intelligentoutfitrecommendationsystem.inventory.mapper.InventoryMapper;
@@ -28,6 +29,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -47,6 +49,9 @@ class PaymentServiceTests {
 
     @Mock
     private PaymentStrategyRegistry paymentStrategyRegistry;
+
+    @Mock
+    private BehaviorEventService behaviorEventService;
 
     @InjectMocks
     private PaymentService service;
@@ -71,6 +76,14 @@ class PaymentServiceTests {
         ArgumentCaptor<Payment> paymentCaptor = ArgumentCaptor.forClass(Payment.class);
         verify(paymentMapper).insertPayment(paymentCaptor.capture());
         verify(orderMapper).updateOrderPaid(eq(88L), any(LocalDateTime.class));
+        verify(behaviorEventService).recordBusinessEvent(argThat(command ->
+                "PAYMENT_SUCCESS".equals(command.eventType())
+                        && Long.valueOf(10L).equals(command.userId())
+                        && command.orderNo().equals("ORDPAY1")
+                        && Long.valueOf(1002L).equals(command.spuId())
+                        && Long.valueOf(2102L).equals(command.skuId())
+                        && Integer.valueOf(2).equals(command.quantity())
+        ));
         assertThat(paymentCaptor.getValue().getPaymentNo()).startsWith("PAY");
         assertThat(paymentCaptor.getValue().getChannel()).isEqualTo("MOCK");
         assertThat(paymentCaptor.getValue().getStatus()).isEqualTo("SUCCESS");

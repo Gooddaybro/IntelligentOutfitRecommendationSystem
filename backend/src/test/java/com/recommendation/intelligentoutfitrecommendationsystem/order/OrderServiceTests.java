@@ -1,5 +1,6 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.order;
 
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorEventService;
 import com.recommendation.intelligentoutfitrecommendationsystem.cart.service.CartService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
@@ -26,6 +27,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
@@ -43,6 +45,9 @@ class OrderServiceTests {
 
     @Mock
     private CartService cartService;
+
+    @Mock
+    private BehaviorEventService behaviorEventService;
 
     @InjectMocks
     private OrderService service;
@@ -67,6 +72,22 @@ class OrderServiceTests {
         verify(orderMapper).insertOrder(orderCaptor.capture());
         verify(orderMapper).insertItems(itemCaptor.capture());
         verify(cartService).removePurchasedItems(10L, List.of(2102L, 2202L));
+        verify(behaviorEventService).recordBusinessEvent(argThat(command ->
+                "ORDER_CREATED".equals(command.eventType())
+                        && Long.valueOf(10L).equals(command.userId())
+                        && command.orderNo().equals(orderCaptor.getValue().getOrderNo())
+                        && Long.valueOf(1002L).equals(command.spuId())
+                        && Long.valueOf(2102L).equals(command.skuId())
+                        && Integer.valueOf(1).equals(command.quantity())
+        ));
+        verify(behaviorEventService).recordBusinessEvent(argThat(command ->
+                "ORDER_CREATED".equals(command.eventType())
+                        && Long.valueOf(10L).equals(command.userId())
+                        && command.orderNo().equals(orderCaptor.getValue().getOrderNo())
+                        && Long.valueOf(1003L).equals(command.spuId())
+                        && Long.valueOf(2202L).equals(command.skuId())
+                        && Integer.valueOf(2).equals(command.quantity())
+        ));
 
         assertThat(orderCaptor.getValue().getTotalAmount()).isEqualByComparingTo("697.00");
         assertThat(orderCaptor.getValue().getStatus()).isEqualTo("UNPAID");

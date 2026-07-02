@@ -1,5 +1,7 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.order.service;
 
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorEventCommand;
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorEventService;
 import com.recommendation.intelligentoutfitrecommendationsystem.cart.service.CartService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
@@ -55,10 +57,18 @@ public class OrderService {
 
     private final CartService cartService;
 
-    public OrderService(OrderMapper orderMapper, InventoryMapper inventoryMapper, CartService cartService) {
+    private final BehaviorEventService behaviorEventService;
+
+    public OrderService(
+            OrderMapper orderMapper,
+            InventoryMapper inventoryMapper,
+            CartService cartService,
+            BehaviorEventService behaviorEventService
+    ) {
         this.orderMapper = orderMapper;
         this.inventoryMapper = inventoryMapper;
         this.cartService = cartService;
+        this.behaviorEventService = behaviorEventService;
     }
 
     /**
@@ -129,6 +139,7 @@ public class OrderService {
             item.setOrderId(order.getId());
         }
         orderMapper.insertItems(orderItems);
+        recordOrderCreatedEvents(userId, order, orderItems);
 
         return toResponse(order, orderItems);
     }
@@ -298,6 +309,24 @@ public class OrderService {
         item.setLineAmount(lineAmount);
         item.setMainImageUrl(checkoutItem.getMainImageUrl());
         return item;
+    }
+
+    private void recordOrderCreatedEvents(Long userId, SalesOrder order, List<OrderItem> orderItems) {
+        for (OrderItem item : orderItems) {
+            behaviorEventService.recordBusinessEvent(new BehaviorEventCommand(
+                    "order:created:" + order.getOrderNo() + ":" + item.getSkuId(),
+                    userId,
+                    "ORDER_CREATED",
+                    null,
+                    item.getSpuId(),
+                    item.getSkuId(),
+                    null,
+                    null,
+                    order.getOrderNo(),
+                    item.getQuantity(),
+                    null
+            ));
+        }
     }
 
     private OrderResponse toResponse(SalesOrder order, List<OrderItem> items) {

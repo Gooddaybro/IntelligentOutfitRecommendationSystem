@@ -1,5 +1,7 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.payment.service;
 
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorEventCommand;
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorEventService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
 import com.recommendation.intelligentoutfitrecommendationsystem.inventory.mapper.InventoryMapper;
@@ -60,16 +62,20 @@ public class PaymentService {
 
     private final PaymentStrategyRegistry paymentStrategyRegistry;
 
+    private final BehaviorEventService behaviorEventService;
+
     public PaymentService(
             PaymentMapper paymentMapper,
             OrderMapper orderMapper,
             InventoryMapper inventoryMapper,
-            PaymentStrategyRegistry paymentStrategyRegistry
+            PaymentStrategyRegistry paymentStrategyRegistry,
+            BehaviorEventService behaviorEventService
     ) {
         this.paymentMapper = paymentMapper;
         this.orderMapper = orderMapper;
         this.inventoryMapper = inventoryMapper;
         this.paymentStrategyRegistry = paymentStrategyRegistry;
+        this.behaviorEventService = behaviorEventService;
     }
 
     /**
@@ -164,7 +170,7 @@ public class PaymentService {
         return payment;
     }
 
-    private void confirmSoldStock(SalesOrder order) {
+    private List<OrderItem> confirmSoldStock(SalesOrder order) {
         List<OrderItem> items = orderMapper.findItemsByOrderId(order.getId());
         for (OrderItem item : items) {
             int affectedRows = inventoryMapper.confirmSoldStock(item.getSkuId(), item.getQuantity());
@@ -172,6 +178,7 @@ public class PaymentService {
                 throw new BadRequestException("locked stock is inconsistent for sku: " + item.getSkuId());
             }
         }
+        return items;
     }
 
     private Payment createPendingPayment(SalesOrder order, String channel) {
@@ -188,7 +195,7 @@ public class PaymentService {
     }
 
     private PaymentResponse confirmPaymentSuccess(SalesOrder order, Payment payment, PaymentResult result) {
-        confirmSoldStock(order);
+        List<OrderItem> paidItems = confirmSoldStock(order);
         LocalDateTime paidAt = result.paidAt() == null ? LocalDateTime.now() : result.paidAt();
         int updatedRows = paymentMapper.markPaymentSuccess(
                 payment.getPaymentNo(),
@@ -206,7 +213,26 @@ public class PaymentService {
         payment.setProviderPayload(result.providerPayload());
         payment.setTransactionId(result.transactionId());
         payment.setPaidAt(paidAt);
+        recordPaymentSuccessEvents(order, payment, paidItems);
         return toResponse(payment);
+    }
+
+    private void recordPaymentSuccessEvents(SalesOrder order, Payment payment, List<OrderItem> paidItems) {
+        for (OrderItem item : paidItems) {
+            behaviorEventService.recordBusinessEvent(new BehaviorEventCommand(
+                    "payment:success:" + payment.getPaymentNo() + ":" + item.getSkuId(),
+                    order.getUserId(),
+                    "PAYMENT_SUCCESS",
+                    null,
+                    item.getSpuId(),
+                    item.getSkuId(),
+                    null,
+                    null,
+                    order.getOrderNo(),
+                    item.getQuantity(),
+                    null
+            ));
+        }
     }
 
     private void markOrderPaid(SalesOrder order, LocalDateTime paidAt) {

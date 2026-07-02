@@ -1,5 +1,6 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.cart;
 
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorEventService;
 import com.recommendation.intelligentoutfitrecommendationsystem.cart.mapper.CartMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.cart.model.CartItemView;
 import com.recommendation.intelligentoutfitrecommendationsystem.cart.service.CartService;
@@ -16,6 +17,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -24,6 +26,9 @@ class CartServiceTests {
 
     @Mock
     private CartMapper cartMapper;
+
+    @Mock
+    private BehaviorEventService behaviorEventService;
 
     @InjectMocks
     private CartService service;
@@ -61,6 +66,13 @@ class CartServiceTests {
 
         assertThat(items).containsExactly(item);
         verify(cartMapper).upsertItem(10L, 2102L, 3);
+        verify(behaviorEventService).recordBusinessEvent(argThat(command ->
+                "CART_ADD".equals(command.eventType())
+                        && Long.valueOf(10L).equals(command.userId())
+                        && Long.valueOf(1002L).equals(command.spuId())
+                        && Long.valueOf(2102L).equals(command.skuId())
+                        && Integer.valueOf(3).equals(command.quantity())
+        ));
     }
 
     @Test

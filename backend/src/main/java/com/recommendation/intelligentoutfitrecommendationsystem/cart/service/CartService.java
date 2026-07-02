@@ -1,5 +1,7 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.cart.service;
 
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorEventCommand;
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorEventService;
 import com.recommendation.intelligentoutfitrecommendationsystem.cart.mapper.CartMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.cart.model.CartItemView;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
@@ -22,8 +24,11 @@ public class CartService {
 
     private final CartMapper cartMapper;
 
-    public CartService(CartMapper cartMapper) {
+    private final BehaviorEventService behaviorEventService;
+
+    public CartService(CartMapper cartMapper, BehaviorEventService behaviorEventService) {
         this.cartMapper = cartMapper;
+        this.behaviorEventService = behaviorEventService;
     }
 
     public List<CartItemView> listItems(Long userId) {
@@ -47,7 +52,21 @@ public class CartService {
         ensureSkuExists(skuId);
 
         cartMapper.upsertItem(userId, skuId, quantity);
-        return cartMapper.findItemsByUserId(userId);
+        List<CartItemView> items = cartMapper.findItemsByUserId(userId);
+        behaviorEventService.recordBusinessEvent(new BehaviorEventCommand(
+                "cart:add:" + userId + ":" + skuId + ":" + System.nanoTime(),
+                userId,
+                "CART_ADD",
+                null,
+                findSpuId(items, skuId),
+                skuId,
+                null,
+                null,
+                null,
+                quantity,
+                null
+        ));
+        return items;
     }
 
     @Transactional
@@ -99,6 +118,14 @@ public class CartService {
         if (cartMapper.existsSkuById(skuId) == 0) {
             throw new ResourceNotFoundException("sku not found: " + skuId);
         }
+    }
+
+    private Long findSpuId(List<CartItemView> items, Long skuId) {
+        return items.stream()
+                .filter(item -> skuId.equals(item.getSkuId()))
+                .map(CartItemView::getSpuId)
+                .findFirst()
+                .orElse(null);
     }
 
     private void validateUserId(Long userId) {
