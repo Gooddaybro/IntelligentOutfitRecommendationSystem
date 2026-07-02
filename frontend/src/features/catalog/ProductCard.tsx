@@ -1,17 +1,42 @@
 import { ShoppingBag, ShoppingCart } from "lucide-react";
-import type { RecommendationCandidate } from "../../shared/api/types";
-import { buildAddToCartAction, buildBuyNowAction, type PendingCommerceAction } from "../commerce-action/commerceActions";
+import type { BehaviorEventType, RecommendationCandidate } from "../../shared/api/types";
+import {
+  buildAddToCartAction,
+  buildBuyNowAction,
+  type CommerceActionMetadata,
+  type PendingCommerceAction
+} from "../commerce-action/commerceActions";
+
+type ProductBehaviorEvent = {
+  eventType: BehaviorEventType;
+  candidate: RecommendationCandidate;
+  metadata?: Record<string, unknown>;
+};
 
 type ProductCardProps = {
   candidate: RecommendationCandidate;
   onAction: (action: PendingCommerceAction) => void;
+  actionMetadata?: CommerceActionMetadata;
+  position?: number;
+  onBehaviorEvent?: (event: ProductBehaviorEvent) => void;
 };
 
-export function ProductCard({ candidate, onAction }: ProductCardProps) {
+export function ProductCard({ candidate, onAction, actionMetadata, position, onBehaviorEvent }: ProductCardProps) {
   const matchLabel = candidate.rankScore !== undefined ? `AI 匹配 ${Math.round(candidate.rankScore * 100)}%` : "AI 推荐";
 
   return (
-    <article className="product-card" data-testid="recommendation-card" data-sku-id={candidate.skuId}>
+    <article
+      className="product-card"
+      data-testid="recommendation-card"
+      data-sku-id={candidate.skuId}
+      onClick={() =>
+        onBehaviorEvent?.({
+          eventType: "RECOMMENDATION_CLICKED",
+          candidate,
+          metadata: position === undefined ? undefined : { position }
+        })
+      }
+    >
       <div className="product-image">
         {(candidate.rankScore !== undefined || candidate.recommendationReason) && <span className="ai-match-badge">{matchLabel}</span>}
         {candidate.mainImageUrl ? (
@@ -43,7 +68,10 @@ export function ProductCard({ candidate, onAction }: ProductCardProps) {
         <div className="product-actions">
           <button
             data-testid="add-to-cart-action"
-            onClick={() => onAction(buildAddToCartAction(candidate))}
+            onClick={(event) => {
+              event.stopPropagation();
+              onAction(buildAddToCartAction(candidate, 1, actionMetadata));
+            }}
             title="加入购物车"
           >
             <ShoppingCart size={16} />
@@ -52,7 +80,10 @@ export function ProductCard({ candidate, onAction }: ProductCardProps) {
           <button
             className="primary-button"
             data-testid="buy-now-action"
-            onClick={() => onAction(buildBuyNowAction(candidate))}
+            onClick={(event) => {
+              event.stopPropagation();
+              onAction(buildBuyNowAction(candidate, 1, actionMetadata));
+            }}
             title="立即购买"
           >
             <ShoppingBag size={16} />

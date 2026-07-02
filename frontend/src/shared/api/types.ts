@@ -141,6 +141,26 @@ export type AssistantChatResponse = {
   candidatesCount: number;
 };
 
+export type BehaviorEventType =
+  | "RECOMMENDATION_EXPOSED"
+  | "RECOMMENDATION_CLICKED"
+  | "RECOMMENDATION_CART_ADD"
+  | "RECOMMENDATION_FAVORITE_ADD";
+
+export type BehaviorEventRequest = {
+  eventId: string;
+  eventType: BehaviorEventType;
+  spuId: number;
+  skuId?: number;
+  threadId?: string;
+  quantity?: number;
+  metadata?: Record<string, unknown>;
+};
+
+export type BehaviorEventResponse = {
+  eventId: string;
+};
+
 export type ConversationMessage = {
   role: "USER" | "ASSISTANT" | string;
   content: string;

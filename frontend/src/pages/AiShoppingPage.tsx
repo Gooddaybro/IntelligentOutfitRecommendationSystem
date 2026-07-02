@@ -1,11 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Sparkles } from "lucide-react";
 import { ChatPanel } from "../features/assistant/ChatPanel";
 import type { ChatPanelState, RecommendationResultMeta } from "../features/assistant/ChatPanel";
 import { ProductCard } from "../features/catalog/ProductCard";
 import type { PendingCommerceAction } from "../features/commerce-action/commerceActions";
 import { api } from "../shared/api/client";
-import type { CartItem, RecommendationCandidate } from "../shared/api/types";
+import type { BehaviorEventType, CartItem, RecommendationCandidate } from "../shared/api/types";
 import type { Dispatch, SetStateAction } from "react";
 
 type AiShoppingPageProps = {
@@ -41,6 +41,7 @@ export function AiShoppingPage({
 }: AiShoppingPageProps) {
   const quickPrompts = ["上班通勤", "约会穿搭", "学生党", "显高显瘦", "平价百搭", "秋冬保暖"];
   const cartTotal = cartItems.reduce((sum, item) => sum + item.salePrice * item.quantity, 0);
+  const exposureKeysRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     async function loadInitialRecommendations() {
@@ -76,6 +77,44 @@ export function AiShoppingPage({
       document.querySelector<HTMLTextAreaElement>("[data-testid='ai-chat-input']")?.focus();
     });
   }
+
+  function behaviorEventId(eventType: BehaviorEventType) {
+    return `${eventType.toLowerCase()}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  function recordRecommendationEvent(
+    eventType: BehaviorEventType,
+    candidate: RecommendationCandidate,
+    metadata?: Record<string, unknown>
+  ) {
+    if (!recommendationMeta?.hasAiResult || !chatState.threadId) {
+      return;
+    }
+    void api
+      .recordBehaviorEvent({
+        eventId: behaviorEventId(eventType),
+        eventType,
+        spuId: candidate.spuId,
+        skuId: candidate.skuId,
+        threadId: chatState.threadId,
+        metadata
+      })
+      .catch(() => undefined);
+  }
+
+  useEffect(() => {
+    if (!recommendationMeta?.hasAiResult || !chatState.threadId) {
+      return;
+    }
+    recommendations.forEach((candidate, index) => {
+      const key = `${chatState.threadId}:${candidate.spuId}:${candidate.skuId}:exposed`;
+      if (exposureKeysRef.current.has(key)) {
+        return;
+      }
+      exposureKeysRef.current.add(key);
+      recordRecommendationEvent("RECOMMENDATION_EXPOSED", candidate, { position: index + 1 });
+    });
+  }, [chatState.threadId, recommendationMeta?.hasAiResult, recommendations]);
 
   return (
     <main className="workbench outfit-workbench">
@@ -133,8 +172,19 @@ export function AiShoppingPage({
             </p>
           )}
           <div className="product-grid compact">
-            {recommendations.map((candidate) => (
-              <ProductCard key={`${candidate.spuId}-${candidate.skuId}`} candidate={candidate} onAction={onAction} />
+            {recommendations.map((candidate, index) => (
+              <ProductCard
+                key={`${candidate.spuId}-${candidate.skuId}`}
+                candidate={candidate}
+                onAction={onAction}
+                actionMetadata={
+                  recommendationMeta?.hasAiResult
+                    ? { source: "ASSISTANT_RECOMMENDATION", threadId: chatState.threadId }
+                    : undefined
+                }
+                position={index + 1}
+                onBehaviorEvent={(event) => recordRecommendationEvent(event.eventType, event.candidate, event.metadata)}
+              />
             ))}
           </div>
         </section>

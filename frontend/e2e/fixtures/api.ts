@@ -123,7 +123,8 @@ export async function installApiMocks(page: Page) {
   const capturedBodies: Record<string, unknown[]> = {
     addCart: [],
     createOrder: [],
-    pay: []
+    pay: [],
+    behaviorEvents: []
   };
 
   await page.route("**/api/auth/login", async (route) => {
@@ -154,6 +155,12 @@ export async function installApiMocks(page: Page) {
 
   await page.route("**/api/products/recommendation-candidates?**", async (route) => {
     await fulfillJson(route, [commuteJacketCandidate]);
+  });
+
+  await page.route("**/api/behavior/events", async (route) => {
+    const body = route.request().postDataJSON() as { eventId?: string };
+    capturedBodies.behaviorEvents.push(body);
+    await fulfillJson(route, { eventId: body.eventId ?? "evt-e2e" });
   });
 
   await page.route("**/api/assistant/chat/stream", async (route) => {

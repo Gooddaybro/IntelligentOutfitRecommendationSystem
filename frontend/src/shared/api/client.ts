@@ -3,6 +3,8 @@ import type {
   AssistantChatRequest,
   AssistantChatResponse,
   AuthTokenResponse,
+  BehaviorEventRequest,
+  BehaviorEventResponse,
   CartItem,
   CurrentUserResponse,
   OrderResponse,
@@ -89,6 +91,11 @@ export const api = {
   productDetail: (spuId: number) => requestJson<ProductDetail>(`/api/products/${spuId}`),
   chat: (request: AssistantChatRequest) =>
     requestJson<AssistantChatResponse>("/api/assistant/chat", {
+      method: "POST",
+      body: JSON.stringify(request)
+    }),
+  recordBehaviorEvent: (request: BehaviorEventRequest) =>
+    requestJson<BehaviorEventResponse>("/api/behavior/events", {
       method: "POST",
       body: JSON.stringify(request)
     }),

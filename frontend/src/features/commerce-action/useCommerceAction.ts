@@ -28,7 +28,22 @@ export function useCommerceAction({ onCartItemsChange, onOrderCreated }: UseComm
         return order;
       }
 
-      onCartItemsChange(await api.addCartItem(pendingAction.skuId, pendingAction.quantity));
+      const items = await api.addCartItem(pendingAction.skuId, pendingAction.quantity);
+      onCartItemsChange(items);
+      if (pendingAction.source === "ASSISTANT_RECOMMENDATION") {
+        try {
+          await api.recordBehaviorEvent({
+            eventId: `recommendation-cart-add:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`,
+            eventType: "RECOMMENDATION_CART_ADD",
+            spuId: pendingAction.spuId,
+            skuId: pendingAction.skuId,
+            threadId: pendingAction.threadId,
+            quantity: pendingAction.quantity
+          });
+        } catch {
+          // 推荐埋点不能阻断加购主流程。
+        }
+      }
       setStatus("已加入购物车");
       setPendingAction(null);
       return null;

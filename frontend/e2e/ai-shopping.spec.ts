@@ -25,6 +25,13 @@ test("AI shopping flow requires confirmation before cart and payment actions", a
   await expect(page.getByTestId("recommendation-card").first().getByTestId("recommendation-reason")).toContainText(
     "黑色通勤外套符合预算和场景。"
   );
+  await expect
+    .poll(() =>
+      api.capturedBodies.behaviorEvents.some(
+        (event) => (event as { eventType?: string }).eventType === "RECOMMENDATION_EXPOSED"
+      )
+    )
+    .toBe(true);
 
   await page.getByTestId("recommendation-card").first().getByTestId("add-to-cart-action").click();
   await expect(page.getByTestId("confirm-action-dialog")).toContainText("加入购物车");
@@ -40,6 +47,13 @@ test("AI shopping flow requires confirmation before cart and payment actions", a
   await expect(page.getByTestId("status-line")).toContainText("已加入购物车");
   await expect(page.getByTestId("cart-count")).toContainText("购物车 1");
   expect(api.capturedBodies.addCart).toEqual([{ skuId: 2102, quantity: 1 }]);
+  await expect
+    .poll(() =>
+      api.capturedBodies.behaviorEvents.some(
+        (event) => (event as { eventType?: string }).eventType === "RECOMMENDATION_CART_ADD"
+      )
+    )
+    .toBe(true);
 
   await page.getByTestId("nav-cart").click();
   await expect(page.getByTestId("cart-row")).toContainText("通勤轻薄外套");
