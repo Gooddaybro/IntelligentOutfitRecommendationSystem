@@ -12,6 +12,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -70,6 +71,25 @@ class BehaviorControllerTests {
                 .andExpect(jsonPath("$.errorCode").value("bad_request"))
                 .andExpect(jsonPath("$.message")
                         .value("eventType is not allowed for frontend behavior events: PAYMENT_SUCCESS"));
+    }
+
+    @Test
+    void loggedInUserCanReadOwnBehaviorSummary() throws Exception {
+        String accessToken = registerAndLogin(nextUsername());
+        String eventId = nextEventId("evt_summary_click_");
+
+        mockMvc.perform(post("/api/behavior/events")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(recommendationClickBody(eventId)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/me/behavior-summary")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.recentInterestSpuIds[0]").value(1002))
+                .andExpect(jsonPath("$.data.preferredCategories[0]").value("外套"))
+                .andExpect(jsonPath("$.data.preferredStyles[0]").value("commute"));
     }
 
     private String recommendationClickBody(String eventId) {

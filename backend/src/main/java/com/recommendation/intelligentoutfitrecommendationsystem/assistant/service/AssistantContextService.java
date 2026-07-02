@@ -2,6 +2,7 @@ package com.recommendation.intelligentoutfitrecommendationsystem.assistant.servi
 
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantContext;
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorSummaryService;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationService;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.dto.RecommendationCandidateQuery;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.service.ProductCatalogService;
@@ -33,15 +34,18 @@ public class AssistantContextService {
     private final UserProfileService userProfileService;
     private final ProductCatalogService productCatalogService;
     private final ConversationService conversationService;
+    private final BehaviorSummaryService behaviorSummaryService;
 
     public AssistantContextService(
             UserProfileService userProfileService,
             ProductCatalogService productCatalogService,
-            ConversationService conversationService
+            ConversationService conversationService,
+            BehaviorSummaryService behaviorSummaryService
     ) {
         this.userProfileService = userProfileService;
         this.productCatalogService = productCatalogService;
         this.conversationService = conversationService;
+        this.behaviorSummaryService = behaviorSummaryService;
     }
 
     public AssistantContext buildContext(Long userId, String threadId, AssistantChatRequest request) {
@@ -61,6 +65,7 @@ public class AssistantContextService {
                 profile,
                 bodyData,
                 userProfileService.getPreferences(userId),
+                behaviorSummaryService.getSummary(userId),
                 conversationService.getMessages(userId, threadId),
                 productCatalogService.findRecommendationCandidates(query)
         );

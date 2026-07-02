@@ -1,5 +1,6 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto;
 
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.dto.BehaviorSummaryResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.MessageResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserBodyDataResponse;
@@ -17,7 +18,17 @@ public record AssistantContext(
         UserProfileResponse profile,
         UserBodyDataResponse bodyData,
         UserPreferencesResponse preferences,
+        BehaviorSummaryResponse behaviorSummary,
         List<MessageResponse> chatHistory,
         List<RecommendationCandidate> candidates
 ) {
+    public AssistantContext(
+            UserProfileResponse profile,
+            UserBodyDataResponse bodyData,
+            UserPreferencesResponse preferences,
+            List<MessageResponse> chatHistory,
+            List<RecommendationCandidate> candidates
+    ) {
+        this(profile, bodyData, preferences, null, chatHistory, candidates);
+    }
 }

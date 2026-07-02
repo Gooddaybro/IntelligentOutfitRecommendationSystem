@@ -17,6 +17,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.Py
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonProductCandidate;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonProductRef;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonUserContext;
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.dto.BehaviorSummaryResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ExternalServiceException;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.ConversationResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.MessageResponse;
@@ -164,7 +165,13 @@ public class AssistantService {
                 threadId,
                 request.message(),
                 toPythonChatHistory(context.chatHistory()),
-                toPythonUserContext(userId, context.profile(), context.bodyData(), context.preferences()),
+                toPythonUserContext(
+                        userId,
+                        context.profile(),
+                        context.bodyData(),
+                        context.preferences(),
+                        context.behaviorSummary()
+                ),
                 toPythonCandidates(context.candidates()),
                 false
         );
@@ -191,7 +198,8 @@ public class AssistantService {
             Long userId,
             UserProfileResponse profile,
             UserBodyDataResponse bodyData,
-            UserPreferencesResponse preferences
+            UserPreferencesResponse preferences,
+            BehaviorSummaryResponse behaviorSummary
     ) {
         String gender = bodyData != null && bodyData.gender() != null ? bodyData.gender() : profile == null ? null : profile.gender();
         return new PythonUserContext(
@@ -205,7 +213,12 @@ public class AssistantService {
                 preferences == null ? List.of() : preferences.dislikedColors(),
                 preferences == null ? List.of() : preferences.preferredCategories(),
                 preferences == null ? null : preferences.budgetMin(),
-                preferences == null ? null : preferences.budgetMax()
+                preferences == null ? null : preferences.budgetMax(),
+                behaviorSummary == null ? List.of() : behaviorSummary.recentInterestSpuIds(),
+                behaviorSummary == null ? List.of() : behaviorSummary.recentCartSpuIds(),
+                behaviorSummary == null ? List.of() : behaviorSummary.recentPurchasedSpuIds(),
+                behaviorSummary == null ? List.of() : behaviorSummary.preferredCategories(),
+                behaviorSummary == null ? List.of() : behaviorSummary.preferredStyles()
         );
     }
 

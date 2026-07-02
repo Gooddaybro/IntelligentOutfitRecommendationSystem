@@ -2,6 +2,8 @@ package com.recommendation.intelligentoutfitrecommendationsystem.assistant;
 
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.AssistantContextService;
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.dto.BehaviorSummaryResponse;
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorSummaryService;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationService;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.dto.RecommendationCandidateQuery;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.service.ProductCatalogService;
@@ -31,7 +33,8 @@ class AssistantContextServiceTests {
         AssistantContextService service = new AssistantContextService(
                 userProfileService,
                 productCatalogService,
-                conversationService
+                conversationService,
+                mock(BehaviorSummaryService.class)
         );
         AssistantChatRequest request = new AssistantChatRequest(
                 null,
@@ -61,7 +64,8 @@ class AssistantContextServiceTests {
         AssistantContextService service = new AssistantContextService(
                 userProfileService,
                 productCatalogService,
-                conversationService
+                conversationService,
+                mock(BehaviorSummaryService.class)
         );
         AssistantChatRequest request = new AssistantChatRequest(
                 null,
@@ -91,7 +95,8 @@ class AssistantContextServiceTests {
         AssistantContextService service = new AssistantContextService(
                 userProfileService,
                 productCatalogService,
-                conversationService
+                conversationService,
+                mock(BehaviorSummaryService.class)
         );
         AssistantChatRequest request = new AssistantChatRequest(
                 null,
@@ -122,7 +127,8 @@ class AssistantContextServiceTests {
         AssistantContextService service = new AssistantContextService(
                 userProfileService,
                 productCatalogService,
-                conversationService
+                conversationService,
+                mock(BehaviorSummaryService.class)
         );
         AssistantChatRequest request = new AssistantChatRequest(
                 null,
@@ -157,7 +163,8 @@ class AssistantContextServiceTests {
         AssistantContextService service = new AssistantContextService(
                 userProfileService,
                 productCatalogService,
-                conversationService
+                conversationService,
+                mock(BehaviorSummaryService.class)
         );
         AssistantChatRequest request = new AssistantChatRequest(
                 null,
@@ -192,5 +199,45 @@ class AssistantContextServiceTests {
         ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
         verify(productCatalogService).findRecommendationCandidates(captor.capture());
         assertThat(captor.getValue().getGender()).isEqualTo("female");
+    }
+
+    @Test
+    void assistantContextIncludesBehaviorSummary() {
+        UserProfileService userProfileService = mock(UserProfileService.class);
+        ProductCatalogService productCatalogService = mock(ProductCatalogService.class);
+        ConversationService conversationService = mock(ConversationService.class);
+        BehaviorSummaryService behaviorSummaryService = mock(BehaviorSummaryService.class);
+        AssistantContextService service = new AssistantContextService(
+                userProfileService,
+                productCatalogService,
+                conversationService,
+                behaviorSummaryService
+        );
+        BehaviorSummaryResponse summary = new BehaviorSummaryResponse(
+                List.of(1001L),
+                List.of(1002L),
+                List.of(1003L),
+                List.of("外套"),
+                List.of("commute"),
+                List.of()
+        );
+        AssistantChatRequest request = new AssistantChatRequest(
+                null,
+                "想要一件通勤外套",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        when(behaviorSummaryService.getSummary(10L)).thenReturn(summary);
+        when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
+        when(productCatalogService.findRecommendationCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
+
+        var context = service.buildContext(10L, "thread-behavior", request);
+
+        assertThat(context.behaviorSummary()).isEqualTo(summary);
     }
 }

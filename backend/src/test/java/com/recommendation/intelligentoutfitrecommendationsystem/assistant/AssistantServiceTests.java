@@ -12,6 +12,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.Py
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.AssistantContextService;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.AssistantRateLimitService;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.AssistantService;
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.dto.BehaviorSummaryResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.ConversationResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.MessageResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate;
@@ -88,10 +89,19 @@ class AssistantServiceTests {
                 LocalDateTime.now(),
                 null
         );
+        BehaviorSummaryResponse behaviorSummary = new BehaviorSummaryResponse(
+                List.of(1001L),
+                List.of(1002L),
+                List.of(1003L),
+                List.of("外套"),
+                List.of("commute"),
+                List.of()
+        );
         AssistantContext context = new AssistantContext(
                 new UserProfileResponse(10L, "tester", null, null, null),
                 new UserBodyDataResponse(10L, new BigDecimal("175.5"), new BigDecimal("70.0"), "male", null, null, null, null, "regular"),
                 new UserPreferencesResponse(10L, List.of("commute"), List.of("black"), List.of(), List.of("outerwear"), null, new BigDecimal("800.0")),
+                behaviorSummary,
                 List.of(
                         new MessageResponse("user", "上一轮的问题", "succeeded", "req-old", LocalDateTime.of(2026, 5, 28, 9, 30)),
                         new MessageResponse("assistant", "上一轮的回答", "succeeded", "req-old", LocalDateTime.of(2026, 5, 28, 9, 31))
@@ -163,6 +173,11 @@ class AssistantServiceTests {
         assertThat(pythonRequest.userContext().heightCm()).isEqualByComparingTo("175.5");
         assertThat(pythonRequest.userContext().preferredStyles()).containsExactly("commute");
         assertThat(pythonRequest.userContext().budgetMax()).isEqualByComparingTo("800.0");
+        assertThat(pythonRequest.userContext().recentInterestSpuIds()).containsExactly(1001L);
+        assertThat(pythonRequest.userContext().recentCartSpuIds()).containsExactly(1002L);
+        assertThat(pythonRequest.userContext().recentPurchasedSpuIds()).containsExactly(1003L);
+        assertThat(pythonRequest.userContext().behaviorPreferredCategories()).containsExactly("外套");
+        assertThat(pythonRequest.userContext().behaviorPreferredStyles()).containsExactly("commute");
         assertThat(pythonRequest.candidates()).hasSize(1);
         assertThat(pythonRequest.candidates().get(0).spuId()).isEqualTo(1001L);
         assertThat(pythonRequest.candidates().get(0).skuId()).isEqualTo(2001L);
@@ -190,6 +205,7 @@ class AssistantServiceTests {
                 null
         );
         AssistantContext context = new AssistantContext(
+                null,
                 null,
                 null,
                 null,
@@ -255,6 +271,7 @@ class AssistantServiceTests {
                 null,
                 null,
                 null,
+                null,
                 List.of(),
                 List.of()
         );
@@ -314,6 +331,7 @@ class AssistantServiceTests {
                 800
         );
         AssistantContext context = new AssistantContext(
+                null,
                 null,
                 null,
                 null,
