@@ -43,15 +43,25 @@ public class ProductCatalogService {
         this.cacheTtlProperties = cacheTtlProperties;
     }
 
-    public List<ProductSearchItem> searchProducts(String keyword) {
+    /**
+     * 商品搜索
+     *
+     * @param keyword
+     * @return
+     */
+    public List<ProductSearchItem> searchProducts(String keyword, String category) {
         String normalizedKeyword = normalizeQueryPart(keyword);
         String mapperKeyword = keyword == null ? null : keyword.trim();
-        String cacheKey = CacheKeyConstants.productSearch(normalizedKeyword);
+        String normalizedCategory = normalizeQueryPart(category);
+        String mapperCategory = category == null ? null : category.trim();
+
+        String cacheKey = CacheKeyConstants.productSearch(
+                normalizedKeyword + ":" + normalizedCategory);
         var cachedProducts = redisCacheService.getList(cacheKey, ProductSearchItem.class);
         if (cachedProducts.isPresent()) {
             return cachedProducts.get();
         }
-        List<ProductSearchItem> products = productMapper.searchProducts(mapperKeyword);
+        List<ProductSearchItem> products = productMapper.searchProducts(mapperKeyword, mapperCategory);
         redisCacheService.setValue(cacheKey, products, cacheTtlProperties.productSearchTtl());
         return products;
     }

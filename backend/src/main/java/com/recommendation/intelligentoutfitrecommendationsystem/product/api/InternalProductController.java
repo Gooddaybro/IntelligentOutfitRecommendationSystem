@@ -31,8 +31,11 @@ public class InternalProductController {
     }
 
     @GetMapping("/products/search")
-    public ApiResponse<List<ProductSearchItem>> searchProducts(@RequestParam(required = false) String keyword) {
-        return ApiResponse.ok(productCatalogService.searchProducts(keyword));
+    public ApiResponse<List<ProductSearchItem>> searchProducts(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String category
+    ) {
+        return ApiResponse.ok(productCatalogService.searchProducts(keyword, category));
     }
 
     @GetMapping("/products/{spuId}")

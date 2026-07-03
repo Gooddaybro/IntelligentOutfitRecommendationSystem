@@ -31,6 +31,14 @@ class ProductControllerTests {
     }
 
     @Test
+    void searchesPublicProductsByCategory() throws Exception {
+        mockMvc.perform(get("/api/products").param("category", "\u5916\u5957"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data[*].spuCode", hasItem("JACKET_COMMUTE_001")));
+    }
+
+    @Test
     void returnsPublicProductDetail() throws Exception {
         mockMvc.perform(get("/api/products/{spuId}", 1001))
                 .andExpect(status().isOk())

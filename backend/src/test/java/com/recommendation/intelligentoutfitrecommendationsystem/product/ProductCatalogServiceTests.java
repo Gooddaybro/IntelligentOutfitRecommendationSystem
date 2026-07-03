@@ -76,11 +76,11 @@ class ProductCatalogServiceTests {
         when(redisCacheService.getList(anyString(), eq(ProductSearchItem.class)))
                 .thenReturn(Optional.of(cachedProducts));
 
-        var products = service.searchProducts(" TSHIRT_BASIC_001 ");
+        var products = service.searchProducts(" TSHIRT_BASIC_001 ", null);
 
         assertThat(products).extracting(ProductSearchItem::getSpuCode)
                 .containsExactly("TSHIRT_BASIC_001");
-        verify(productMapper, never()).searchProducts(any());
+        verify(productMapper, never()).searchProducts(any(), any());
         verify(redisCacheService, never()).setValue(any(), any(), any());
     }
 
@@ -89,15 +89,31 @@ class ProductCatalogServiceTests {
         List<ProductSearchItem> mapperProducts = List.of(productSearchItem());
         when(redisCacheService.getList(anyString(), eq(ProductSearchItem.class)))
                 .thenReturn(Optional.empty());
-        when(productMapper.searchProducts("TSHIRT_BASIC_001"))
+        when(productMapper.searchProducts("TSHIRT_BASIC_001", null))
                 .thenReturn(mapperProducts);
 
-        var products = service.searchProducts(" TSHIRT_BASIC_001 ");
+        var products = service.searchProducts(" TSHIRT_BASIC_001 ", null);
 
         assertThat(products).extracting(ProductSearchItem::getSpuCode)
                 .containsExactly("TSHIRT_BASIC_001");
-        verify(productMapper).searchProducts("TSHIRT_BASIC_001");
+        verify(productMapper).searchProducts("TSHIRT_BASIC_001", null);
         verify(redisCacheService).setValue(anyString(), eq(mapperProducts), any(Duration.class));
+    }
+
+    @Test
+    void searchProductsPassesCategoryToMapperAndCacheKey() {
+        List<ProductSearchItem> mapperProducts = List.of(productSearchItem());
+        when(redisCacheService.getList(anyString(), eq(ProductSearchItem.class)))
+                .thenReturn(Optional.empty());
+        when(productMapper.searchProducts("TSHIRT_BASIC_001", "\u5916\u5957"))
+                .thenReturn(mapperProducts);
+
+        service.searchProducts(" TSHIRT_BASIC_001 ", " \u5916\u5957 ");
+
+        ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
+        verify(redisCacheService).getList(keyCaptor.capture(), eq(ProductSearchItem.class));
+        assertThat(keyCaptor.getValue()).isEqualTo("product:search:tshirt_basic_001:\u5916\u5957");
+        verify(productMapper).searchProducts("TSHIRT_BASIC_001", "\u5916\u5957");
     }
 
     @Test

@@ -17,7 +17,10 @@ import java.util.List;
 @Mapper
 public interface ProductMapper {
 
-    List<ProductSearchItem> searchProducts(@Param("keyword") String keyword);
+    List<ProductSearchItem> searchProducts(
+            @Param("keyword") String keyword,
+            @Param("category") String category
+    );
 
     ProductDetail findProductDetailBase(@Param("spuId") Long spuId);
 
