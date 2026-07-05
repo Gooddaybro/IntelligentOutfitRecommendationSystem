@@ -2,7 +2,7 @@ import { Send, SlidersHorizontal, Square } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { api } from "../../shared/api/client";
 import { streamAssistantChat } from "../../shared/api/assistantStream";
-import type { AssistantChatRequest, RecommendationCandidate, RecommendedItem } from "../../shared/api/types";
+import type { AssistantChatRequest, DemandIntent, RecommendationCandidate, RecommendedItem } from "../../shared/api/types";
 import type { Dispatch, FormEvent, MutableRefObject, SetStateAction } from "react";
 
 export type ChatMessage = {
@@ -45,10 +45,23 @@ export const initialChatMessages: ChatMessage[] = [
 
 export const initialChatFilters: ChatFilters = { category: "", style: "", season: "", budgetMax: "" };
 
-export function inferBudgetMaxFromMessage(message: string): number | undefined {
-  const match = message.match(/(?:预算\s*)?(\d{2,5})\s*(?:以内|以下|内)|不超过\s*(\d{2,5})/);
-  const value = match?.[1] ?? match?.[2];
-  return value ? Number(value) : undefined;
+export function requestFiltersFromResolvedIntent(
+  resolvedIntent?: DemandIntent,
+  fallbackFilters: Partial<AssistantChatRequest> = {}
+): Partial<AssistantChatRequest> {
+  if (!resolvedIntent) {
+    return fallbackFilters;
+  }
+
+  const gender = resolvedIntent.targetGender === "male" || resolvedIntent.targetGender === "female" ? resolvedIntent.targetGender : undefined;
+
+  return {
+    ...fallbackFilters,
+    category: resolvedIntent.category ?? fallbackFilters.category,
+    style: resolvedIntent.style?.[0] ?? fallbackFilters.style,
+    budgetMax: resolvedIntent.budgetMax ?? fallbackFilters.budgetMax,
+    gender: gender ?? fallbackFilters.gender
+  };
 }
 
 type ChatPanelProps = {
@@ -63,6 +76,7 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
   const [internalThreadId, setInternalThreadId] = useState<string | undefined>();
   const [internalIsStreaming, setInternalIsStreaming] = useState(false);
   const [internalError, setInternalError] = useState("");
+  const [resolvedIntent, setResolvedIntent] = useState<DemandIntent | undefined>();
   const internalAbortRef = useRef<AbortController | null>(null);
 
   const messages = state?.messages ?? internalMessages;
@@ -94,14 +108,13 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
     filters.season && `季节：${filters.season}`,
     filters.budgetMax && `预算：￥${filters.budgetMax} 以内`
   ].filter(Boolean);
+  const resolvedIntentItems = [
+    resolvedIntent?.targetGender && `目标性别：${resolvedIntent.targetGender}`,
+    resolvedIntent?.category && `解析分类：${resolvedIntent.category}`,
+    resolvedIntent?.style?.length && `解析风格：${resolvedIntent.style.join(" / ")}`,
+    resolvedIntent?.budgetMax && `解析预算：￥${resolvedIntent.budgetMax} 以内`
+  ].filter(Boolean);
   const latestUserMessage = [...messages].reverse().find((message) => message.role === "user")?.content;
-
-  function buildEffectiveRequestFilters(message: string) {
-    return {
-      ...requestFilters,
-      budgetMax: requestFilters.budgetMax ?? inferBudgetMaxFromMessage(message)
-    };
-  }
 
   function orderCandidatesByRecommendations(
     candidates: RecommendationCandidate[],
@@ -184,7 +197,7 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
     setMessages((current) => [...current, { role: "user", content: message }, { role: "assistant", content: "" }]);
     setIsStreaming(true);
     abortRef.current = new AbortController();
-    const effectiveRequestFilters = buildEffectiveRequestFilters(message);
+    const effectiveRequestFilters = requestFilters;
 
     try {
       await streamAssistantChat(
@@ -208,6 +221,7 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
             if (event.threadId) {
               setThreadId(event.threadId);
             }
+            setResolvedIntent(event.resolvedIntent);
             if (event.answer) {
               setMessages((current) => {
                 const next = [...current];
@@ -216,7 +230,11 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
                 return next;
               });
             }
-            await updateRecommendations(event.spuIds, event.recommendedItems, effectiveRequestFilters);
+            await updateRecommendations(
+              event.spuIds,
+              event.recommendedItems,
+              requestFiltersFromResolvedIntent(event.resolvedIntent, effectiveRequestFilters)
+            );
           }
           if (event.type === "error") {
             setError(event.message);
@@ -238,12 +256,17 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
       setError(streamError instanceof Error ? streamError.message : "AI 响应失败");
       const fallback = await api.chat({ ...effectiveRequestFilters, threadId, message });
       setThreadId(fallback.threadId);
+      setResolvedIntent(fallback.resolvedIntent);
       setMessages((current) => {
         const next = [...current];
         next[next.length - 1] = { role: "assistant", content: fallback.answer };
         return next;
       });
-      await updateRecommendations(fallback.recommendedSpuIds, fallback.recommendedItems ?? [], effectiveRequestFilters);
+      await updateRecommendations(
+        fallback.recommendedSpuIds,
+        fallback.recommendedItems ?? [],
+        requestFiltersFromResolvedIntent(fallback.resolvedIntent, effectiveRequestFilters)
+      );
     } finally {
       setIsStreaming(false);
       abortRef.current = null;
@@ -259,11 +282,14 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
         </div>
       </div>
       <div className="ai-insight">
-        {activePreferenceItems.length > 0 || latestUserMessage ? (
+        {activePreferenceItems.length > 0 || resolvedIntentItems.length > 0 || latestUserMessage ? (
           <>
             <p>AI 正在根据这些线索筛选商品：</p>
             <ul>
               {activePreferenceItems.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+              {resolvedIntentItems.map((item) => (
                 <li key={item}>{item}</li>
               ))}
               {latestUserMessage && <li>最近需求：{latestUserMessage}</li>}

@@ -3,7 +3,7 @@ import {
   assistantShoppingReducer,
   initialAssistantShoppingState
 } from "./assistantState";
-import { inferBudgetMaxFromMessage } from "./ChatPanel";
+import { requestFiltersFromResolvedIntent } from "./ChatPanel";
 
 describe("assistant shopping state", () => {
   it("updates chat fields through reducer transitions", () => {
@@ -29,9 +29,19 @@ describe("assistant shopping state", () => {
     expect(assistantShoppingReducer(withRecommendations, { type: "reset" })).toEqual(initialAssistantShoppingState);
   });
 
-  it("infers budget max from natural language prompt", () => {
-    expect(inferBudgetMaxFromMessage("学生党想要平价百搭，预算500以内")).toBe(500);
-    expect(inferBudgetMaxFromMessage("不超过 300")).toBe(300);
-    expect(inferBudgetMaxFromMessage("显高显瘦")).toBeUndefined();
+  it("builds recommendation filters from backend resolved intent", () => {
+    expect(
+      requestFiltersFromResolvedIntent({
+        targetGender: "female",
+        category: "半裙",
+        style: ["commute", "minimal"],
+        budgetMax: 500
+      })
+    ).toMatchObject({
+      category: "半裙",
+      style: "commute",
+      budgetMax: 500,
+      gender: "female"
+    });
   });
 });

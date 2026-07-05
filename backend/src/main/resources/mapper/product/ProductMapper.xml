@@ -29,6 +29,7 @@
 
     <select id="searchProducts" resultType="com.recommendation.intelligentoutfitrecommendationsystem.product.model.ProductSearchItem">
         <bind name="keywordValue" value="keyword == null ? null : keyword.trim()" />
+        <bind name="categoryValue" value="category == null ? null : category.trim()" />
         SELECT
             p.id AS spu_id,
             p.spu_code,
@@ -49,6 +50,9 @@
                 OR p.spu_code LIKE CONCAT('%', #{keywordValue}, '%')
                 OR c.name LIKE CONCAT('%', #{keywordValue}, '%')
             )
+        </if>
+        <if test="categoryValue != null and categoryValue != ''">
+            AND c.name = #{categoryValue}
         </if>
         GROUP BY p.id, p.spu_code, p.name, c.name, p.main_image_url, f.name
         ORDER BY p.id

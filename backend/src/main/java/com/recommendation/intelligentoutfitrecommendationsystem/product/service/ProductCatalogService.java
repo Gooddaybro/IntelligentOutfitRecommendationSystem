@@ -43,15 +43,25 @@ public class ProductCatalogService {
         this.cacheTtlProperties = cacheTtlProperties;
     }
 
-    public List<ProductSearchItem> searchProducts(String keyword) {
+    /**
+     * 商品搜索
+     *
+     * @param keyword
+     * @return
+     */
+    public List<ProductSearchItem> searchProducts(String keyword, String category) {
         String normalizedKeyword = normalizeQueryPart(keyword);
         String mapperKeyword = keyword == null ? null : keyword.trim();
-        String cacheKey = CacheKeyConstants.productSearch(normalizedKeyword);
+        String normalizedCategory = normalizeQueryPart(category);
+        String mapperCategory = category == null ? null : category.trim();
+
+        String cacheKey = CacheKeyConstants.productSearch(
+                normalizedKeyword + ":" + normalizedCategory);
         var cachedProducts = redisCacheService.getList(cacheKey, ProductSearchItem.class);
         if (cachedProducts.isPresent()) {
             return cachedProducts.get();
         }
-        List<ProductSearchItem> products = productMapper.searchProducts(mapperKeyword);
+        List<ProductSearchItem> products = productMapper.searchProducts(mapperKeyword, mapperCategory);
         redisCacheService.setValue(cacheKey, products, cacheTtlProperties.productSearchTtl());
         return products;
     }
@@ -98,16 +108,17 @@ public class ProductCatalogService {
     }
 
     public List<RecommendationCandidate> findRecommendationCandidates(RecommendationCandidateQuery query) {
-        if (query.getBudgetMax() != null && query.getBudgetMax() < 0) {
+        RecommendationCandidateQuery normalizedQuery = normalizeRecommendationQuery(query);
+        if (normalizedQuery.getBudgetMax() != null && normalizedQuery.getBudgetMax() < 0) {
             throw new BadRequestException("budgetMax must not be negative");
         }
-        String cacheKey = recommendationCandidatesCacheKey(query);
+        String cacheKey = recommendationCandidatesCacheKey(normalizedQuery);
         var cachedCandidates = redisCacheService.getList(cacheKey, RecommendationCandidate.class);
         if (cachedCandidates.isPresent()) {
             return cachedCandidates.get();
         }
         // Java 只负责提供可靠候选商品池，最终自然语言解释和个性化排序交给 Python AI 服务。
-        List<RecommendationCandidate> candidates = productMapper.findRecommendationCandidates(query);
+        List<RecommendationCandidate> candidates = productMapper.findRecommendationCandidates(normalizedQuery);
         redisCacheService.setValue(cacheKey, candidates, cacheTtlProperties.recommendationCandidatesTtl());
         return candidates;
     }
@@ -134,6 +145,29 @@ public class ProductCatalogService {
                 "gender=" + normalizeQueryPart(query.getGender()),
                 "budgetMax=" + (query.getBudgetMax() == null ? "" : query.getBudgetMax().toString())
         );
+    }
+
+    private RecommendationCandidateQuery normalizeRecommendationQuery(RecommendationCandidateQuery query) {
+        return new RecommendationCandidateQuery(
+                normalizeCategory(query.getCategory()),
+                query.getStyle(),
+                query.getSeason(),
+                query.getMaterial(),
+                query.getFit(),
+                query.getBudgetMax(),
+                query.getGender()
+        );
+    }
+
+    private String normalizeCategory(String category) {
+        if (category == null || category.isBlank()) {
+            return null;
+        }
+        String normalized = category.trim().toLowerCase(Locale.ROOT);
+        return switch (normalized) {
+            case "裙子", "半裙", "半身裙", "百褶裙", "a字裙", "直筒裙" -> "半裙";
+            default -> category.trim();
+        };
     }
 
     private String normalizeQueryPart(String value) {

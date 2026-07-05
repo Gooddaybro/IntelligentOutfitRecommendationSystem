@@ -20,9 +20,17 @@ class ProductCatalogMapperTests {
 
     @Test
     void searchProductsFindsBasicTshirtByKeyword() {
-        var results = mapper.searchProducts("基础款纯棉T恤");
+        var results = mapper.searchProducts("基础款纯棉T恤", null);
 
         assertThat(results).extracting("spuCode").contains("TSHIRT_BASIC_001");
+    }
+
+    @Test
+    void searchProductsFiltersByCategory() {
+        var results = mapper.searchProducts(null, "\u5916\u5957");
+
+        assertThat(results).extracting("spuCode").contains("JACKET_COMMUTE_001");
+        assertThat(results).extracting("spuCode").doesNotContain("TSHIRT_BASIC_001");
     }
 
     @Test

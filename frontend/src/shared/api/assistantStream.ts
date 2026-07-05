@@ -1,11 +1,18 @@
 import { getAccessToken } from "./client";
-import type { AssistantChatRequest, RecommendedItem } from "./types";
+import type { AssistantChatRequest, DemandIntent, RecommendedItem } from "./types";
 
 export type AssistantStreamEvent =
   | { type: "thread"; threadId: string }
   | { type: "token"; text: string }
   | { type: "recommendation"; spuIds: number[]; recommendedItems?: RecommendedItem[] }
-  | { type: "done"; threadId?: string; answer?: string; spuIds: number[]; recommendedItems?: RecommendedItem[] }
+  | {
+      type: "done";
+      threadId?: string;
+      answer?: string;
+      spuIds: number[];
+      recommendedItems?: RecommendedItem[];
+      resolvedIntent?: DemandIntent;
+    }
   | { type: "error"; message: string };
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -113,6 +120,8 @@ export function parseSseEventBlock(block: string): AssistantStreamEvent | null {
       answer?: string;
       recommendedSpuIds?: number[];
       recommended_spu_ids?: number[];
+      resolvedIntent?: DemandIntent;
+      resolved_intent?: DemandIntent;
     };
     const recommendedItems = normalizeRecommendedItems(donePayload);
     const ids = donePayload.recommendedSpuIds ?? donePayload.recommended_spu_ids ?? recommendedItems.map((item) => item.spuId);
@@ -121,7 +130,8 @@ export function parseSseEventBlock(block: string): AssistantStreamEvent | null {
       threadId: donePayload.threadId ?? donePayload.thread_id,
       answer: donePayload.answer,
       spuIds: Array.isArray(ids) ? ids.map(Number) : [],
-      recommendedItems
+      recommendedItems,
+      resolvedIntent: donePayload.resolvedIntent ?? donePayload.resolved_intent
     };
   }
 

@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+
 /**
  * 商品与推荐候选模块
  */
@@ -26,9 +27,18 @@ public class ProductController {
         this.productCatalogService = productCatalogService;
     }
 
+    /**
+     * 商品搜索
+     *
+     * @param keyword
+     * @return
+     */
     @GetMapping
-    public ApiResponse<List<ProductSearchItem>> searchProducts(@RequestParam(required = false) String keyword) {
-        return ApiResponse.ok(productCatalogService.searchProducts(keyword));
+    public ApiResponse<List<ProductSearchItem>> searchProducts(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String category
+    ) {
+        return ApiResponse.ok(productCatalogService.searchProducts(keyword, category));
     }
 
     @GetMapping("/recommendation-candidates")
