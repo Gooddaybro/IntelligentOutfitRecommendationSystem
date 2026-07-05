@@ -72,3 +72,55 @@ describe("payment api client", () => {
     expect((fetchMock.mock.calls[0][1].headers as Headers).get("Authorization")).toBe("Bearer token-1");
   });
 });
+
+describe("current user profile api client", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it("updates shopping preferences through the /api/me boundary", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({
+            data: {
+              userId: 1001,
+              preferredStyles: ["commute"],
+              preferredColors: ["black"],
+              dislikedColors: [],
+              preferredCategories: ["外套"],
+              budgetMin: 100,
+              budgetMax: 500
+            }
+          })
+        )
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.updatePreferences({
+      preferredStyles: ["commute"],
+      preferredColors: ["black"],
+      dislikedColors: [],
+      preferredCategories: ["外套"],
+      budgetMin: 100,
+      budgetMax: 500
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/me/preferences",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({
+          preferredStyles: ["commute"],
+          preferredColors: ["black"],
+          dislikedColors: [],
+          preferredCategories: ["外套"],
+          budgetMin: 100,
+          budgetMax: 500
+        })
+      })
+    );
+  });
+});

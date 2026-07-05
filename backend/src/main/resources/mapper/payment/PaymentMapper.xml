@@ -60,6 +60,32 @@
           AND status = 'SUCCESS'
     </select>
 
+    <!--
+        Real payment channels can leave an order in PENDING while the user refreshes or retries.
+        Return the live attempt instead of creating a second PENDING row for the same order.
+    -->
+    <select id="findPendingByOrderId"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.payment.model.Payment">
+        SELECT
+            id,
+            payment_no,
+            order_id,
+            order_no,
+            user_id,
+            amount,
+            channel,
+            status,
+            transaction_id,
+            provider_trade_no,
+            provider_payload,
+            paid_at,
+            created_at,
+            updated_at
+        FROM payment
+        WHERE order_id = #{orderId}
+          AND status = 'PENDING'
+    </select>
+
     <select id="findByPaymentNo"
             resultType="com.recommendation.intelligentoutfitrecommendationsystem.payment.model.Payment">
         SELECT
@@ -79,6 +105,32 @@
             updated_at
         FROM payment
         WHERE payment_no = #{paymentNo}
+    </select>
+
+    <!--
+        Provider callbacks mutate payment and order state without user JWT, so they must lock the
+        Java-created payment row before validating channel, amount and order consistency.
+    -->
+    <select id="findByPaymentNoForUpdate"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.payment.model.Payment">
+        SELECT
+            id,
+            payment_no,
+            order_id,
+            order_no,
+            user_id,
+            amount,
+            channel,
+            status,
+            transaction_id,
+            provider_trade_no,
+            provider_payload,
+            paid_at,
+            created_at,
+            updated_at
+        FROM payment
+        WHERE payment_no = #{paymentNo}
+        FOR UPDATE
     </select>
 
     <!--

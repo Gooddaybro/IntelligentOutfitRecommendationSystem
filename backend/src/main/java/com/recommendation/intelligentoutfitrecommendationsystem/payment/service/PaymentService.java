@@ -11,6 +11,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.order.model.Sale
 import com.recommendation.intelligentoutfitrecommendationsystem.payment.dto.CreatePaymentRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.payment.dto.MockPaymentRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.payment.dto.PaymentResponse;
+import com.recommendation.intelligentoutfitrecommendationsystem.payment.dto.ProviderPaymentCallback;
 import com.recommendation.intelligentoutfitrecommendationsystem.payment.mapper.PaymentMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.payment.model.Payment;
 import com.recommendation.intelligentoutfitrecommendationsystem.payment.model.PaymentCallbackLog;
@@ -30,10 +31,10 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 /**
- * 模拟支付业务服务。
+ * 支付业务服务。
  *
- * 该服务是 mock 支付阶段的事务边界：先锁定订单主表行，再根据订单状态决定首次支付、
- * 幂等返回或拒绝支付，保证库存确认、支付流水和订单状态不会在并发请求下重复执行。
+ * 该服务是所有支付渠道的事务边界：策略只能创建渠道结果，订单状态、支付状态、
+ * 库存确认和行为事件都必须在这里统一处理，防止真实回调和用户请求形成两套交易路径。
  */
 @Service
 public class PaymentService {
@@ -52,6 +53,12 @@ public class PaymentService {
 
     private static final String CLOSED_STATUS = "CLOSED";
 
+    private static final String CALLBACK_REJECTED_EVENT = "CALLBACK_REJECTED";
+
+    private static final String PAYMENT_SUCCESS_EVENT = "PAYMENT_SUCCESS";
+
+    private static final String DUPLICATE_PAYMENT_SUCCESS_EVENT = "DUPLICATE_PAYMENT_SUCCESS";
+
     private static final DateTimeFormatter PAYMENT_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS");
 
     private final PaymentMapper paymentMapper;
@@ -64,18 +71,22 @@ public class PaymentService {
 
     private final BehaviorEventService behaviorEventService;
 
+    private final PaymentCallbackVerifier paymentCallbackVerifier;
+
     public PaymentService(
             PaymentMapper paymentMapper,
             OrderMapper orderMapper,
             InventoryMapper inventoryMapper,
             PaymentStrategyRegistry paymentStrategyRegistry,
-            BehaviorEventService behaviorEventService
+            BehaviorEventService behaviorEventService,
+            PaymentCallbackVerifier paymentCallbackVerifier
     ) {
         this.paymentMapper = paymentMapper;
         this.orderMapper = orderMapper;
         this.inventoryMapper = inventoryMapper;
         this.paymentStrategyRegistry = paymentStrategyRegistry;
         this.behaviorEventService = behaviorEventService;
+        this.paymentCallbackVerifier = paymentCallbackVerifier;
     }
 
     /**
@@ -114,10 +125,12 @@ public class PaymentService {
             return toResponse(findExistingSuccessPayment(order));
         }
         validatePayable(order);
+        Payment pendingPayment = paymentMapper.findPendingByOrderId(order.getId());
+        if (pendingPayment != null) {
+            return toResponse(pendingPayment);
+        }
 
         Payment payment = createPendingPayment(order, channel);
-        paymentMapper.insertPayment(payment);
-
         PaymentResult result = strategy.pay(new PaymentRequestContext(
                 payment.getPaymentNo(),
                 order.getOrderNo(),
@@ -125,6 +138,8 @@ public class PaymentService {
                 order.getTotalAmount(),
                 channel
         ));
+        applyProviderResult(payment, result);
+        paymentMapper.insertPayment(payment);
         if (SUCCESS_STATUS.equals(result.status())) {
             return confirmPaymentSuccess(order, payment, result);
         }
@@ -162,6 +177,70 @@ public class PaymentService {
         paymentMapper.insertCallbackLog(log);
     }
 
+    /**
+     * 处理已公开暴露的支付服务商回调。
+     *
+     * 公开回调不能依赖用户 JWT，因此所有状态变更必须先通过渠道签名校验，再锁定 Java
+     * 创建的支付流水和订单行，确认渠道、金额、订单号完全匹配后才能进入成功确认路径。
+     */
+    @Transactional
+    public void handleCallback(String channel, String rawBody, HttpServletRequest request) {
+        String normalizedChannel = normalizeChannel(channel);
+        PaymentCallbackVerification verification = paymentCallbackVerifier.verify(normalizedChannel, rawBody, request);
+        if (!verification.valid()) {
+            paymentMapper.insertCallbackLog(rejectedCallbackLog(
+                    normalizedChannel,
+                    rawBody,
+                    request,
+                    verification.failureReason()
+            ));
+            return;
+        }
+
+        ProviderPaymentCallback callback = verification.callback();
+        PaymentCallbackLog log = verifiedCallbackLog(normalizedChannel, rawBody, request, callback);
+        if (!SUCCESS_STATUS.equals(normalizeStatus(callback.status()))) {
+            log.setEventType("CALLBACK_IGNORED");
+            log.setFailureReason("callback status is not success");
+            paymentMapper.insertCallbackLog(log);
+            return;
+        }
+
+        Payment payment = paymentMapper.findByPaymentNoForUpdate(callback.paymentNo());
+        String failureReason = validateCallbackPayment(normalizedChannel, callback, payment);
+        if (failureReason != null) {
+            log.setFailureReason(failureReason);
+            paymentMapper.insertCallbackLog(log);
+            return;
+        }
+        if (SUCCESS_STATUS.equals(payment.getStatus())) {
+            log.setEventType(DUPLICATE_PAYMENT_SUCCESS_EVENT);
+            log.setHandled(true);
+            paymentMapper.insertCallbackLog(log);
+            return;
+        }
+
+        SalesOrder order = orderMapper.findOrderByOrderNoForUpdate(callback.orderNo());
+        failureReason = validateCallbackOrder(callback, payment, order);
+        if (failureReason != null) {
+            log.setFailureReason(failureReason);
+            paymentMapper.insertCallbackLog(log);
+            return;
+        }
+
+        confirmPaymentSuccess(order, payment, new PaymentResult(
+                payment.getPaymentNo(),
+                payment.getChannel(),
+                SUCCESS_STATUS,
+                callback.providerTradeNo(),
+                callback.transactionId(),
+                callback.providerPayload(),
+                callback.paidAt()
+        ));
+        log.setHandled(true);
+        paymentMapper.insertCallbackLog(log);
+    }
+
     private Payment findExistingSuccessPayment(SalesOrder order) {
         Payment payment = paymentMapper.findSuccessByOrderId(order.getId());
         if (payment == null) {
@@ -192,6 +271,19 @@ public class PaymentService {
         payment.setChannel(channel);
         payment.setStatus(PENDING_STATUS);
         return payment;
+    }
+
+    private void applyProviderResult(Payment payment, PaymentResult result) {
+        if (result == null) {
+            return;
+        }
+        payment.setProviderTradeNo(result.providerTradeNo());
+        payment.setProviderPayload(result.providerPayload());
+        payment.setTransactionId(result.transactionId());
+        if (!SUCCESS_STATUS.equals(result.status()) && result.status() != null) {
+            payment.setStatus(result.status());
+        }
+        payment.setPaidAt(result.paidAt());
     }
 
     private PaymentResponse confirmPaymentSuccess(SalesOrder order, Payment payment, PaymentResult result) {
@@ -254,6 +346,77 @@ public class PaymentService {
         );
     }
 
+    private PaymentCallbackLog rejectedCallbackLog(
+            String channel,
+            String rawBody,
+            HttpServletRequest request,
+            String failureReason
+    ) {
+        PaymentCallbackLog log = new PaymentCallbackLog();
+        log.setChannel(channel);
+        log.setEventType(CALLBACK_REJECTED_EVENT);
+        log.setRawBody(rawBody == null ? "" : rawBody);
+        log.setHeaders(toHeaderSnapshot(request));
+        log.setSignatureValid(false);
+        log.setHandled(false);
+        log.setFailureReason(failureReason);
+        return log;
+    }
+
+    private PaymentCallbackLog verifiedCallbackLog(
+            String channel,
+            String rawBody,
+            HttpServletRequest request,
+            ProviderPaymentCallback callback
+    ) {
+        PaymentCallbackLog log = new PaymentCallbackLog();
+        log.setChannel(channel);
+        log.setPaymentNo(callback.paymentNo());
+        log.setOrderNo(callback.orderNo());
+        log.setProviderTradeNo(callback.providerTradeNo());
+        log.setEventType(PAYMENT_SUCCESS_EVENT);
+        log.setRawBody(rawBody == null ? "" : rawBody);
+        log.setHeaders(toHeaderSnapshot(request));
+        log.setSignatureValid(true);
+        log.setHandled(false);
+        return log;
+    }
+
+    private String validateCallbackPayment(String channel, ProviderPaymentCallback callback, Payment payment) {
+        if (payment == null) {
+            return "payment not found";
+        }
+        if (!channel.equals(payment.getChannel())) {
+            return "payment channel mismatch";
+        }
+        if (!callback.orderNo().equals(payment.getOrderNo())) {
+            return "payment order mismatch";
+        }
+        if (callback.amount().compareTo(payment.getAmount()) != 0) {
+            return "payment amount mismatch";
+        }
+        if (!PENDING_STATUS.equals(payment.getStatus()) && !SUCCESS_STATUS.equals(payment.getStatus())) {
+            return "payment status is not callback-confirmable";
+        }
+        return null;
+    }
+
+    private String validateCallbackOrder(ProviderPaymentCallback callback, Payment payment, SalesOrder order) {
+        if (order == null) {
+            return "order not found";
+        }
+        if (!payment.getOrderId().equals(order.getId()) || !payment.getUserId().equals(order.getUserId())) {
+            return "order ownership mismatch";
+        }
+        if (!callback.orderNo().equals(order.getOrderNo())) {
+            return "order number mismatch";
+        }
+        if (!UNPAID_STATUS.equals(order.getStatus())) {
+            return "order is not unpaid";
+        }
+        return null;
+    }
+
     private String generatePaymentNo(LocalDateTime paidAt) {
         int suffix = ThreadLocalRandom.current().nextInt(100000, 1000000);
         return "PAY" + paidAt.format(PAYMENT_TIME_FORMATTER) + suffix;
@@ -275,6 +438,10 @@ public class PaymentService {
             throw new BadRequestException("channel must not be blank");
         }
         return channel.trim().toUpperCase();
+    }
+
+    private String normalizeStatus(String status) {
+        return status == null ? "" : status.trim().toUpperCase();
     }
 
     private String normalizePaymentNo(String paymentNo) {

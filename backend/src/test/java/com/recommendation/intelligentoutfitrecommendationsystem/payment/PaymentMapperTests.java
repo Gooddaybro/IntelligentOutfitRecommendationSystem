@@ -79,6 +79,24 @@ class PaymentMapperTests {
     }
 
     @Test
+    void findsPendingPaymentByOrderIdForPayIdempotency() {
+        Long userId = createUser();
+        SalesOrder order = insertOrder(userId);
+        Payment payment = payment(order, userId);
+        payment.setPaymentNo("PAYPENDINGLOOKUP" + userId);
+        payment.setStatus("PENDING");
+        payment.setTransactionId(null);
+        payment.setPaidAt(null);
+
+        paymentMapper.insertPayment(payment);
+
+        Payment found = paymentMapper.findPendingByOrderId(order.getId());
+        assertThat(found.getPaymentNo()).isEqualTo(payment.getPaymentNo());
+        assertThat(found.getOrderNo()).isEqualTo(order.getOrderNo());
+        assertThat(found.getStatus()).isEqualTo("PENDING");
+    }
+
+    @Test
     void recordsCallbackLogForAuditAndIdempotencyAnalysis() {
         Long userId = createUser();
         PaymentCallbackLog log = new PaymentCallbackLog();

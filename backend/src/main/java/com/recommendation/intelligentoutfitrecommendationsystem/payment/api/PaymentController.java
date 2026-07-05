@@ -64,7 +64,7 @@ public class PaymentController {
             @RequestBody(required = false) String rawBody,
             HttpServletRequest request
     ) {
-        paymentService.recordCallback(channel, rawBody, request);
+        paymentService.handleCallback(channel, rawBody, request);
         return ApiResponse.ok(new PaymentCallbackResponse(true, channel));
     }
 }

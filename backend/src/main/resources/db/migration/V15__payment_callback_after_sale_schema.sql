@@ -1,0 +1,21 @@
+CREATE TABLE after_sale_request (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    request_no VARCHAR(64) NOT NULL,
+    order_id BIGINT NOT NULL,
+    order_no VARCHAR(64) NOT NULL,
+    user_id BIGINT NOT NULL,
+    type VARCHAR(32) NOT NULL,
+    reason VARCHAR(255) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    refund_amount DECIMAL(10,2) NOT NULL,
+    handler_note VARCHAR(255) NULL,
+    handled_at DATETIME(6) NULL,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    UNIQUE KEY uk_after_sale_request_no (request_no),
+    KEY idx_after_sale_order (order_id),
+    KEY idx_after_sale_order_status (order_id, status),
+    KEY idx_after_sale_user_created (user_id, created_at),
+    CONSTRAINT fk_after_sale_order FOREIGN KEY (order_id) REFERENCES sales_order(id),
+    CONSTRAINT fk_after_sale_user FOREIGN KEY (user_id) REFERENCES user_account(id)
+);

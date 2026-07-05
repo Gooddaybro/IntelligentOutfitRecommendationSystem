@@ -57,6 +57,7 @@ public class AssistantService {
     private final AssistantRateLimitService assistantRateLimitService;
     private final PythonAssistantClient pythonAssistantClient;
     private final PythonAssistantStreamClient pythonAssistantStreamClient;
+    private final AssistantFallbackService assistantFallbackService;
     private final Executor assistantStreamingExecutor;
     private final long streamTimeoutMs;
 
@@ -66,6 +67,7 @@ public class AssistantService {
             AssistantRateLimitService assistantRateLimitService,
             PythonAssistantClient pythonAssistantClient,
             PythonAssistantStreamClient pythonAssistantStreamClient,
+            AssistantFallbackService assistantFallbackService,
             @Qualifier("assistantStreamingExecutor") Executor assistantStreamingExecutor,
             @Value("${app.ai.stream-timeout-ms:120000}") long streamTimeoutMs
     ) {
@@ -74,6 +76,7 @@ public class AssistantService {
         this.assistantRateLimitService = assistantRateLimitService;
         this.pythonAssistantClient = pythonAssistantClient;
         this.pythonAssistantStreamClient = pythonAssistantStreamClient;
+        this.assistantFallbackService = assistantFallbackService;
         this.assistantStreamingExecutor = assistantStreamingExecutor;
         this.streamTimeoutMs = streamTimeoutMs;
     }
@@ -86,7 +89,8 @@ public class AssistantService {
         // 先保存用户消息，即使 Python 调用失败，也能在会话历史和日志中追踪用户原始问题。
         conversationService.appendMessage(userId, threadId, "user", request.message(), requestId);
         AssistantContext context = assistantContextService.buildContext(userId, threadId, request);
-        PythonChatResponse pythonResponse = pythonAssistantClient.chat(toPythonRequest(userId, threadId, request, context));
+        PythonChatRequest pythonRequest = toPythonRequest(userId, threadId, request, context);
+        PythonChatResponse pythonResponse = callPythonOrFallback(pythonRequest, request, context);
 
         String answer = requireAnswer(pythonResponse);
         conversationService.appendMessage(userId, threadId, "assistant", answer, requestId);
@@ -125,6 +129,13 @@ public class AssistantService {
             return emitter;
         }
 
+        if (assistantFallbackService.shouldBypassPython()) {
+            AssistantStreamErrorEvent error = assistantFallbackService.streamFallbackError();
+            sendEvent(emitter, active, "error", error);
+            emitter.complete();
+            return emitter;
+        }
+
         try {
             assistantStreamingExecutor.execute(() -> streamToPython(
                     pythonRequest,
@@ -140,6 +151,25 @@ public class AssistantService {
             emitter.complete();
         }
         return emitter;
+    }
+
+    private PythonChatResponse callPythonOrFallback(
+            PythonChatRequest pythonRequest,
+            AssistantChatRequest request,
+            AssistantContext context
+    ) {
+        if (assistantFallbackService.shouldBypassPython()) {
+            return assistantFallbackService.chatFallbackResponse(pythonRequest, request, context);
+        }
+        try {
+            PythonChatResponse pythonResponse = pythonAssistantClient.chat(pythonRequest);
+            requireAnswer(pythonResponse);
+            assistantFallbackService.recordPythonSuccess();
+            return pythonResponse;
+        } catch (RuntimeException exception) {
+            assistantFallbackService.recordPythonFailure(exception);
+            return assistantFallbackService.chatFallbackResponse(pythonRequest, request, context);
+        }
     }
 
     private String resolveThreadId(Long userId, AssistantChatRequest request) {
@@ -345,7 +375,8 @@ public class AssistantService {
         try {
             pythonAssistantStreamClient.streamChat(pythonRequest, handler);
         } catch (RuntimeException exception) {
-            handler.onError("python_stream_error", "AI assistant stream failed");
+            AssistantStreamErrorEvent error = assistantFallbackService.streamFallbackError();
+            handler.onError(error.code(), error.message());
         }
     }
 
@@ -386,7 +417,17 @@ public class AssistantService {
             if (!active.get()) {
                 return;
             }
-            String answer = requireAnswer(response);
+            String answer;
+            try {
+                answer = requireAnswer(response);
+            } catch (RuntimeException exception) {
+                assistantFallbackService.recordPythonFailure(exception);
+                AssistantStreamErrorEvent error = assistantFallbackService.streamFallbackError();
+                sendEvent(emitter, active, "error", error);
+                emitter.complete();
+                return;
+            }
+            assistantFallbackService.recordPythonSuccess();
             conversationService.appendMessage(userId, threadId, "assistant", answer, requestId);
             List<AssistantRecommendationItem> recommendedItems = toRecommendedItems(response.productRefs(), context.candidates());
             AssistantStreamDoneEvent done = new AssistantStreamDoneEvent(
@@ -407,9 +448,9 @@ public class AssistantService {
             if (!active.get()) {
                 return;
             }
-            String safeCode = code == null || code.isBlank() ? "python_stream_error" : code;
-            String safeMessage = message == null || message.isBlank() ? "AI assistant stream failed" : message;
-            sendEvent(emitter, active, "error", new AssistantStreamErrorEvent(safeCode, safeMessage));
+            assistantFallbackService.recordPythonFailure(null);
+            AssistantStreamErrorEvent error = assistantFallbackService.streamFallbackError();
+            sendEvent(emitter, active, "error", error);
             emitter.complete();
         }
     }

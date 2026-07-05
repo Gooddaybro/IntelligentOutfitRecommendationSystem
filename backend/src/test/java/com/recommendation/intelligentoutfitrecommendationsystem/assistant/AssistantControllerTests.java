@@ -6,6 +6,8 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client.PythonAssistantStreamClient;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonProductRef;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ExternalServiceException;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -17,7 +19,9 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,11 +40,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AssistantControllerTests {
 
     private static final AtomicInteger USER_SEQUENCE = new AtomicInteger(7000);
+    private static final AtomicBoolean FAIL_SYNC_PYTHON = new AtomicBoolean();
+    private static final AtomicBoolean FAIL_STREAM_PYTHON = new AtomicBoolean();
 
     @Autowired
     private MockMvc mockMvc;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @AfterEach
+    void resetFakePythonFailures() {
+        FAIL_SYNC_PYTHON.set(false);
+        FAIL_STREAM_PYTHON.set(false);
+    }
 
     @Test
     void rejectsAssistantChatWithoutAccessToken() throws Exception {
@@ -93,7 +105,7 @@ class AssistantControllerTests {
                 .andExpect(jsonPath("$.data.recommendedItems[0].reason").value("fits the requested commute style"))
                 .andReturn()
                 .getResponse()
-                .getContentAsString();
+                .getContentAsString(StandardCharsets.UTF_8);
 
         String threadId = objectMapper.readTree(chatBody).path("data").path("threadId").asText();
 
@@ -132,7 +144,7 @@ class AssistantControllerTests {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
                 .andReturn()
                 .getResponse()
-                .getContentAsString();
+                .getContentAsString(StandardCharsets.UTF_8);
 
         assertThat(streamBody)
                 .contains("event:meta")
@@ -144,6 +156,70 @@ class AssistantControllerTests {
                 .contains("\"recommended_items\"")
                 .contains("fits the requested commute style")
                 .doesNotContain("9999");
+    }
+
+    @Test
+    void syncChatReturnsSafeFallbackWhenPythonFails() throws Exception {
+        FAIL_SYNC_PYTHON.set(true);
+        String accessToken = registerAndLogin(nextUsername());
+
+        mockMvc.perform(post("/api/assistant/chat")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "message": "recommend a jacket for autumn commute",
+                                  "category": "外套",
+                                  "style": "commute",
+                                  "season": "autumn",
+                                  "fit": "regular",
+                                  "budgetMax": 800
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.answer").value(org.hamcrest.Matchers.containsString("AI 导购暂时不可用")))
+                .andExpect(jsonPath("$.data.recommendedSpuIds").isEmpty())
+                .andExpect(jsonPath("$.data.recommendedItems").isEmpty())
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("provider secret"))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("/tmp/python-internal"))));
+    }
+
+    @Test
+    void streamChatReturnsSafeErrorWhenPythonFails() throws Exception {
+        FAIL_STREAM_PYTHON.set(true);
+        String accessToken = registerAndLogin(nextUsername());
+
+        var mvcResult = mockMvc.perform(post("/api/assistant/chat/stream")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .content("""
+                                {
+                                  "message": "recommend a jacket for autumn commute",
+                                  "category": "外套",
+                                  "style": "commute",
+                                  "season": "autumn",
+                                  "fit": "regular",
+                                  "budgetMax": 800
+                                }
+                                """))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        String streamBody = mockMvc.perform(asyncDispatch(mvcResult))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
+                .andReturn()
+                .getResponse()
+                .getContentAsString(StandardCharsets.UTF_8);
+
+        assertThat(streamBody)
+                .contains("event:meta")
+                .contains("event:error")
+                .contains("AI 导购暂时不可用")
+                .doesNotContain("provider secret")
+                .doesNotContain("/tmp/python-internal")
+                .doesNotContain("raw_secret");
     }
 
     private String registerAndLogin(String username) throws Exception {
@@ -184,21 +260,30 @@ class AssistantControllerTests {
         @Bean
         @Primary
         PythonAssistantClient pythonAssistantClient() {
-            return request -> new PythonChatResponse(
-                    request.requestId(),
-                    "A structured jacket is a good match.",
-                    "recommendation",
-                    List.of(
-                            new PythonProductRef(9999L, 8888L, "hallucinated product must be ignored", null),
-                            new PythonProductRef(1002L, 2101L, "fits the requested commute style", null)
-                    )
-            );
+            return request -> {
+                if (FAIL_SYNC_PYTHON.get()) {
+                    throw new ExternalServiceException("provider secret /tmp/python-internal");
+                }
+                return new PythonChatResponse(
+                        request.requestId(),
+                        "A structured jacket is a good match.",
+                        "recommendation",
+                        List.of(
+                                new PythonProductRef(9999L, 8888L, "hallucinated product must be ignored", null),
+                                new PythonProductRef(1002L, 2101L, "fits the requested commute style", null)
+                        )
+                );
+            };
         }
 
         @Bean
         @Primary
         PythonAssistantStreamClient pythonAssistantStreamClient() {
             return (request, handler) -> {
+                if (FAIL_STREAM_PYTHON.get()) {
+                    handler.onError("raw_secret", "provider secret /tmp/python-internal");
+                    return;
+                }
                 handler.onToken("A structured");
                 handler.onToken(" jacket");
                 handler.onDone(new PythonChatResponse(

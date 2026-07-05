@@ -17,6 +17,45 @@ export type CurrentUserResponse = {
   role?: string;
 };
 
+export type UserProfileRequest = {
+  nickname?: string | null;
+  avatarUrl?: string | null;
+  gender?: string | null;
+  birthday?: string | null;
+};
+
+export type UserProfileResponse = UserProfileRequest & {
+  userId: number;
+};
+
+export type UserBodyDataRequest = {
+  heightCm?: number | null;
+  weightKg?: number | null;
+  gender?: string | null;
+  shoulderWidthCm?: number | null;
+  bustCm?: number | null;
+  waistCm?: number | null;
+  hipCm?: number | null;
+  preferredFit?: string | null;
+};
+
+export type UserBodyDataResponse = UserBodyDataRequest & {
+  userId: number;
+};
+
+export type UserPreferencesRequest = {
+  preferredStyles: string[];
+  preferredColors: string[];
+  dislikedColors: string[];
+  preferredCategories: string[];
+  budgetMin?: number | null;
+  budgetMax?: number | null;
+};
+
+export type UserPreferencesResponse = UserPreferencesRequest & {
+  userId: number;
+};
+
 export type ProductSearchItem = {
   spuId: number;
   spuCode: string;

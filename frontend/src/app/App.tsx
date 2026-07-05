@@ -1,4 +1,4 @@
-import { Bot, Layers3, LogOut, PackageSearch, ReceiptText, ShoppingCart } from "lucide-react";
+import { Bot, Layers3, LogOut, PackageSearch, ReceiptText, ShoppingCart, UserRound } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useAssistantShoppingState } from "../features/assistant/assistantState";
 import { AuthPanel } from "../features/auth/AuthPanel";
@@ -11,8 +11,9 @@ import { AiShoppingPage } from "../pages/AiShoppingPage";
 import { CartPage } from "../pages/CartPage";
 import { OrdersPage } from "../pages/OrdersPage";
 import { ProductBrowsePage } from "../pages/ProductBrowsePage";
+import { ProfilePreferencesPage } from "../pages/ProfilePreferencesPage";
 
-type ViewKey = "ai" | "browse" | "cart" | "orders";
+type ViewKey = "ai" | "browse" | "cart" | "orders" | "profile";
 
 export function App() {
   const [view, setView] = useState<ViewKey>("ai");
@@ -97,6 +98,15 @@ export function App() {
             <ReceiptText size={18} />
             <span>订单</span>
           </button>
+          <button
+            className={view === "profile" ? "active" : ""}
+            data-testid="nav-profile"
+            onClick={() => setView("profile")}
+            title="我的偏好"
+          >
+            <UserRound size={18} />
+            <span>我的偏好</span>
+          </button>
         </nav>
         <div className="user-area">
           <span>{auth.user.username}</span>
@@ -128,6 +138,7 @@ export function App() {
       {view === "browse" && <ProductBrowsePage onAction={commerce.setPendingAction} />}
       {view === "cart" && <CartPage items={cart.items} onItemsChange={cart.setItems} onOrderCreated={() => setView("orders")} />}
       {view === "orders" && <OrdersPage />}
+      {view === "profile" && <ProfilePreferencesPage />}
 
       <CartDrawer items={cart.items} onOpenCart={() => setView("cart")} />
       <ConfirmActionDialog

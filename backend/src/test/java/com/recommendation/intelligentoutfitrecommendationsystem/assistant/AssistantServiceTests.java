@@ -10,9 +10,11 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.Py
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonProductRef;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.AssistantContextService;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.AssistantFallbackService;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.AssistantRateLimitService;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.AssistantService;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.dto.BehaviorSummaryResponse;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ExternalServiceException;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.ConversationResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.MessageResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate;
@@ -42,6 +44,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -256,6 +259,107 @@ class AssistantServiceTests {
     }
 
     @Test
+    void chatReturnsSafeFallbackAndStoresAssistantMessageWhenPythonFails() {
+        AssistantChatRequest request = new AssistantChatRequest(
+                "th_existing",
+                "recommend a jacket",
+                "outerwear",
+                "commute",
+                null,
+                null,
+                "regular",
+                null
+        );
+        AssistantContext context = new AssistantContext(
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                List.of(new RecommendationCandidate(
+                        1001L,
+                        2001L,
+                        "SPU-1001",
+                        "秋季男士通勤外套",
+                        "外套",
+                        null,
+                        "regular",
+                        "黑色",
+                        "L",
+                        "棉",
+                        "autumn",
+                        "commute",
+                        new BigDecimal("299.0"),
+                        "in_stock",
+                        new BigDecimal("299.0"),
+                        new BigDecimal("399.0"),
+                        8,
+                        "JACKET-COMMUTE-BLK-L",
+                        8,
+                        "适用场景:通勤"
+                ))
+        );
+        MDC.put("requestId", "req-ai-fallback-test");
+
+        when(assistantContextService.buildContext(10L, "th_existing", request)).thenReturn(context);
+        when(pythonAssistantClient.chat(any(PythonChatRequest.class)))
+                .thenThrow(new ExternalServiceException("provider timeout: /secret/path api-key sk-live-secret"));
+
+        AssistantChatResponse response = newAssistantService().chat(10L, request);
+
+        assertThat(response.threadId()).isEqualTo("th_existing");
+        assertThat(response.answer())
+                .contains("AI 导购暂时不可用")
+                .doesNotContain("provider")
+                .doesNotContain("secret")
+                .doesNotContain("/secret/path")
+                .doesNotContain("api-key");
+        assertThat(response.recommendedSpuIds()).isEmpty();
+        assertThat(response.recommendedItems()).isEmpty();
+        assertThat(response.candidatesCount()).isEqualTo(1);
+        verify(assistantRateLimitService).assertAllowed(10L);
+        verify(conversationService).appendMessage(10L, "th_existing", "user", "recommend a jacket", "req-ai-fallback-test");
+        verify(conversationService).appendMessage(10L, "th_existing", "assistant", response.answer(), "req-ai-fallback-test");
+    }
+
+    @Test
+    void repeatedPythonFailuresOpenLocalFallbackGuardAndSkipPythonClient() {
+        AssistantChatRequest request = new AssistantChatRequest(
+                "th_existing",
+                "recommend a jacket",
+                "outerwear",
+                "commute",
+                null,
+                null,
+                "regular",
+                null
+        );
+        AssistantContext context = new AssistantContext(
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                List.of()
+        );
+        AssistantFallbackService fallbackService = new AssistantFallbackService(2);
+
+        when(assistantContextService.buildContext(10L, "th_existing", request)).thenReturn(context);
+        when(pythonAssistantClient.chat(any(PythonChatRequest.class)))
+                .thenThrow(new ExternalServiceException("python unavailable"));
+
+        AssistantService service = newAssistantService(fallbackService);
+        service.chat(10L, request);
+        service.chat(10L, request);
+        AssistantChatResponse guardedResponse = service.chat(10L, request);
+
+        assertThat(guardedResponse.answer()).contains("AI 导购暂时不可用");
+        assertThat(guardedResponse.recommendedItems()).isEmpty();
+        verify(pythonAssistantClient, times(2)).chat(any(PythonChatRequest.class));
+        verify(conversationService, times(3)).appendMessage(eq(10L), eq("th_existing"), eq("assistant"), any(), any());
+    }
+
+    @Test
     void streamsPythonTokensAndStoresAssistantMessageOnlyAfterDone() {
         AssistantChatRequest request = new AssistantChatRequest(
                 "th_stream_existing",
@@ -370,13 +474,64 @@ class AssistantServiceTests {
         );
     }
 
+    @Test
+    void streamSkipsPythonWhenFallbackGuardIsOpen() {
+        AssistantChatRequest request = new AssistantChatRequest(
+                "th_stream_guard",
+                "推荐一件通勤外套",
+                "outerwear",
+                "commute",
+                "autumn",
+                null,
+                "regular",
+                800
+        );
+        AssistantContext context = new AssistantContext(
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                List.of()
+        );
+        AssistantFallbackService fallbackService = new AssistantFallbackService(1);
+        fallbackService.recordPythonFailure(new ExternalServiceException("first failure opens guard"));
+        MDC.put("requestId", "req-stream-guard-test");
+
+        when(assistantContextService.buildContext(10L, "th_stream_guard", request)).thenReturn(context);
+
+        SseEmitter emitter = newAssistantService(fallbackService).streamChat(10L, request);
+
+        assertThat(emitter).isNotNull();
+        verify(pythonAssistantStreamClient, never()).streamChat(any(PythonChatRequest.class), any(PythonAssistantStreamHandler.class));
+        verify(conversationService).appendMessage(
+                10L,
+                "th_stream_guard",
+                "user",
+                "推荐一件通勤外套",
+                "req-stream-guard-test"
+        );
+        verify(conversationService, never()).appendMessage(
+                eq(10L),
+                eq("th_stream_guard"),
+                eq("assistant"),
+                any(),
+                eq("req-stream-guard-test")
+        );
+    }
+
     private AssistantService newAssistantService() {
+        return newAssistantService(new AssistantFallbackService(3));
+    }
+
+    private AssistantService newAssistantService(AssistantFallbackService fallbackService) {
         return new AssistantService(
                 conversationService,
                 assistantContextService,
                 assistantRateLimitService,
                 pythonAssistantClient,
                 pythonAssistantStreamClient,
+                fallbackService,
                 directExecutor,
                 120_000L
         );

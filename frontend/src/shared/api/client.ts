@@ -11,7 +11,13 @@ import type {
   PaymentResponse,
   ProductDetail,
   ProductSearchItem,
-  RecommendationCandidate
+  RecommendationCandidate,
+  UserBodyDataRequest,
+  UserBodyDataResponse,
+  UserPreferencesRequest,
+  UserPreferencesResponse,
+  UserProfileRequest,
+  UserProfileResponse
 } from "./types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -72,6 +78,24 @@ export const api = {
       body: JSON.stringify({ username, password, email })
     }),
   me: () => requestJson<CurrentUserResponse>("/api/users/me"),
+  profile: () => requestJson<UserProfileResponse>("/api/me/profile"),
+  updateProfile: (request: UserProfileRequest) =>
+    requestJson<UserProfileResponse>("/api/me/profile", {
+      method: "PUT",
+      body: JSON.stringify(request)
+    }),
+  bodyData: () => requestJson<UserBodyDataResponse>("/api/me/body-data"),
+  updateBodyData: (request: UserBodyDataRequest) =>
+    requestJson<UserBodyDataResponse>("/api/me/body-data", {
+      method: "PUT",
+      body: JSON.stringify(request)
+    }),
+  preferences: () => requestJson<UserPreferencesResponse>("/api/me/preferences"),
+  updatePreferences: (request: UserPreferencesRequest) =>
+    requestJson<UserPreferencesResponse>("/api/me/preferences", {
+      method: "PUT",
+      body: JSON.stringify(request)
+    }),
   searchProducts: (keyword: string) => {
     const params = new URLSearchParams();
     if (keyword.trim()) {

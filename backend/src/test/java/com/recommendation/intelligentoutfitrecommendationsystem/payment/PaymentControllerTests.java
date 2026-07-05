@@ -13,6 +13,11 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.util.HexFormat;
+
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -117,6 +122,100 @@ class PaymentControllerTests {
     }
 
     @Test
+    void alipayPendingPaymentIsConfirmedBySignedCallback() throws Exception {
+        String accessToken = registerAndLogin(nextUsername());
+        resetInventory(2005, 5);
+        addCartItem(accessToken, 2005, 1);
+        String orderNo = createOrder(accessToken, 2005);
+
+        String payBody = mockMvc.perform(post("/api/payments")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "orderNo": "%s",
+                                  "channel": "ALIPAY"
+                                }
+                                """.formatted(orderNo)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.orderNo").value(orderNo))
+                .andExpect(jsonPath("$.data.channel").value("ALIPAY"))
+                .andExpect(jsonPath("$.data.status").value("PENDING"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        String paymentNo = objectMapper.readTree(payBody).path("data").path("paymentNo").asText();
+        String callbackBody = """
+                {
+                  "paymentNo": "%s",
+                  "orderNo": "%s",
+                  "amount": 99.00,
+                  "status": "SUCCESS",
+                  "providerTradeNo": "ALI-TRADE-%s",
+                  "transactionId": "ALI-TX-%s",
+                  "paidAt": "2026-07-05T21:30:00"
+                }
+                """.formatted(paymentNo, orderNo, paymentNo, paymentNo);
+
+        mockMvc.perform(post("/api/payments/callback/ALIPAY")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("X-Payment-Signature", hmacSha256(callbackBody, "test-alipay-callback-secret"))
+                        .content(callbackBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.received").value(true));
+
+        mockMvc.perform(get("/api/payments/{paymentNo}", paymentNo)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.transactionId").value("ALI-TX-" + paymentNo));
+
+        mockMvc.perform(get("/api/orders/{orderNo}", orderNo)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PAID"));
+    }
+
+    @Test
+    void repeatedProviderPayReturnsExistingPendingPayment() throws Exception {
+        String accessToken = registerAndLogin(nextUsername());
+        resetInventory(2005, 5);
+        addCartItem(accessToken, 2005, 1);
+        String orderNo = createOrder(accessToken, 2005);
+
+        String firstPayBody = mockMvc.perform(post("/api/payments")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "orderNo": "%s",
+                                  "channel": "ALIPAY"
+                                }
+                                """.formatted(orderNo)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PENDING"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        String paymentNo = objectMapper.readTree(firstPayBody).path("data").path("paymentNo").asText();
+
+        mockMvc.perform(post("/api/payments")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "orderNo": "%s",
+                                  "channel": "ALIPAY"
+                                }
+                                """.formatted(orderNo)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.paymentNo").value(paymentNo))
+                .andExpect(jsonPath("$.data.status").value("PENDING"));
+    }
+
+    @Test
     void callbackEndpointIsPublicButDoesNotTrustPayload() throws Exception {
         mockMvc.perform(post("/api/payments/callback/MOCK")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -217,5 +316,11 @@ class PaymentControllerTests {
                     sold_stock = 0
                 WHERE sku_id = ?
                 """, availableStock, skuId);
+    }
+
+    private String hmacSha256(String body, String secret) throws Exception {
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+        return HexFormat.of().formatHex(mac.doFinal(body.getBytes(StandardCharsets.UTF_8)));
     }
 }
