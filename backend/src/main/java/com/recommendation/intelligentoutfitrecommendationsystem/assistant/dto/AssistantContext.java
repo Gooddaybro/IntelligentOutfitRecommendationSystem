@@ -20,8 +20,24 @@ public record AssistantContext(
         UserPreferencesResponse preferences,
         BehaviorSummaryResponse behaviorSummary,
         List<MessageResponse> chatHistory,
-        List<RecommendationCandidate> candidates
+        List<RecommendationCandidate> candidates,
+        DemandIntent demandIntent
 ) {
+    public AssistantContext {
+        demandIntent = demandIntent == null ? DemandIntent.empty(null) : demandIntent;
+    }
+
+    public AssistantContext(
+            UserProfileResponse profile,
+            UserBodyDataResponse bodyData,
+            UserPreferencesResponse preferences,
+            BehaviorSummaryResponse behaviorSummary,
+            List<MessageResponse> chatHistory,
+            List<RecommendationCandidate> candidates
+    ) {
+        this(profile, bodyData, preferences, behaviorSummary, chatHistory, candidates, DemandIntent.empty(null));
+    }
+
     public AssistantContext(
             UserProfileResponse profile,
             UserBodyDataResponse bodyData,
@@ -29,6 +45,6 @@ public record AssistantContext(
             List<MessageResponse> chatHistory,
             List<RecommendationCandidate> candidates
     ) {
-        this(profile, bodyData, preferences, null, chatHistory, candidates);
+        this(profile, bodyData, preferences, null, chatHistory, candidates, DemandIntent.empty(null));
     }
 }

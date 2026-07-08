@@ -4,10 +4,8 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.As
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntent;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserBodyDataResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserProfileResponse;
-import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -17,21 +15,17 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 把自然语言和显式筛选参数解析成唯一的 DemandIntent。
+ * 解析 Java 侧权威的穿搭需求意图。
  *
- * 这里仅保留确定性规则：性别、类目别名、通勤场景、预算和少量属性词。
+ * 该解析器只做确定性小词表匹配；硬过滤由 Java 执行，软偏好交给 Python 在候选池内排序解释。
  */
-@Service
 public class DemandIntentResolver {
 
     private static final String MALE = "male";
     private static final String FEMALE = "female";
     private static final String[] MALE_SIGNALS = {"男", "男生", "男性", "男士", "男款", "男朋友", "爸爸", "男友"};
     private static final String[] FEMALE_SIGNALS = {"女", "女生", "女性", "女士", "女款", "女朋友", "妈妈", "女友"};
-    private static final String[] SKIRT_SIGNALS = {"裙子", "半裙", "半身裙", "百褶裙", "A字裙", "a字裙", "直筒裙"};
-    private static final String[] COMMUTE_SIGNALS = {"上班", "通勤", "职场", "办公室", "上班族"};
-    private static final String[] SLIM_SIGNALS = {"显瘦", "遮肉", "修身"};
-    private static final String[] TALL_SIGNALS = {"显高", "拉长比例", "小个子"};
+    private static final String[] COMMUTE_SIGNALS = {"通勤", "上班", "办公室", "职场", "上班穿", "上班通勤"};
     private static final Pattern MESSAGE_BUDGET_MAX_PATTERN = Pattern.compile(
             "(?:预算\\s*)?(\\d{2,5})\\s*(?:以内|以下|内)|不超过\\s*(\\d{2,5})"
     );
@@ -41,53 +35,28 @@ public class DemandIntentResolver {
             UserBodyDataResponse bodyData,
             UserProfileResponse profile
     ) {
-        String message = request == null ? null : request.message();
+        String rawQuery = request == null || request.message() == null ? "" : request.message();
         String targetGender = resolveTargetGender(request, bodyData, profile);
         String category = resolveCategory(request);
+        List<String> scene = resolveScene(rawQuery);
+        List<String> style = resolveStyle(request, rawQuery, scene);
         Integer budgetMax = resolveBudgetMax(request);
-        Set<String> scene = new LinkedHashSet<>();
-        Set<String> style = new LinkedHashSet<>();
-        Set<String> attributes = new LinkedHashSet<>();
-        Set<String> hardFilters = new LinkedHashSet<>();
-        Set<String> softPreferences = new LinkedHashSet<>();
-
-        if (containsAny(message, COMMUTE_SIGNALS)) {
-            scene.add("commute");
-            style.add("commute");
-            style.add("minimal");
-        }
-        String requestStyle = normalizeText(request == null ? null : request.style());
-        if (requestStyle != null) {
-            style.add(requestStyle);
-        }
-        if (containsAny(message, SLIM_SIGNALS)) {
-            attributes.add("slim");
-        }
-        if (containsAny(message, TALL_SIGNALS)) {
-            attributes.add("tall");
-        }
-
-        addHardFilter(hardFilters, "targetGender", targetGender);
-        addHardFilter(hardFilters, "category", category);
-        if (budgetMax != null) {
-            hardFilters.add("budgetMax");
-        }
-        addSoftPreference(softPreferences, "scene", scene);
-        addSoftPreference(softPreferences, "style", style);
-        addSoftPreference(softPreferences, "attributes", attributes);
+        List<String> attributes = resolveAttributes(rawQuery);
+        List<String> hardFilters = hardFilters(targetGender, category, budgetMax);
+        List<String> softPreferences = softPreferences(scene, style, attributes);
 
         return new DemandIntent(
                 DemandIntent.VERSION,
                 DemandIntent.SOURCE_JAVA_RULE,
-                message,
+                rawQuery,
                 targetGender,
                 category,
-                new ArrayList<>(scene),
-                new ArrayList<>(style),
+                scene,
+                style,
                 budgetMax,
-                new ArrayList<>(attributes),
-                new ArrayList<>(hardFilters),
-                new ArrayList<>(softPreferences),
+                attributes,
+                hardFilters,
+                softPreferences,
                 confidence(hardFilters, softPreferences),
                 List.of()
         );
@@ -113,51 +82,16 @@ public class DemandIntentResolver {
         return normalizeGender(profile == null ? null : profile.gender());
     }
 
-    private String resolveCategory(AssistantChatRequest request) {
-        String requestCategory = normalizeCategory(request == null ? null : request.category());
-        if (requestCategory != null) {
-            return requestCategory;
-        }
-        return categoryFromMessage(request == null ? null : request.message());
-    }
-
-    private String categoryFromMessage(String message) {
-        if (containsAny(message, SKIRT_SIGNALS)) {
-            return "半裙";
-        }
-        return null;
-    }
-
-    private String normalizeCategory(String category) {
-        if (category == null || category.isBlank()) {
+    private String genderFromMessage(String message) {
+        if (message == null || message.isBlank()) {
             return null;
         }
-        String normalized = category.trim().toLowerCase(Locale.ROOT);
-        return switch (normalized) {
-            case "裙子", "半裙", "半身裙", "百褶裙", "a字裙", "直筒裙" -> "半裙";
-            default -> category.trim();
-        };
-    }
-
-    private String genderFromMessage(String message) {
         boolean hasMale = containsAny(message, MALE_SIGNALS);
         boolean hasFemale = containsAny(message, FEMALE_SIGNALS);
         if (hasMale == hasFemale) {
             return null;
         }
         return hasMale ? MALE : FEMALE;
-    }
-
-    private boolean containsAny(String text, String[] signals) {
-        if (text == null || text.isBlank()) {
-            return false;
-        }
-        for (String signal : signals) {
-            if (text.contains(signal)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private String normalizeGender(String gender) {
@@ -177,6 +111,76 @@ public class DemandIntentResolver {
         return null;
     }
 
+    private String resolveCategory(AssistantChatRequest request) {
+        String explicitCategory = normalizeCategory(request == null ? null : request.category());
+        if (explicitCategory != null) {
+            return explicitCategory;
+        }
+        String message = request == null ? null : request.message();
+        if (!hasText(message)) {
+            return null;
+        }
+        if (containsAny(message, new String[]{"裙子", "半裙", "半身裙", "百褶裙", "a字裙", "直筒裙"})) {
+            return "半裙";
+        }
+        if (message.contains("外套")) {
+            return "外套";
+        }
+        return null;
+    }
+
+    private String normalizeCategory(String category) {
+        if (!hasText(category)) {
+            return null;
+        }
+        String normalized = category.trim().toLowerCase(Locale.ROOT);
+        return switch (normalized) {
+            case "裙子", "半裙", "半身裙", "百褶裙", "a字裙", "直筒裙" -> "半裙";
+            default -> category.trim();
+        };
+    }
+
+    private List<String> resolveScene(String message) {
+        LinkedHashSet<String> scene = new LinkedHashSet<>();
+        if (containsAny(message, COMMUTE_SIGNALS)) {
+            scene.add("commute");
+        }
+        if (hasText(message) && message.contains("约会")) {
+            scene.add("date");
+        }
+        if (hasText(message) && (message.contains("校园") || message.contains("学生"))) {
+            scene.add("campus");
+        }
+        if (hasText(message) && message.contains("日常")) {
+            scene.add("daily");
+        }
+        if (hasText(message) && message.contains("旅行")) {
+            scene.add("travel");
+        }
+        if (hasText(message) && message.contains("运动")) {
+            scene.add("sport");
+        }
+        return List.copyOf(scene);
+    }
+
+    private List<String> resolveStyle(AssistantChatRequest request, String message, List<String> scene) {
+        LinkedHashSet<String> style = new LinkedHashSet<>();
+        if (hasText(request == null ? null : request.style())) {
+            style.add(request.style().trim());
+        }
+        if (scene.contains("commute")) {
+            style.add("commute");
+            style.add("minimal");
+        }
+        if (hasText(message) && (message.contains("百搭") || message.contains("基础款"))) {
+            style.add("basic");
+        }
+        if (hasText(message) && message.contains("休闲")) {
+            style.add("casual");
+        }
+        return List.copyOf(style);
+    }
+
     private Integer resolveBudgetMax(AssistantChatRequest request) {
         if (request == null) {
             return null;
@@ -184,10 +188,11 @@ public class DemandIntentResolver {
         if (request.budgetMax() != null) {
             return request.budgetMax();
         }
-        if (request.message() == null || request.message().isBlank()) {
+        String message = request.message();
+        if (!hasText(message)) {
             return null;
         }
-        Matcher matcher = MESSAGE_BUDGET_MAX_PATTERN.matcher(request.message());
+        Matcher matcher = MESSAGE_BUDGET_MAX_PATTERN.matcher(message);
         if (!matcher.find()) {
             return null;
         }
@@ -195,27 +200,71 @@ public class DemandIntentResolver {
         return value == null ? null : Integer.valueOf(value);
     }
 
-    private void addHardFilter(Set<String> filters, String key, String value) {
-        if (value != null) {
-            filters.add(key);
+    private List<String> resolveAttributes(String message) {
+        LinkedHashSet<String> attributes = new LinkedHashSet<>();
+        addIfContains(attributes, message, "显高");
+        addIfContains(attributes, message, "显瘦");
+        addIfContains(attributes, message, "遮肉");
+        addIfContains(attributes, message, "高腰");
+        addIfContains(attributes, message, "垂顺");
+        addIfContains(attributes, message, "挺括");
+        return List.copyOf(attributes);
+    }
+
+    private List<String> hardFilters(String targetGender, String category, Integer budgetMax) {
+        List<String> filters = new ArrayList<>();
+        if (targetGender != null) {
+            filters.add("targetGender");
+        }
+        if (category != null) {
+            filters.add("category");
+        }
+        if (budgetMax != null) {
+            filters.add("budgetMax");
+        }
+        return List.copyOf(filters);
+    }
+
+    private List<String> softPreferences(List<String> scene, List<String> style, List<String> attributes) {
+        List<String> preferences = new ArrayList<>();
+        if (!scene.isEmpty()) {
+            preferences.add("scene");
+        }
+        if (!style.isEmpty()) {
+            preferences.add("style");
+        }
+        if (!attributes.isEmpty()) {
+            preferences.add("attributes");
+        }
+        return List.copyOf(preferences);
+    }
+
+    private BigDecimal confidence(List<String> hardFilters, List<String> softPreferences) {
+        if (hardFilters.isEmpty() && softPreferences.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        return new BigDecimal("0.80");
+    }
+
+    private void addIfContains(Set<String> values, String text, String value) {
+        if (hasText(text) && text.contains(value)) {
+            values.add(value);
         }
     }
 
-    private void addSoftPreference(Set<String> preferences, String key, Set<String> values) {
-        if (!values.isEmpty()) {
-            preferences.add(key);
+    private boolean containsAny(String text, String[] signals) {
+        if (!hasText(text)) {
+            return false;
         }
+        for (String signal : signals) {
+            if (text.contains(signal)) {
+                return true;
+            }
+        }
+        return false;
     }
 
-    private String normalizeText(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        return value.trim();
-    }
-
-    private BigDecimal confidence(Set<String> hardFilters, Set<String> softPreferences) {
-        double score = 0.35 + hardFilters.size() * 0.15 + softPreferences.size() * 0.08;
-        return BigDecimal.valueOf(Math.min(score, 0.95)).setScale(2, RoundingMode.HALF_UP);
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 }
