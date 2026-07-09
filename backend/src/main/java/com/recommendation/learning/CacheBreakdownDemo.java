@@ -55,7 +55,28 @@ public class CacheBreakdownDemo {
         String lockKey = "lock:product:" + id;
 
         // TODO: 请在这里手写你的互斥锁逻辑
-        
-        return null;
+        String cacheValue = redis.get(cacheKey);
+        if(cacheValue != null) {
+            return cacheValue;
+        }
+        //如果为空就走下面的互斥锁、防止缓存击穿
+        boolean lock = redis.tryLock(lockKey);
+        if(lock){
+            //二次查找缓存，看是否 之前写入了 如果有这就是之前有拿到锁更新了直接返回就好
+            try{
+                String CacheValue2 = redis.get(cacheKey);
+                if (CacheValue2 != null) {
+                    return CacheValue2;
+                }
+                String dbvalue = db.getProduct(id);
+                redis.set(cacheKey, dbvalue, 60 * 60);
+                return dbvalue;
+            }finally {
+                redis.unlock(lockKey);
+            }
+        }else {
+            sleep(50);
+            return getProductById(id);
+        }
     }
 }
