@@ -58,7 +58,7 @@ public class AssistantContextService {
         RecommendationCandidateQuery query = new RecommendationCandidateQuery(
                 demandIntent.category(),
                 first(demandIntent.style()),
-                request.season(),
+                seasonFilter(request, demandIntent),
                 request.material(),
                 request.fit(),
                 demandIntent.budgetMax(),
@@ -73,6 +73,44 @@ public class AssistantContextService {
                 productCatalogService.findRecommendationCandidates(query),
                 demandIntent
         );
+    }
+
+    private String seasonFilter(AssistantChatRequest request, DemandIntent demandIntent) {
+        if (hasText(request.season())) {
+            return request.season().trim();
+        }
+        String rawQuery = demandIntent.rawQuery();
+        // 自然语言季节词必须落到数据库已有 code，避免 Python 收到一池明显不相关的候选。
+        if (demandIntent.attributes().contains("保暖")
+                || containsAny(rawQuery, "秋冬", "冬季", "冬天", "冬", "保暖", "厚款", "厚实", "怕冷")) {
+            return "winter";
+        }
+        if (containsAny(rawQuery, "秋季", "秋天", "秋")) {
+            return "autumn";
+        }
+        if (containsAny(rawQuery, "夏季", "夏天", "夏")) {
+            return "summer";
+        }
+        if (containsAny(rawQuery, "春季", "春天", "春")) {
+            return "spring";
+        }
+        return null;
+    }
+
+    private boolean containsAny(String text, String... signals) {
+        if (!hasText(text)) {
+            return false;
+        }
+        for (String signal : signals) {
+            if (text.contains(signal)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     private String first(List<String> values) {

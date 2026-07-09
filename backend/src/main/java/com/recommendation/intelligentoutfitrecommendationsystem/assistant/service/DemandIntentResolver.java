@@ -26,6 +26,16 @@ public class DemandIntentResolver {
     private static final String[] MALE_SIGNALS = {"男", "男生", "男性", "男士", "男款", "男朋友", "爸爸", "男友"};
     private static final String[] FEMALE_SIGNALS = {"女", "女生", "女性", "女士", "女款", "女朋友", "妈妈", "女友"};
     private static final String[] COMMUTE_SIGNALS = {"通勤", "上班", "办公室", "职场", "上班穿", "上班通勤"};
+    private static final String[] STUDENT_SIGNALS = {"学生党", "学生", "大学生", "校园", "上课", "上学"};
+    private static final String[] VERSATILE_SIGNALS = {"百搭", "好搭", "基础款", "日常也能穿", "不挑场合", "一衣多穿"};
+    private static final String[] WARM_SIGNALS = {
+            "秋冬", "冬季", "冬天", "保暖", "厚款", "厚实", "怕冷", "暖和", "不容易冷", "加绒", "抗冻"
+    };
+    private static final String[] BUDGET_VALUE_SIGNALS = {
+            "平价", "便宜", "不贵", "别太贵", "预算有限", "学生预算", "性价比"
+    };
+    private static final String[] SLIMMER_SIGNALS = {"显瘦", "遮肉", "不显胖", "梨形", "腿粗", "胯宽"};
+    private static final String[] TALLER_SIGNALS = {"显高", "小个子", "显腿长", "不压个子"};
     private static final Pattern MESSAGE_BUDGET_MAX_PATTERN = Pattern.compile(
             "(?:预算\\s*)?(\\d{2,5})\\s*(?:以内|以下|内)|不超过\\s*(\\d{2,5})"
     );
@@ -148,7 +158,7 @@ public class DemandIntentResolver {
         if (hasText(message) && message.contains("约会")) {
             scene.add("date");
         }
-        if (hasText(message) && (message.contains("校园") || message.contains("学生"))) {
+        if (containsAny(message, STUDENT_SIGNALS)) {
             scene.add("campus");
         }
         if (hasText(message) && message.contains("日常")) {
@@ -172,8 +182,12 @@ public class DemandIntentResolver {
             style.add("commute");
             style.add("minimal");
         }
-        if (hasText(message) && (message.contains("百搭") || message.contains("基础款"))) {
-            style.add("basic");
+        if (containsAny(message, VERSATILE_SIGNALS)) {
+            style.add("minimal");
+            style.add("casual");
+        }
+        if (containsAny(message, STUDENT_SIGNALS)) {
+            style.add("casual");
         }
         if (hasText(message) && message.contains("休闲")) {
             style.add("casual");
@@ -208,6 +222,21 @@ public class DemandIntentResolver {
         addIfContains(attributes, message, "高腰");
         addIfContains(attributes, message, "垂顺");
         addIfContains(attributes, message, "挺括");
+        if (containsAny(message, WARM_SIGNALS)) {
+            attributes.add("保暖");
+        }
+        if (hasText(message) && (message.contains("厚款") || message.contains("厚实") || message.contains("怕冷"))) {
+            attributes.add("厚款");
+        }
+        if (containsAny(message, BUDGET_VALUE_SIGNALS)) {
+            attributes.add("平价");
+        }
+        if (containsAny(message, SLIMMER_SIGNALS)) {
+            attributes.add("显瘦");
+        }
+        if (containsAny(message, TALLER_SIGNALS)) {
+            attributes.add("显高");
+        }
         return List.copyOf(attributes);
     }
 

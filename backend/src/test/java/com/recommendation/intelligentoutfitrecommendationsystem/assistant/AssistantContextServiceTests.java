@@ -196,6 +196,134 @@ class AssistantContextServiceTests {
     }
 
     @Test
+    void winterWarmDemandUsesWinterSeasonCandidateFilter() {
+        UserProfileService userProfileService = mock(UserProfileService.class);
+        ProductCatalogService productCatalogService = mock(ProductCatalogService.class);
+        ConversationService conversationService = mock(ConversationService.class);
+        AssistantContextService service = new AssistantContextService(
+                userProfileService,
+                productCatalogService,
+                conversationService
+        );
+        AssistantChatRequest request = new AssistantChatRequest(
+                null,
+                "秋冬保暖的",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
+        when(productCatalogService.findRecommendationCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
+
+        AssistantContext context = service.buildContext(10L, "thread-winter-warm", request);
+
+        ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
+        verify(productCatalogService).findRecommendationCandidates(captor.capture());
+        assertThat(captor.getValue().getSeason()).isEqualTo("winter");
+        assertThat(context.demandIntent().attributes()).contains("保暖");
+    }
+
+    @Test
+    void versatileDemandUsesExistingStyleCodeInsteadOfBasic() {
+        UserProfileService userProfileService = mock(UserProfileService.class);
+        ProductCatalogService productCatalogService = mock(ProductCatalogService.class);
+        ConversationService conversationService = mock(ConversationService.class);
+        AssistantContextService service = new AssistantContextService(
+                userProfileService,
+                productCatalogService,
+                conversationService
+        );
+        AssistantChatRequest request = new AssistantChatRequest(
+                null,
+                "平价百搭基础款",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
+        when(productCatalogService.findRecommendationCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
+
+        AssistantContext context = service.buildContext(10L, "thread-versatile", request);
+
+        ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
+        verify(productCatalogService).findRecommendationCandidates(captor.capture());
+        assertThat(captor.getValue().getStyle()).isEqualTo("minimal");
+        assertThat(context.demandIntent().style()).contains("minimal").doesNotContain("basic");
+    }
+
+    @Test
+    void synonymWarmOuterwearDemandMapsToWinterOuterwearIntent() {
+        UserProfileService userProfileService = mock(UserProfileService.class);
+        ProductCatalogService productCatalogService = mock(ProductCatalogService.class);
+        ConversationService conversationService = mock(ConversationService.class);
+        AssistantContextService service = new AssistantContextService(
+                userProfileService,
+                productCatalogService,
+                conversationService
+        );
+        AssistantChatRequest request = new AssistantChatRequest(
+                null,
+                "有没有不容易冷的外套",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
+        when(productCatalogService.findRecommendationCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
+
+        AssistantContext context = service.buildContext(10L, "thread-synonym-warm", request);
+
+        ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
+        verify(productCatalogService).findRecommendationCandidates(captor.capture());
+        assertThat(captor.getValue().getCategory()).isEqualTo("外套");
+        assertThat(captor.getValue().getSeason()).isEqualTo("winter");
+        assertThat(context.demandIntent().attributes()).contains("保暖");
+    }
+
+    @Test
+    void studentDailyBudgetVisualDemandStaysSoftWithoutNumericBudget() {
+        UserProfileService userProfileService = mock(UserProfileService.class);
+        ProductCatalogService productCatalogService = mock(ProductCatalogService.class);
+        ConversationService conversationService = mock(ConversationService.class);
+        AssistantContextService service = new AssistantContextService(
+                userProfileService,
+                productCatalogService,
+                conversationService
+        );
+        AssistantChatRequest request = new AssistantChatRequest(
+                null,
+                "大学生日常上课，别太贵，还要遮肉显腿长",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
+        when(productCatalogService.findRecommendationCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
+
+        AssistantContext context = service.buildContext(10L, "thread-student-soft", request);
+
+        ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
+        verify(productCatalogService).findRecommendationCandidates(captor.capture());
+        assertThat(captor.getValue().getBudgetMax()).isNull();
+        assertThat(context.demandIntent().budgetMax()).isNull();
+        assertThat(context.demandIntent().scene()).contains("campus", "daily");
+        assertThat(context.demandIntent().style()).contains("casual");
+        assertThat(context.demandIntent().attributes()).contains("平价", "显瘦", "显高");
+    }
+
+    @Test
     void messageFemaleRecipientOverridesMaleProfileGender() {
         UserProfileService userProfileService = mock(UserProfileService.class);
         ProductCatalogService productCatalogService = mock(ProductCatalogService.class);
