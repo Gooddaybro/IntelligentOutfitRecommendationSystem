@@ -45,7 +45,7 @@ export function CartPage({ items, onItemsChange, onOrderCreated }: CartPageProps
   }
 
   return (
-    <main className="workbench cart-layout">
+    <main className="workbench cart-layout noir-page noir-page--cart" data-testid="cart-page">
       <section className="catalog-panel">
         <div className="section-heading">
           <div>

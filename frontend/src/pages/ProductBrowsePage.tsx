@@ -40,7 +40,7 @@ export function ProductBrowsePage({ onAction }: ProductBrowsePageProps) {
   }
 
   return (
-    <main className="workbench browse-layout">
+    <main className="workbench browse-layout noir-page noir-page--browse" data-testid="browse-page">
       <section className="catalog-panel">
         <form className="searchbar" onSubmit={submit}>
           <Search size={18} />

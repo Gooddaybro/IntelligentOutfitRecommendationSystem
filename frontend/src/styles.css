@@ -107,7 +107,7 @@ p {
 .catalog-panel,
 .assistant-side,
 .confirm-dialog {
-  background: rgb(255 255 255 / 94%);
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: 18px;
   box-shadow: var(--shadow-soft);
@@ -251,7 +251,7 @@ p {
 }
 
 .profile-layout {
-  background: rgb(255 255 255 / 72%);
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: 0 0 24px 24px;
   border-top: 0;
@@ -280,7 +280,7 @@ p {
 }
 
 .profile-section {
-  background: rgb(255 255 255 / 94%);
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: 18px;
   box-shadow: var(--shadow-soft);
@@ -318,7 +318,7 @@ p {
 
 .profile-form-grid label span,
 .profile-list-fields label span {
-  color: #4f4a43;
+  color: var(--muted);
 }
 
 .profile-list-fields textarea {
@@ -331,7 +331,7 @@ p {
 
 .profile-empty-state {
   align-items: center;
-  background: rgb(255 255 255 / 94%);
+  background: rgb(8 11 18 / 62%);
   border: 1px solid var(--border);
   border-radius: 18px;
   color: var(--muted);
@@ -390,7 +390,7 @@ p {
 }
 
 .error-text {
-  color: #b42318;
+  color: #ff9d9d;
 }
 
 .ai-insight {
@@ -445,16 +445,17 @@ p {
 }
 
 .status-line {
-  background: #e7f3ee;
-  border: 1px solid #a8d8c5;
+  background: rgb(123 231 224 / 10%);
+  border: 1px solid rgb(123 231 224 / 28%);
   border-radius: 14px;
+  color: var(--text);
   margin-top: 12px;
   padding: 10px 14px;
 }
 
 .primary-button {
-  background: var(--primary);
-  border-color: var(--primary);
+  background: linear-gradient(110deg, #6776e9, #8d70ff);
+  border-color: transparent;
   color: #ffffff;
   font-weight: 800;
   justify-content: center;
@@ -467,7 +468,7 @@ p {
 }
 
 .segmented {
-  background: #f0ede8;
+  background: rgb(2 4 9 / 56%);
   border-radius: 999px;
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -480,7 +481,8 @@ p {
 }
 
 .segmented button.active {
-  background: var(--primary);
+  background: linear-gradient(110deg, #6776e9, #8d70ff);
+  border-color: transparent;
   color: #ffffff;
 }
 
@@ -633,7 +635,7 @@ p {
 .product-image {
   align-items: center;
   aspect-ratio: 4 / 5;
-  background: linear-gradient(135deg, #f2efe9, #e8e2d8);
+  background: linear-gradient(135deg, #29334b, #151b29);
   border-radius: 16px;
   color: var(--muted);
   display: flex;
@@ -808,8 +810,8 @@ p {
 }
 
 .floating-cart button {
-  background: var(--primary);
-  border-color: var(--primary);
+  background: linear-gradient(110deg, #6776e9, #8d70ff);
+  border-color: transparent;
   box-shadow: 0 14px 28px rgb(17 24 39 / 22%);
   color: #ffffff;
 }
@@ -820,7 +822,8 @@ p {
 
 .modal-backdrop {
   align-items: center;
-  background: rgb(20 28 33 / 42%);
+  background: rgb(2 4 10 / 72%);
+  backdrop-filter: blur(10px);
   display: flex;
   inset: 0;
   justify-content: center;
@@ -838,6 +841,7 @@ p {
 }
 
 .summary-list {
+  background: rgb(2 4 10 / 40%);
   border: 1px solid var(--border);
   border-radius: 14px;
   display: grid;
@@ -864,6 +868,69 @@ p {
   display: flex;
   gap: 10px;
   justify-content: flex-end;
+}
+
+.noir-page,
+.catalog-panel,
+.profile-section,
+.confirm-dialog--noir {
+  background: var(--surface-raised);
+  backdrop-filter: blur(18px);
+  border-color: var(--border);
+  box-shadow: var(--shadow-soft);
+}
+
+.browse-summary-row,
+.cart-row,
+.order-row,
+.profile-empty-state {
+  background: rgb(8 11 18 / 62%);
+  border-color: var(--border);
+}
+
+.profile-form-grid label,
+.profile-list-fields label,
+.cart-main p,
+.browse-summary-row p,
+.order-row p {
+  color: var(--muted);
+}
+
+.segmented {
+  background: rgb(2 4 9 / 56%);
+}
+
+.segmented button.active,
+.primary-button {
+  background: linear-gradient(110deg, #6776e9, #8d70ff);
+  border-color: transparent;
+  color: #fff;
+}
+
+.floating-cart--noir button {
+  background: linear-gradient(110deg, #6776e9, #8d70ff);
+  border-color: transparent;
+  color: #fff;
+}
+
+.modal-backdrop {
+  background: rgb(2 4 10 / 72%);
+  backdrop-filter: blur(10px);
+}
+
+.summary-list {
+  background: rgb(2 4 10 / 40%);
+  border-color: var(--border);
+}
+
+.error-text {
+  color: #ff9d9d;
+}
+
+.status-line {
+  background: rgb(123 231 224 / 10%);
+  border-color: rgb(123 231 224 / 28%);
+  color: var(--text);
 }
 
 @keyframes noir-rise {

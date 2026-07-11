@@ -31,7 +31,7 @@ export function OrdersPage() {
   }
 
   return (
-    <main className="workbench cart-layout">
+    <main className="workbench cart-layout noir-page noir-page--orders" data-testid="orders-page">
       <section className="catalog-panel">
         <div className="section-heading">
           <div>

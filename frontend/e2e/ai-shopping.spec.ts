@@ -40,6 +40,7 @@ test("AI shopping flow requires confirmation before cart and payment actions", a
 
   await page.getByTestId("recommendation-card").first().getByTestId("add-to-cart-action").click();
   await expect(page.getByTestId("confirm-action-dialog")).toContainText("加入购物车");
+  await expect(page.getByTestId("confirm-action-dialog")).toHaveClass(/confirm-dialog--noir/);
   await page.getByTestId("confirm-action-cancel").click();
 
   await expect(page.getByTestId("confirm-action-dialog")).toHaveCount(0);
@@ -62,11 +63,13 @@ test("AI shopping flow requires confirmation before cart and payment actions", a
 
   await page.getByTestId("nav-cart").click();
   await expect(page.getByTestId("cart-row")).toContainText("通勤轻薄外套");
+  await expect(page.getByTestId("cart-page")).toHaveClass(/noir-page/);
   await page.getByTestId("checkout-submit").click();
 
   expect(api.capturedBodies.createOrder).toEqual([{ source: "CART", skuIds: [2102] }]);
   await expect(page.getByTestId("order-row")).toContainText("ORD-E2E-001");
   await expect(page.getByTestId("order-row")).toContainText("UNPAID");
+  await expect(page.getByTestId("orders-page")).toHaveClass(/noir-page/);
 
   await page.getByTestId("mock-pay-submit").click();
 
