@@ -9,6 +9,7 @@ frontend/test-results/
 frontend/playwright-report/
 frontend/*.tsbuildinfo
 .superpowers/
+.worktrees/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
