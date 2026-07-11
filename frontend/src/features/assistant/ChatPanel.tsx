@@ -274,14 +274,14 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
   }
 
   return (
-    <section className="chat-panel">
-      <div className="section-heading">
+    <section className="chat-panel chat-panel--noir" aria-label="AI 穿搭对话">
+      <div className="section-heading chat-panel__heading">
         <div>
-          <p className="eyebrow">AI 需求分析</p>
+          <p className="eyebrow">CONVERSATION / AI</p>
           <h2>当前穿搭线索</h2>
         </div>
       </div>
-      <div className="ai-insight">
+      <div className="ai-insight ai-insight--noir">
         {activePreferenceItems.length > 0 || resolvedIntentItems.length > 0 || latestUserMessage ? (
           <>
             <p>AI 正在根据这些线索筛选商品：</p>
@@ -332,7 +332,7 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
           inputMode="numeric"
         />
       </div>
-      <div className="message-list" data-testid="chat-message-list">
+      <div className="message-list message-list--noir" data-testid="chat-message-list">
         {messages.map((message, index) => (
           <div key={`${message.role}-${index}`} className={`message ${message.role}`} data-testid={`chat-message-${message.role}`}>
             {message.content || "正在生成..."}
@@ -340,7 +340,7 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
         ))}
       </div>
       {error && <p className="error-text">{error}</p>}
-      <form className="chat-input" onSubmit={submit}>
+      <form className="chat-input chat-input--noir" onSubmit={submit}>
         <textarea
           data-testid="ai-chat-input"
           value={draft}

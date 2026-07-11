@@ -94,7 +94,7 @@ p {
 
 .auth-shell {
   align-items: center;
-  background: linear-gradient(135deg, #f7f4ef, #ebe5dc);
+  background: radial-gradient(circle at 50% 18%, rgb(119 133 255 / 20%), transparent 34%), var(--bg);
   display: flex;
   min-height: 100vh;
   padding: 24px;
@@ -121,6 +121,13 @@ p {
   max-width: 460px;
   padding: 30px;
   width: 100%;
+}
+
+.auth-panel--noir,
+.chat-panel--noir {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
 }
 
 .app-shell {
@@ -416,6 +423,18 @@ p {
   padding: 0;
 }
 
+.ai-insight--noir {
+  background: rgb(123 231 224 / 8%);
+  border-color: rgb(123 231 224 / 24%);
+  color: var(--text);
+}
+
+.ai-insight--noir p,
+.ai-insight--noir span,
+.ai-insight--noir li {
+  color: inherit;
+}
+
 .recommendation-notice {
   background: #fff8e8;
   border: 1px solid #edd9a7;
@@ -504,6 +523,14 @@ p {
   border-radius: 14px;
 }
 
+.chat-input--noir textarea,
+.filter-row input,
+.filter-row label {
+  background: rgb(5 7 13 / 52%);
+  border-color: var(--border);
+  color: var(--text);
+}
+
 .searchbar {
   align-items: center;
   grid-template-columns: auto minmax(180px, 1fr) auto;
@@ -521,6 +548,11 @@ p {
   padding: 12px;
 }
 
+.message-list--noir {
+  background: rgb(4 6 11 / 48%);
+  border-color: var(--border);
+}
+
 .message {
   border-radius: 16px;
   font-size: 14px;
@@ -530,14 +562,15 @@ p {
 }
 
 .message.user {
-  background: var(--primary);
+  background: linear-gradient(115deg, #6878ee, #8d6fff);
   color: #ffffff;
   justify-self: end;
 }
 
 .message.assistant {
-  background: #ffffff;
-  border: 1px solid var(--border);
+  background: rgb(255 255 255 / 7%);
+  border-color: var(--border);
+  color: var(--text);
 }
 
 .chat-input {

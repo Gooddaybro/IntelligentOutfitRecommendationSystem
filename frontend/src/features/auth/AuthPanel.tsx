@@ -24,10 +24,10 @@ export function AuthPanel({ error, isBusy, onLogin, onRegister }: AuthPanelProps
   }
 
   return (
-    <section className="auth-panel">
+    <section className="auth-panel auth-panel--noir">
       <div>
-        <p className="eyebrow">AI Clothing Shopping</p>
-        <h1>登录后开始对话式购衣</h1>
+        <p className="eyebrow">NOIR.AI / PERSONAL STYLIST</p>
+        <h1>从一段对话开始，找到你的下一套穿搭</h1>
       </div>
       <div className="segmented">
         <button
