@@ -13,22 +13,26 @@ type ProductBehaviorEvent = {
   metadata?: Record<string, unknown>;
 };
 
+export type ProductCardVariant = "standard" | "featured" | "supporting";
+
 type ProductCardProps = {
   candidate: RecommendationCandidate;
   onAction: (action: PendingCommerceAction) => void;
   actionMetadata?: CommerceActionMetadata;
   position?: number;
   onBehaviorEvent?: (event: ProductBehaviorEvent) => void;
+  variant?: ProductCardVariant;
 };
 
-export function ProductCard({ candidate, onAction, actionMetadata, position, onBehaviorEvent }: ProductCardProps) {
+export function ProductCard({ candidate, onAction, actionMetadata, position, onBehaviorEvent, variant = "standard" }: ProductCardProps) {
   const matchLabel = candidate.rankScore !== undefined ? `AI 匹配 ${Math.round(candidate.rankScore * 100)}%` : "AI 推荐";
 
   return (
     <article
-      className="product-card"
+      className={`product-card product-card--${variant}`}
       data-testid="recommendation-card"
       data-sku-id={candidate.skuId}
+      data-variant={variant}
       onClick={() =>
         onBehaviorEvent?.({
           eventType: "RECOMMENDATION_CLICKED",
@@ -38,6 +42,7 @@ export function ProductCard({ candidate, onAction, actionMetadata, position, onB
       }
     >
       <div className="product-image">
+        {variant === "featured" && <span className="featured-card-label">AI 首选</span>}
         {(candidate.rankScore !== undefined || candidate.recommendationReason) && <span className="ai-match-badge">{matchLabel}</span>}
         {candidate.mainImageUrl ? (
           <img src={candidate.mainImageUrl} alt={candidate.name} onError={(event) => { event.currentTarget.style.display = "none"; }} />
