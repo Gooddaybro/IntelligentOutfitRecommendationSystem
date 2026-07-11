@@ -345,9 +345,11 @@ p {
 
 .profile-empty-state {
   align-items: center;
-  background: rgb(8 11 18 / 62%);
+  background: var(--surface-raised);
+  backdrop-filter: blur(18px);
   border: 1px solid var(--border);
   border-radius: 18px;
+  box-shadow: var(--shadow-soft);
   color: var(--muted);
   display: flex;
   gap: 14px;
@@ -884,12 +886,20 @@ p {
   justify-content: flex-end;
 }
 
-.noir-page,
-.confirm-dialog--noir {
+.noir-page {
   background: var(--surface-raised);
   backdrop-filter: blur(18px);
   border-color: var(--border);
   box-shadow: var(--shadow-soft);
+}
+
+.confirm-dialog--noir {
+  background: var(--surface-raised);
+  backdrop-filter: blur(18px);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--shadow-soft);
+  min-width: 0;
 }
 
 .profile-form-grid label,

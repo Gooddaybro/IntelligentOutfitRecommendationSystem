@@ -153,6 +153,21 @@ export async function installApiMocks(page: Page) {
     await fulfillJson(route, cartItems);
   });
 
+  await page.route("**/api/products?**", async (route) => {
+    await fulfillJson(route, [
+      {
+        spuId: commuteJacketCandidate.spuId,
+        spuCode: commuteJacketCandidate.spuCode,
+        name: commuteJacketCandidate.name,
+        categoryName: commuteJacketCandidate.categoryName,
+        mainImageUrl: commuteJacketCandidate.mainImageUrl,
+        fitType: commuteJacketCandidate.fitType,
+        minPrice: commuteJacketCandidate.minPrice,
+        maxPrice: commuteJacketCandidate.maxPrice
+      }
+    ]);
+  });
+
   await page.route("**/api/products/recommendation-candidates?**", async (route) => {
     await fulfillJson(route, [commuteJacketCandidate]);
   });
