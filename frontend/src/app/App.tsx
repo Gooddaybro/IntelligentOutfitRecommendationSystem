@@ -131,7 +131,6 @@ export function App() {
 
       {view === "ai" && (
         <AiShoppingPage
-          cartItems={cart.items}
           chatState={assistant.chatState}
           recommendations={assistant.recommendations}
           setRecommendations={assistant.setRecommendations}
@@ -143,7 +142,6 @@ export function App() {
           setIsRecommendationsLoading={assistant.setRecommendationsLoading}
           onAction={commerce.setPendingAction}
           onRefreshCart={cart.refresh}
-          onOpenCart={() => setView("cart")}
         />
       )}
       {view === "browse" && <ProductBrowsePage onAction={commerce.setPendingAction} />}

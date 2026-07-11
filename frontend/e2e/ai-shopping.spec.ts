@@ -13,6 +13,9 @@ test("AI shopping flow requires confirmation before cart and payment actions", a
   await expect(page.getByTestId("app-shell")).toHaveClass(/is-entered/);
   await expect(page.getByTestId("app-topbar")).toContainText("NOIR.AI");
   await expect(page.getByTestId("recommendation-card").first()).toContainText("通勤轻薄外套");
+  await expect(page.getByTestId("ai-workbench")).toHaveAttribute("data-layout", "editorial-stage");
+  await expect(page.getByTestId("recommendation-card").first()).toHaveAttribute("data-variant", "featured");
+  await expect(page.getByTestId("recommendation-card").first()).toContainText("AI 首选");
   await expect
     .poll(() => page.getByTestId("recommendation-card").first().locator("img").evaluate((image) => image.naturalWidth))
     .toBeGreaterThan(0);
