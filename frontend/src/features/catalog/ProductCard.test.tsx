@@ -29,4 +29,16 @@ describe("ProductCard", () => {
       unitPrice: 299
     }));
   });
+
+  it("shows an AI editorial fallback only on supporting cards without recommendation facts", () => {
+    const candidateWithoutAiFacts = { ...candidate, rankScore: undefined };
+    const { container, rerender } = render(
+      <ProductCard candidate={candidateWithoutAiFacts} onAction={vi.fn()} variant="supporting" />
+    );
+
+    expect(screen.getByText("AI 精选")).toBeVisible();
+
+    rerender(<ProductCard candidate={candidateWithoutAiFacts} onAction={vi.fn()} variant="standard" />);
+    expect(container.querySelector(".ai-match-badge")).not.toBeInTheDocument();
+  });
 });

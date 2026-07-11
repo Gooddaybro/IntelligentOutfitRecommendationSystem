@@ -91,3 +91,19 @@ test("NOIR workbench stays usable with reduced motion on a narrow screen", async
   await expect(page.getByTestId("ai-chat-input")).toBeVisible();
   await expect(page.getByTestId("recommendation-card").first()).toBeVisible();
 });
+
+test("AI entry animation does not replay after returning from Browse", async ({ page }) => {
+  await installApiMocks(page);
+
+  await page.goto("/");
+  await page.getByTestId("auth-username").fill("e2e_user");
+  await page.getByTestId("auth-password").fill("StrongPassword123!");
+  await page.getByTestId("auth-submit").click();
+
+  await page.waitForTimeout(950);
+  await page.getByTestId("nav-browse").click();
+  await page.getByTestId("nav-ai").click();
+
+  await expect(page.getByTestId("app-shell")).toHaveClass(/is-entered/);
+  await expect(page.locator(".recommendation-stage__featured")).toHaveCSS("animation-name", "none");
+});

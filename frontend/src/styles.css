@@ -100,14 +100,20 @@ p {
   padding: 24px;
 }
 
-.auth-panel,
 .chat-panel,
 .recommendation-panel,
 .side-panel,
-.catalog-panel,
-.assistant-side,
-.confirm-dialog {
+.assistant-side {
   background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--shadow-soft);
+  min-width: 0;
+}
+
+.catalog-panel {
+  background: var(--surface-raised);
+  backdrop-filter: blur(18px);
   border: 1px solid var(--border);
   border-radius: 18px;
   box-shadow: var(--shadow-soft);
@@ -123,7 +129,13 @@ p {
   width: 100%;
 }
 
-.auth-panel--noir,
+.auth-panel--noir {
+  background: var(--surface-raised);
+  backdrop-filter: blur(18px);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+
 .chat-panel--noir {
   background: transparent;
   border: 0;
@@ -137,7 +149,8 @@ p {
 
 .topbar {
   align-items: center;
-  background: rgb(255 255 255 / 96%);
+  background: var(--surface-raised);
+  backdrop-filter: blur(18px);
   border: 1px solid var(--border);
   border-radius: 24px 24px 0 0;
   display: grid;
@@ -191,8 +204,8 @@ p {
 }
 
 .topnav button.active {
-  background: #eff8f6;
-  border-color: #cce8e3;
+  background: rgb(123 231 224 / 10%);
+  border-color: rgb(123 231 224 / 28%);
   color: var(--ai);
 }
 
@@ -281,6 +294,7 @@ p {
 
 .profile-section {
   background: var(--surface-raised);
+  backdrop-filter: blur(18px);
   border: 1px solid var(--border);
   border-radius: 18px;
   box-shadow: var(--shadow-soft);
@@ -436,10 +450,10 @@ p {
 }
 
 .recommendation-notice {
-  background: #fff8e8;
-  border: 1px solid #edd9a7;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-strong);
   border-radius: 14px;
-  color: #6f4f00;
+  color: var(--text);
   margin: 0 0 16px;
   padding: 12px 14px;
 }
@@ -453,6 +467,7 @@ p {
   padding: 10px 14px;
 }
 
+.segmented button.active,
 .primary-button {
   background: linear-gradient(110deg, #6776e9, #8d70ff);
   border-color: transparent;
@@ -478,12 +493,6 @@ p {
 .segmented button {
   border: 0;
   justify-content: center;
-}
-
-.segmented button.active {
-  background: linear-gradient(110deg, #6776e9, #8d70ff);
-  border-color: transparent;
-  color: #ffffff;
 }
 
 .form-stack {
@@ -571,7 +580,7 @@ p {
 
 .message.assistant {
   background: rgb(255 255 255 / 7%);
-  border-color: var(--border);
+  border: 1px solid var(--border);
   color: var(--text);
 }
 
@@ -602,7 +611,7 @@ p {
 .browse-summary-row,
 .cart-row,
 .order-row {
-  background: var(--surface);
+  background: rgb(8 11 18 / 62%);
   border: 1px solid var(--border);
   border-radius: 18px;
   display: grid;
@@ -612,7 +621,6 @@ p {
 
 .product-card {
   background: linear-gradient(150deg, rgb(24 29 42 / 96%), rgb(12 15 23 / 96%));
-  border-color: var(--border);
   box-shadow: var(--shadow-soft);
   display: flex;
   flex-direction: column;
@@ -691,6 +699,11 @@ p {
   z-index: 2;
 }
 
+.product-card--featured .ai-match-badge {
+  left: auto;
+  right: 14px;
+}
+
 .product-body {
   display: grid;
   gap: 12px;
@@ -726,10 +739,10 @@ p {
 }
 
 .recommendation-reason {
-  background: #f5f3ef;
+  background: var(--surface-soft);
   border-left: 3px solid var(--ai);
   border-radius: 10px;
-  color: #3b3a36;
+  color: var(--text);
   display: grid;
   font-size: 13px;
   gap: 5px;
@@ -746,9 +759,10 @@ p {
 
 .product-meta span,
 .product-footer span {
-  background: #f2efe9;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
   border-radius: 999px;
-  color: #5d5952;
+  color: var(--muted);
   font-size: 12px;
   font-weight: 700;
   padding: 5px 9px;
@@ -809,7 +823,7 @@ p {
   z-index: 10;
 }
 
-.floating-cart button {
+.floating-cart--noir button {
   background: linear-gradient(110deg, #6776e9, #8d70ff);
   border-color: transparent;
   box-shadow: 0 14px 28px rgb(17 24 39 / 22%);
@@ -871,21 +885,11 @@ p {
 }
 
 .noir-page,
-.catalog-panel,
-.profile-section,
 .confirm-dialog--noir {
   background: var(--surface-raised);
   backdrop-filter: blur(18px);
   border-color: var(--border);
   box-shadow: var(--shadow-soft);
-}
-
-.browse-summary-row,
-.cart-row,
-.order-row,
-.profile-empty-state {
-  background: rgb(8 11 18 / 62%);
-  border-color: var(--border);
 }
 
 .profile-form-grid label,
@@ -896,52 +900,15 @@ p {
   color: var(--muted);
 }
 
-.segmented {
-  background: rgb(2 4 9 / 56%);
-}
-
-.segmented button.active,
-.primary-button {
-  background: linear-gradient(110deg, #6776e9, #8d70ff);
-  border-color: transparent;
-  color: #fff;
-}
-
-.floating-cart--noir button {
-  background: linear-gradient(110deg, #6776e9, #8d70ff);
-  border-color: transparent;
-  color: #fff;
-}
-
-.modal-backdrop {
-  background: rgb(2 4 10 / 72%);
-  backdrop-filter: blur(10px);
-}
-
-.summary-list {
-  background: rgb(2 4 10 / 40%);
-  border-color: var(--border);
-}
-
-.error-text {
-  color: #ff9d9d;
-}
-
-.status-line {
-  background: rgb(123 231 224 / 10%);
-  border-color: rgb(123 231 224 / 28%);
-  color: var(--text);
-}
-
 @keyframes noir-rise {
   from { opacity: 0; transform: translateY(14px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-.app-shell.is-entered .topbar { animation: noir-rise 360ms ease-out both; }
-.app-shell.is-entered .workbench-chat-column { animation: noir-rise 520ms 90ms ease-out both; }
-.app-shell.is-entered .recommendation-stage__featured { animation: noir-rise 650ms 180ms ease-out both; }
-.app-shell.is-entered .recommendation-stage__supporting { animation: noir-rise 520ms 280ms ease-out both; }
+.app-shell.is-entering .topbar { animation: noir-rise 360ms ease-out both; }
+.app-shell.is-entering .workbench-chat-column { animation: noir-rise 520ms 90ms ease-out both; }
+.app-shell.is-entering .recommendation-stage__featured { animation: noir-rise 650ms 180ms ease-out both; }
+.app-shell.is-entering .recommendation-stage__supporting { animation: noir-rise 520ms 280ms ease-out both; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -951,10 +918,10 @@ p {
     transition-duration: 0.01ms !important;
   }
 
-  .app-shell.is-entered .topbar,
-  .app-shell.is-entered .workbench-chat-column,
-  .app-shell.is-entered .recommendation-stage__featured,
-  .app-shell.is-entered .recommendation-stage__supporting {
+  .app-shell.is-entering .topbar,
+  .app-shell.is-entering .workbench-chat-column,
+  .app-shell.is-entering .recommendation-stage__featured,
+  .app-shell.is-entering .recommendation-stage__supporting {
     animation-duration: 0.01ms !important;
     transform: none;
   }

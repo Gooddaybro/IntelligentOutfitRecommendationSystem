@@ -18,6 +18,7 @@ type ViewKey = "ai" | "browse" | "cart" | "orders" | "profile";
 export function App() {
   const [view, setView] = useState<ViewKey>("ai");
   const [isEntered, setIsEntered] = useState(false);
+  const [isEntering, setIsEntering] = useState(false);
   const cart = useCartState();
   const assistant = useAssistantShoppingState();
   const clearCart = cart.clear;
@@ -36,11 +37,23 @@ export function App() {
   useEffect(() => {
     if (!auth.user) {
       setIsEntered(false);
+      setIsEntering(false);
       return;
     }
 
-    const frame = window.requestAnimationFrame(() => setIsEntered(true));
-    return () => window.cancelAnimationFrame(frame);
+    let timeout: number | undefined;
+    const frame = window.requestAnimationFrame(() => {
+      setIsEntered(true);
+      setIsEntering(true);
+      timeout = window.setTimeout(() => setIsEntering(false), 900);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (timeout !== undefined) {
+        window.clearTimeout(timeout);
+      }
+    };
   }, [auth.user]);
 
   const commerce = useCommerceAction({
@@ -50,6 +63,8 @@ export function App() {
 
   function logout() {
     commerce.clear();
+    setIsEntered(false);
+    setIsEntering(false);
     auth.clearSession();
     setView("ai");
   }
@@ -63,7 +78,7 @@ export function App() {
   }
 
   return (
-    <div className={`app-shell${isEntered ? " is-entered" : ""}`} data-testid="app-shell">
+    <div className={`app-shell${isEntered ? " is-entered" : ""}${isEntering ? " is-entering" : ""}`} data-testid="app-shell">
       <header className="topbar" data-testid="app-topbar">
         <div className="brand-lockup">
           <Layers3 size={26} />

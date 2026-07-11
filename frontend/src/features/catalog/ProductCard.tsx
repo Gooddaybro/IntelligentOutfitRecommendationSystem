@@ -25,7 +25,13 @@ type ProductCardProps = {
 };
 
 export function ProductCard({ candidate, onAction, actionMetadata, position, onBehaviorEvent, variant = "standard" }: ProductCardProps) {
-  const matchLabel = candidate.rankScore !== undefined ? `AI 匹配 ${Math.round(candidate.rankScore * 100)}%` : "AI 推荐";
+  const hasRecommendationFacts = candidate.rankScore !== undefined || Boolean(candidate.recommendationReason);
+  const matchLabel = candidate.rankScore !== undefined
+    ? `AI 匹配 ${Math.round(candidate.rankScore * 100)}%`
+    : hasRecommendationFacts
+      ? "AI 推荐"
+      : "AI 精选";
+  const shouldShowMatchBadge = hasRecommendationFacts || variant !== "standard";
 
   return (
     <article
@@ -43,7 +49,7 @@ export function ProductCard({ candidate, onAction, actionMetadata, position, onB
     >
       <div className="product-image">
         {variant === "featured" && <span className="featured-card-label">AI 首选</span>}
-        {(candidate.rankScore !== undefined || candidate.recommendationReason) && <span className="ai-match-badge">{matchLabel}</span>}
+        {shouldShowMatchBadge && <span className="ai-match-badge">{matchLabel}</span>}
         {candidate.mainImageUrl ? (
           <img src={candidate.mainImageUrl} alt={candidate.name} onError={(event) => { event.currentTarget.style.display = "none"; }} />
         ) : (
