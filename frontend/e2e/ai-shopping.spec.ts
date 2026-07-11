@@ -10,6 +10,8 @@ test("AI shopping flow requires confirmation before cart and payment actions", a
   await page.getByTestId("auth-submit").click();
 
   await expect(page.getByTestId("nav-ai")).toBeVisible();
+  await expect(page.getByTestId("app-shell")).toHaveClass(/is-entered/);
+  await expect(page.getByTestId("app-topbar")).toContainText("NOIR.AI");
   await expect(page.getByTestId("recommendation-card").first()).toContainText("通勤轻薄外套");
   await expect
     .poll(() => page.getByTestId("recommendation-card").first().locator("img").evaluate((image) => image.naturalWidth))

@@ -1,5 +1,5 @@
 import { Bot, Layers3, LogOut, PackageSearch, ReceiptText, ShoppingCart, UserRound } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAssistantShoppingState } from "../features/assistant/assistantState";
 import { AuthPanel } from "../features/auth/AuthPanel";
 import { useAuthSession } from "../features/auth/useAuthSession";
@@ -17,6 +17,7 @@ type ViewKey = "ai" | "browse" | "cart" | "orders" | "profile";
 
 export function App() {
   const [view, setView] = useState<ViewKey>("ai");
+  const [isEntered, setIsEntered] = useState(false);
   const cart = useCartState();
   const assistant = useAssistantShoppingState();
   const clearCart = cart.clear;
@@ -31,6 +32,16 @@ export function App() {
     onAuthenticated: cart.refresh,
     onSessionCleared: resetSessionState
   });
+
+  useEffect(() => {
+    if (!auth.user) {
+      setIsEntered(false);
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => setIsEntered(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, [auth.user]);
 
   const commerce = useCommerceAction({
     onCartItemsChange: cart.setItems,
@@ -52,13 +63,13 @@ export function App() {
   }
 
   return (
-    <div className="app-shell">
-      <header className="topbar">
+    <div className={`app-shell${isEntered ? " is-entered" : ""}`} data-testid="app-shell">
+      <header className="topbar" data-testid="app-topbar">
         <div className="brand-lockup">
           <Layers3 size={26} />
           <div>
-            <p className="brand-title">AI Outfit <span>Stylist</span></p>
-            <p className="eyebrow">智能服装导购工作台</p>
+            <p className="brand-title">NOIR<span>.AI</span></p>
+            <p className="eyebrow">智能穿搭工作台</p>
           </div>
         </div>
         <nav className="topnav" aria-label="主导航">
