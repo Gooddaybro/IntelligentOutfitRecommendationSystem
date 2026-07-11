@@ -76,3 +76,18 @@ test("AI shopping flow requires confirmation before cart and payment actions", a
   expect(api.capturedBodies.pay).toEqual([{ orderNo: "ORD-E2E-001", channel: "MOCK" }]);
   await expect(page.getByTestId("order-row")).toContainText("PAID");
 });
+
+test("NOIR workbench stays usable with reduced motion on a narrow screen", async ({ page }) => {
+  await installApiMocks(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await page.goto("/");
+  await page.getByTestId("auth-username").fill("e2e_user");
+  await page.getByTestId("auth-password").fill("StrongPassword123!");
+  await page.getByTestId("auth-submit").click();
+
+  await expect(page.getByTestId("app-topbar")).toHaveCSS("animation-duration", "1e-05s");
+  await expect(page.getByTestId("ai-chat-input")).toBeVisible();
+  await expect(page.getByTestId("recommendation-card").first()).toBeVisible();
+});

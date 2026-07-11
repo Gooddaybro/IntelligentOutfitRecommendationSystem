@@ -950,6 +950,14 @@ p {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
   }
+
+  .app-shell.is-entered .topbar,
+  .app-shell.is-entered .workbench-chat-column,
+  .app-shell.is-entered .recommendation-stage__featured,
+  .app-shell.is-entered .recommendation-stage__supporting {
+    animation-duration: 0.01ms !important;
+    transform: none;
+  }
 }
 
 @media (max-width: 1220px) {
@@ -1037,11 +1045,21 @@ p {
   }
 
   .message-list {
-    height: 380px;
+    height: min(46vh, 380px);
   }
 
   .chat-input {
     grid-template-columns: 1fr;
+  }
+
+  .workbench-chat-column,
+  .recommendation-stage {
+    border-radius: 18px;
+    padding: 16px;
+  }
+
+  .recommendation-stage__featured .product-image {
+    aspect-ratio: 1 / 1;
   }
 
   .profile-layout {
