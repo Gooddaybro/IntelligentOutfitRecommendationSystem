@@ -17,6 +17,12 @@
 - Preserve current shopping flows: browse, AI recommendation, add to cart, create order, mock pay, and behavior recording.
 - When changing Java-Python contracts, update both projects and run contract-focused tests.
 
+## Status Alignment (2026-07-11)
+
+The six implementation stages in this document are a completed historical record. Redis cache/rate-limit capability and the six listed stages are present in the current workspace; a real message broker is not.
+
+For the current middleware learning and evolution sequence, use [the 2026-07-11 middleware roadmap](./2026-07-11-middleware-evolution-roadmap.md). Keep this document as the source for the original stage scope, constraints, and acceptance criteria rather than duplicating those sections there.
+
 ---
 
 ## Current Status
@@ -418,11 +424,6 @@ Bad first MQ candidates:
 
 ## Recommended Next Step
 
-六阶段路线已经完成，下一步进入发布前收尾和联调清理。
+六阶段路线已经完成。发布、联调和提交整理继续参考 [发布前收尾交接文档](./2026-07-05-release-readiness-handoff.md)；Redis 学习收尾与 MQ 的架构决策参考 [2026-07-11 中间件演进路线图](./2026-07-11-middleware-evolution-roadmap.md)。
 
-请从 [发布前收尾交接文档](./2026-07-05-release-readiness-handoff.md) 继续。下一步应在下面几项中选择：
-
-- 按文档里的阶段分组整理本地提交。
-- 推送当前分支并创建 Pull Request。
-- 使用非生产密钥执行真实支付沙箱回调联调。
-- 如果下一个产品目标是用户可见的退款/售后流程，则补前端售后入口。
+MQ 仍不是订单、库存或支付事务的替代方案。只有完成当前路线图中的 MQ 决策关卡后，才创建单独的 RabbitMQ 实施计划。

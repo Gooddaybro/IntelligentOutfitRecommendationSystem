@@ -2,7 +2,7 @@
 
 本文档用于梳理 Intelligent Outfit Recommendation System 当前 Java 后端已经实现的功能、对应代码位置、数据库表、API 接口和测试用例。
 
-当前阶段重点是：商品库、SKU、库存、服装细粒度属性、用户认证与画像、会话记录、Java 调 Python AI 服务的同步和 SSE 流式链路，以及购物车 Cart MVP。购物车开发文档见 `docs/superpowers/plans/2026-06-01-cart-mvp.md`。下一阶段订单 MVP 开发文档见 `docs/superpowers/plans/2026-06-02-order-mvp.md`。本文档也作为后续继续开发订单、支付和 MQ 的功能追踪表。
+当前状态（2026-07-11）：商品、库存、用户、会话、AI 同步/SSE、购物车、订单、支付、售后、Redis 缓存与 AI 限流均已具备。本文档作为 Java 后端当前功能对照表；后续 Redis 学习与 MQ 架构决策见 `docs/superpowers/plans/2026-07-11-middleware-evolution-roadmap.md`。
 
 ## 当前阶段范围
 
@@ -15,12 +15,13 @@
 | Java | Java 21 | 与 Spring Boot 4.0.6 兼容 |
 | Web 框架 | Spring Boot 4.0.6 / Spring Web MVC | Boot 4 基于 Spring Framework 7，第三方依赖需确认兼容性 |
 | 数据库 | MySQL 8.0 | 本地开发主库 |
+| 缓存与限流 | Redis 7.2 / Spring Data Redis | 商品、画像、候选缓存和 AI 请求计数；不是交易事实源 |
 | 数据迁移 | Flyway | 管理表结构版本 |
 | 数据访问 | MyBatis Spring Boot Starter 4.0.0 + XML | 保持 SQL 可控，贴合当前项目重构方向 |
 | 参数校验 | spring-boot-starter-validation / `@Validated` | DTO 入参校验 |
 | 测试 | JUnit 5、MockMvc、H2 | 当前已有自动化测试基础 |
 | 推荐测试升级 | Testcontainers + MySQL 1.21.4 | CI 可用真实 MySQL 8 验证 Flyway 迁移，减少 H2/MySQL 方言差异 |
-| 本地依赖 | Docker Compose | 已提供 MySQL 一键启动 |
+| 本地依赖 | Docker Compose | 已提供 MySQL 和 Redis 一键启动 |
 | CI | GitHub Actions | 已配置 Maven 自动测试，CI 中开启 MySQL 容器测试 |
 | 接口文档 | Spring REST Docs + MockMvc | 已从 auth 接口生成契约片段，后续继续覆盖 user/conversation/assistant |
 | 手动测试 | Reqable | 注册、登录、商品、库存、internal API 验证 |
@@ -43,7 +44,7 @@
 - 当前用户信息接口
 - 用户基础资料、身体数据和穿衣偏好接口
 - 用户认证与画像 MyBatis XML 数据访问层
-- Docker Compose 本地 MySQL 环境
+- Docker Compose 本地 MySQL 与 Redis 环境
 - GitHub Actions 自动测试
 - MDC requestId 日志链路追踪
 - Testcontainers + MySQL Flyway 迁移测试
@@ -51,13 +52,17 @@
 - 会话记录：创建会话、查询会话列表、查询消息历史、归档会话
 - Java assistant-service 同步调用 Python AI 服务并保存 user/assistant 消息
 - Java assistant-service SSE 调用 Python `/chat/stream` 并向前端转发 `meta`、`token`、`done`、`error`
+- Redis Cache Aside：商品搜索/详情、用户画像和推荐候选缓存
+- Redis 固定窗口计数：AI 聊天用户级限流；Redis 故障时失败放行
 - 购物车：当前登录用户加购 SKU、查询购物车、修改数量、删除单项、清空购物车
 - 订单：当前登录用户从购物车结算、立即购买、查询订单、取消未支付订单、超时关闭未支付订单
-- Mock 支付：模拟支付成功、支付流水记录、锁定库存确认售出
+- 支付：`MOCK` 确定性支付、`ALIPAY`/`WECHAT` 待支付策略骨架、签名回调入口和幂等确认路径
+- 售后：当前用户创建、查询和撤销售后申请；不直接驱动真实退款
 
 ### 未实现
 
-- 真实支付渠道、支付回调、退款和售后
+- 真实支付 SDK 集成和生产/沙箱支付渠道联调
+- 审核驱动的真实退款执行，以及用户可见的售后前端入口
 - WebSocket 双向实时通道
 - MQ 异步推荐任务
 
@@ -70,6 +75,8 @@
 | SKU 查询 | 已实现 | product | product_sku、color、size_option | GET /internal/skus/search | ProductCatalogMapperTests、InternalProductControllerTests |
 | 库存查询 | 已实现 | inventory | inventory、product_sku | GET /internal/inventory | InventoryMapperTests、InternalInventoryControllerTests |
 | 推荐候选商品查询 | 已实现 | product | product_spu、product_sku、inventory、material、season、style_tag、fit_type | GET /api/products/recommendation-candidates、GET /internal/recommendation-candidates | ProductCatalogMapperTests、ProductControllerTests、InternalProductControllerTests |
+| Redis 缓存 | 已实现 | common/cache、product、user | 无 | 通过现有商品与用户接口生效 | ProductCatalogServiceTests、UserProfileServiceTests |
+| AI 用户级限流 | 已实现 | assistant、common/cache | 无 | POST /api/assistant/chat、POST /api/assistant/chat/stream | AssistantRateLimitServiceTests、AssistantServiceTests |
 | Internal 鉴权 | 已实现 | common/internal | 无 | /internal/** | InternalProductControllerTests |
 | 用户注册登录 | 已实现 | auth | user_account、role、user_role、login_log | POST /api/auth/register、POST /api/auth/login | AuthControllerTests、UserAuthMapperTests |
 | Access/Refresh Token | 已实现 | auth、security | refresh_token | POST /api/auth/refresh、POST /api/auth/logout、GET /api/users/me | AuthControllerTests |
@@ -81,7 +88,8 @@
 | AI 流式问答 | 已实现 | assistant | chat_session、chat_message、product_*、user_* | POST /api/assistant/chat/stream | PythonSseEventParserTests、RestPythonAssistantClientTests、AssistantServiceTests、AssistantControllerTests |
 | 购物车 | 已实现 | cart | cart_item | GET/POST/PUT/DELETE /api/cart/items | CartMapperTests、CartServiceTests、CartControllerTests |
 | 订单 | 已实现 | order | sales_order、order_item | POST/GET /api/orders、POST /api/orders/buy-now、GET /api/orders/{orderNo}、POST /api/orders/{orderNo}/cancel | OrderMapperTests、OrderServiceTests、OrderControllerTests、OrderTimeoutSchedulerTests |
-| Mock 支付 | 已实现 | payment | payment | POST /api/payments/mock-pay | PaymentMapperTests、PaymentServiceTests、PaymentControllerTests |
+| 支付与回调 | 已实现 | payment | payment、payment_callback_log | POST /api/payments、POST /api/payments/mock-pay、POST /api/payments/callback/{channel} | PaymentMapperTests、PaymentServiceTests、PaymentControllerTests |
+| 售后申请 | 已实现 | aftersale | after_sale_request | POST/GET /api/after-sales、POST /api/after-sales/{requestNo}/cancel | AfterSaleServiceTests、AfterSaleControllerTests |
 | requestId 日志追踪 | 已实现 | common/logging | 无 | 所有 HTTP 请求响应头 `X-Request-Id` | MdcRequestIdInterceptorTests |
 | MySQL 容器迁移测试 | 已实现 | support test | flyway_schema_history、全部业务表 | 无 | MySqlFlywayMigrationTests |
 | 统一响应格式 | 已实现 | common/api | 无 | 所有 Controller | Controller 测试覆盖 |
@@ -104,6 +112,16 @@
 | `common/internal/InternalApiInterceptor.java` | 校验 `X-Internal-Token` |
 | `common/internal/WebMvcConfig.java` | 注册 requestId 和 `/internal/**` 拦截器 |
 | `common/logging/MdcRequestIdInterceptor.java` | 为每个 HTTP 请求注入/回传 `X-Request-Id`，并写入 SLF4J MDC |
+
+### common/cache
+
+Redis 仅承担缓存和限流职责；商品、用户、库存、订单和支付最终状态仍以 MySQL 为准。
+
+| 文件 | 作用 |
+|---|---|
+| `common/cache/CacheKeyConstants.java` | 集中定义 Redis key 命名空间 |
+| `common/cache/CacheTtlProperties.java` | 集中配置 TTL 与随机抖动 |
+| `common/cache/RedisCacheService.java` | 封装 JSON 缓存读写、删除和带 TTL 的原子计数 |
 
 ### security
 
@@ -399,11 +417,11 @@ SELECT COUNT(*) FROM cart_item;
 SELECT version, success FROM flyway_schema_history;
 ```
 
-## 下一阶段开发建议
+## 后续演进建议
 
-用户认证、双 Token 鉴权、用户资料和穿衣偏好模块已经完成。下一阶段建议优先补工程化能力和 AI 联动前置能力：先把 Testcontainers、Docker Compose、CI 和接口文档补齐，再开发会话记录与 Java 调 Python AI 服务。原因是 AI 推荐在进入真实链路前，需要稳定的用户上下文、可重复启动的本地环境、可验证的接口契约和可追踪的会话历史。
+当前基础能力已完成。后续先完成发布收尾、支付沙箱联调或售后前端，再按 `docs/superpowers/plans/2026-07-11-middleware-evolution-roadmap.md` 的决策关卡讨论 MQ；不要为了使用消息队列而替换订单、库存或支付事务。
 
-下一阶段要明确区分两套 token：
+跨服务调用继续明确区分两套 token：
 
 ```text
 Authorization: Bearer <accessToken>
@@ -413,19 +431,7 @@ X-Internal-Token
   Python AI 服务调用 Java internal API 使用，继续读取 application.properties 固定配置。
 ```
 
-后续模块顺序建议：
-
-1. engineering：Testcontainers、Docker Compose、GitHub Actions、Spring REST Docs
-2. conversation-service：会话、消息历史、thread_id
-3. assistant-service：Java 调 Python AI 服务，同步问答先跑通
-4. cart-service：购物车
-5. order-service：订单和库存锁定
-6. mock-payment：模拟支付
-7. SSE / WebSocket：流式返回
-8. Redis：商品详情缓存、用户画像缓存、推荐候选缓存、AI 聊天接口限流
-9. MQ：复杂推荐异步任务
-
-Redis 第一版开发计划见 `docs/superpowers/plans/2026-06-26-redis-cache-rate-limit-mvp.md`。
+Redis 第一版实施记录见 `docs/superpowers/plans/2026-06-26-redis-cache-rate-limit-mvp.md`；下一阶段的学习和架构决策见 `docs/superpowers/plans/2026-07-11-middleware-evolution-roadmap.md`。
 
 ## 后续维护方式
 

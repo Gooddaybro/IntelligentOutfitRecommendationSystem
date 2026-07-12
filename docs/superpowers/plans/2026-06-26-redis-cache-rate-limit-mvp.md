@@ -1,5 +1,7 @@
 # Redis Cache and Rate Limit MVP Implementation Plan
 
+> **Status alignment (2026-07-11):** This MVP is implemented in the current workspace. The remainder of this document preserves the original design and implementation scope; the checklist at the end now records the completed code and test coverage. Follow-up learning and MQ planning live in [the 2026-07-11 middleware roadmap](./2026-07-11-middleware-evolution-roadmap.md).
+
 **Goal:** 在 Java 后端引入第一版 Redis 能力，围绕智能穿搭主链路完成商品详情缓存、用户画像缓存、推荐候选缓存和 AI 聊天接口限流。第一阶段重点是把缓存链路跑通、讲清楚、可验证，而不是把 Redis 到处乱加。
 
 **Architecture:** 当前项目继续保持模块化单体。Redis 作为 MySQL 旁边的加速层和限流层，不作为交易事实源。商品、用户、订单、支付、库存最终状态仍以 MySQL 为准。
@@ -14,11 +16,11 @@
 - 已完成用户注册登录、用户画像、身体数据、穿衣偏好。
 - 已完成 Java 调 Python AI 服务的同步和 SSE 流式链路。
 - 已完成购物车、订单、模拟支付等电商闭环。
-- 当前还没有接入 Redis：
-  - `docker-compose.yml` 只有 MySQL。
-  - `backend/pom.xml` 还没有 Redis starter。
-  - `application.properties` 还没有 Redis 连接配置。
-  - 业务 Service 目前直接查 MySQL。
+- Redis 已接入并作为加速层：
+  - `docker-compose.yml` 包含 Redis 7.2 容器。
+  - `backend/pom.xml` 已引入 `spring-boot-starter-data-redis`。
+  - `application.properties` 已提供 Redis host、port 和 timeout 配置。
+  - `common/cache` 已集中管理 key、TTL 和 JSON Redis 操作；商品、用户画像、推荐候选和 AI 限流已接入。
 
 ---
 
@@ -393,16 +395,16 @@ INCR assistant:rate-limit:user:{userId}:{minute}
 
 ## 14. 开发检查清单
 
-- [ ] Redis 容器已加入 Docker Compose。
-- [ ] Java 后端已加入 Redis starter。
-- [ ] 本地配置已加入 Redis host、port、timeout。
-- [ ] 测试配置能在没有真实 Redis 时稳定运行，或测试中提供 Redis 替身。
-- [ ] `CacheKeyConstants` 已集中管理 key。
-- [ ] `CacheTtlProperties` 已集中管理 TTL。
-- [ ] `RedisCacheService` 已封装 get/set/delete/increment。
-- [ ] 商品详情缓存已接入。
-- [ ] 用户画像缓存已接入。
-- [ ] 推荐候选缓存已接入。
-- [ ] AI 限流已接入。
-- [ ] 缓存命中、缓存删除、限流超过阈值都有测试。
-- [ ] 文档和面试表达已同步。
+- [x] Redis 容器已加入 Docker Compose。
+- [x] Java 后端已加入 Redis starter。
+- [x] 本地配置已加入 Redis host、port、timeout。
+- [x] 测试以 `RedisCacheService` Mock 覆盖缓存和限流服务逻辑，不依赖真实 Redis。
+- [x] `CacheKeyConstants` 已集中管理 key。
+- [x] `CacheTtlProperties` 已集中管理 TTL。
+- [x] `RedisCacheService` 已封装 get/set/delete/increment。
+- [x] 商品详情缓存已接入。
+- [x] 用户画像缓存已接入。
+- [x] 推荐候选缓存已接入。
+- [x] AI 限流已接入。
+- [x] 缓存命中、缓存删除、限流超过阈值都有单元测试。
+- [x] 文档和面试表达已同步；后续学习项记录在 2026-07-11 中间件路线图。
