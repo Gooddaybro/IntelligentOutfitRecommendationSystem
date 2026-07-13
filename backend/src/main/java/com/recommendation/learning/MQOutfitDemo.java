@@ -38,12 +38,11 @@ public class MQOutfitDemo {
         String taskId = "TASK_" + System.currentTimeMillis();
 
         // TODO: 1. 组装消息（简单的拼接一下就行，比如 userId + "," + taskId）
-        
+        String message=userId+","+taskId;
         // TODO: 2. 调用 mqProducer，将消息发给主题 "outfit_generate_topic"
-        
+        mqProducer.send("outfit_generate_topic", message);
         // TODO: 3. 立刻 return 告诉前端："您的穿搭正在生成中，请稍后在消息中心查看。任务ID：" + taskId
-        
-        return null;
+        return "您的穿搭正在生成中，请稍后在消息中心查看。任务ID："+taskId;
     }
 
     /**
@@ -53,10 +52,12 @@ public class MQOutfitDemo {
      */
     public void onMessageReceived(String message) {
         // TODO: 1. 从 message 中拆解出 userId 和 taskId (可以用 message.split(","))
-        
+        String[] messageArray = message.split(",");
+        String userId = messageArray[0];
+        String taskId = messageArray[1];
         // TODO: 2. 调用 aiClient.generateOutfit(userId) 获取穿搭结果
-        
+        String output=aiClient.generateOutfit(userId);
         // TODO: 3. 调用 db.updateOutfitResult() 保存到数据库，前端就可以随时来查了
-        
+        db.updateOutfitResult(taskId,output);
     }
 }
