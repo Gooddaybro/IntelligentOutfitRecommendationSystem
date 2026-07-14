@@ -14,6 +14,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.OrderR
 import com.recommendation.intelligentoutfitrecommendationsystem.order.mapper.OrderMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderCheckoutItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderItem;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderOperation;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.SalesOrder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,16 +60,24 @@ public class OrderService {
 
     private final BehaviorEventService behaviorEventService;
 
+    private final OrderIdempotencyCoordinator idempotencyCoordinator;
+
+    private final OrderRequestFingerprint requestFingerprint;
+
     public OrderService(
             OrderMapper orderMapper,
             InventoryMapper inventoryMapper,
             CartService cartService,
-            BehaviorEventService behaviorEventService
+            BehaviorEventService behaviorEventService,
+            OrderIdempotencyCoordinator idempotencyCoordinator,
+            OrderRequestFingerprint requestFingerprint
     ) {
         this.orderMapper = orderMapper;
         this.inventoryMapper = inventoryMapper;
         this.cartService = cartService;
         this.behaviorEventService = behaviorEventService;
+        this.idempotencyCoordinator = idempotencyCoordinator;
+        this.requestFingerprint = requestFingerprint;
     }
 
     /**
@@ -78,19 +87,23 @@ public class OrderService {
      * @param request 前端选择的购物车 SKU 集合，不能携带价格、数量或 userId
      * @return 创建后的订单快照
      */
-    @Transactional
-    public OrderResponse createOrder(Long userId, CreateOrderRequest request) {
+    public IdempotentOrderResult createOrder(
+            Long userId,
+            String idempotencyKey,
+            CreateOrderRequest request
+    ) {
         validateUserId(userId);
         validateRequest(request);
         List<Long> skuIds = normalizeSkuIds(request.skuIds());
-        List<OrderCheckoutItem> checkoutItems = orderMapper.findCheckoutItemsFromCart(userId, skuIds);
-        if (checkoutItems.size() != skuIds.size()) {
-            throw new ResourceNotFoundException("cart item not found");
-        }
-
-        OrderResponse response = createUnpaidOrderFromCheckoutItems(userId, checkoutItems);
-        cartService.removePurchasedItems(userId, skuIds);
-        return response;
+        String fingerprint = requestFingerprint.cart(skuIds);
+        return idempotencyCoordinator.execute(
+                userId,
+                OrderOperation.CART_CHECKOUT,
+                idempotencyKey,
+                fingerprint,
+                () -> createOrderFromCart(userId, skuIds),
+                orderId -> loadOrderForReplay(userId, orderId)
+        );
     }
 
     /**
@@ -100,10 +113,35 @@ public class OrderService {
      * @param request 前端选择的 SKU 和购买数量，不允许携带价格、金额或用户归属
      * @return 创建后的未支付订单快照
      */
-    @Transactional
-    public OrderResponse buyNow(Long userId, BuyNowRequest request) {
+    public IdempotentOrderResult buyNow(
+            Long userId,
+            String idempotencyKey,
+            BuyNowRequest request
+    ) {
         validateUserId(userId);
         validateBuyNowRequest(request);
+        String fingerprint = requestFingerprint.buyNow(request.skuId(), request.quantity());
+        return idempotencyCoordinator.execute(
+                userId,
+                OrderOperation.BUY_NOW,
+                idempotencyKey,
+                fingerprint,
+                () -> createOrderFromSku(userId, request),
+                orderId -> loadOrderForReplay(userId, orderId)
+        );
+    }
+
+    private OrderCreationResult createOrderFromCart(Long userId, List<Long> skuIds) {
+        List<OrderCheckoutItem> checkoutItems = orderMapper.findCheckoutItemsFromCart(userId, skuIds);
+        if (checkoutItems.size() != skuIds.size()) {
+            throw new ResourceNotFoundException("cart item not found");
+        }
+        OrderCreationResult creation = createUnpaidOrderFromCheckoutItems(userId, checkoutItems);
+        cartService.removePurchasedItems(userId, skuIds);
+        return creation;
+    }
+
+    private OrderCreationResult createOrderFromSku(Long userId, BuyNowRequest request) {
         OrderCheckoutItem checkoutItem = orderMapper.findCheckoutItemBySkuId(request.skuId());
         if (checkoutItem == null) {
             throw new ResourceNotFoundException("sku not found: " + request.skuId());
@@ -112,7 +150,10 @@ public class OrderService {
         return createUnpaidOrderFromCheckoutItems(userId, List.of(checkoutItem));
     }
 
-    private OrderResponse createUnpaidOrderFromCheckoutItems(Long userId, List<OrderCheckoutItem> checkoutItems) {
+    private OrderCreationResult createUnpaidOrderFromCheckoutItems(
+            Long userId,
+            List<OrderCheckoutItem> checkoutItems
+    ) {
         validateUserId(userId);
         if (checkoutItems == null || checkoutItems.isEmpty()) {
             throw new BadRequestException("checkout items must not be empty");
@@ -141,7 +182,15 @@ public class OrderService {
         orderMapper.insertItems(orderItems);
         recordOrderCreatedEvents(userId, order, orderItems);
 
-        return toResponse(order, orderItems);
+        return new OrderCreationResult(order.getId(), toResponse(order, orderItems));
+    }
+
+    private OrderResponse loadOrderForReplay(Long userId, Long orderId) {
+        SalesOrder order = orderMapper.findOrderByUserIdAndId(userId, orderId);
+        if (order == null) {
+            throw new ResourceNotFoundException("idempotent order not found");
+        }
+        return toResponse(order, orderMapper.findItemsByOrderId(orderId));
     }
 
     public List<OrderResponse> listOrders(Long userId) {

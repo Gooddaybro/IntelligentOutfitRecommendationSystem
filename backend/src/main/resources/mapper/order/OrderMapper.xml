@@ -96,6 +96,25 @@
           AND order_no = #{orderNo}
     </select>
 
+    <!-- 幂等重放使用内部主键定位，但仍绑定当前 userId，不能绕过公开订单归属边界。 -->
+    <select id="findOrderByUserIdAndId"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.order.model.SalesOrder">
+        SELECT
+            id,
+            order_no,
+            user_id,
+            total_amount,
+            status,
+            paid_at,
+            closed_at,
+            close_reason,
+            created_at,
+            updated_at
+        FROM sales_order
+        WHERE user_id = #{userId}
+          AND id = #{orderId}
+    </select>
+
     <!--
         支付、取消和超时关闭都会改变订单状态和库存状态，必须先锁定订单主表行。
         公开用户入口绑定 userId，确保用户不能通过猜测 orderNo 锁定或修改他人订单。

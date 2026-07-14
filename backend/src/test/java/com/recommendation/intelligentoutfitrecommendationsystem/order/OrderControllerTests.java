@@ -11,6 +11,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.UUID;
 
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
@@ -18,6 +19,7 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ActiveProfiles("test")
@@ -47,6 +49,7 @@ class OrderControllerTests {
 
         String createBody = mockMvc.perform(post("/api/orders")
                         .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -55,6 +58,7 @@ class OrderControllerTests {
                                 }
                                 """))
                 .andExpect(status().isOk())
+                .andExpect(header().string("Idempotency-Replayed", "false"))
                 .andExpect(jsonPath("$.data.orderNo").isNotEmpty())
                 .andExpect(jsonPath("$.data.status").value("UNPAID"))
                 .andExpect(jsonPath("$.data.totalAmount").value(697.0))
@@ -96,6 +100,7 @@ class OrderControllerTests {
 
         mockMvc.perform(post("/api/orders")
                         .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -115,6 +120,7 @@ class OrderControllerTests {
 
         String createBody = mockMvc.perform(post("/api/orders/buy-now")
                         .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -153,6 +159,7 @@ class OrderControllerTests {
 
         mockMvc.perform(post("/api/orders/buy-now")
                         .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -165,6 +172,95 @@ class OrderControllerTests {
     }
 
     @Test
+    void rejectsBuyNowWithoutIdempotencyKey() throws Exception {
+        String accessToken = registerAndLogin(nextUsername());
+
+        mockMvc.perform(post("/api/orders/buy-now")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "skuId": 2103,
+                                  "quantity": 1
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("bad_request"));
+    }
+
+    @Test
+    void rejectsCartCheckoutWithMissingOrInvalidIdempotencyKey() throws Exception {
+        String accessToken = registerAndLogin(nextUsername());
+        String body = """
+                {
+                  "source": "CART",
+                  "skuIds": [2103]
+                }
+                """;
+
+        mockMvc.perform(post("/api/orders")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("bad_request"));
+
+        mockMvc.perform(post("/api/orders")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", "fixed-key")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("bad_request"));
+    }
+
+    @Test
+    void replaysBuyNowAndRejectsSameKeyWithDifferentQuantity() throws Exception {
+        String accessToken = registerAndLogin(nextUsername());
+        String key = UUID.randomUUID().toString();
+        String body = """
+                {
+                  "skuId": 2103,
+                  "quantity": 1
+                }
+                """;
+
+        String firstBody = mockMvc.perform(post("/api/orders/buy-now")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Idempotency-Replayed", "false"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String orderNo = objectMapper.readTree(firstBody).path("data").path("orderNo").asText();
+
+        mockMvc.perform(post("/api/orders/buy-now")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Idempotency-Replayed", "true"))
+                .andExpect(jsonPath("$.data.orderNo").value(orderNo));
+
+        mockMvc.perform(post("/api/orders/buy-now")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "skuId": 2103,
+                                  "quantity": 2
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("idempotency_key_reused"));
+    }
+
+    @Test
     void keepsOrdersScopedToTheOwnerAccessToken() throws Exception {
         String ownerToken = registerAndLogin(nextUsername());
         String otherToken = registerAndLogin(nextUsername());
@@ -173,6 +269,7 @@ class OrderControllerTests {
 
         String createBody = mockMvc.perform(post("/api/orders")
                         .header("Authorization", "Bearer " + ownerToken)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -202,6 +299,7 @@ class OrderControllerTests {
 
         String createBody = mockMvc.perform(post("/api/orders")
                         .header("Authorization", "Bearer " + ownerToken)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -240,6 +338,7 @@ class OrderControllerTests {
 
         mockMvc.perform(post("/api/orders")
                         .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {

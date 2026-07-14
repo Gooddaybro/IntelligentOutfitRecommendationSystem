@@ -26,6 +26,8 @@ public interface OrderMapper {
 
     SalesOrder findOrderByUserIdAndOrderNo(@Param("userId") Long userId, @Param("orderNo") String orderNo);
 
+    SalesOrder findOrderByUserIdAndId(@Param("userId") Long userId, @Param("orderId") Long orderId);
+
     /**
      * 按当前用户和订单号锁定订单主表行。
      *

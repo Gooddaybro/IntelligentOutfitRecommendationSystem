@@ -5,15 +5,18 @@ import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.BuyNow
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.CancelOrderRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.CreateOrderRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.OrderResponse;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.service.IdempotentOrderResult;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.service.OrderService;
 import com.recommendation.intelligentoutfitrecommendationsystem.security.CurrentUser;
 import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -35,21 +38,23 @@ public class OrderController {
     }
 
     @PostMapping
-    public ApiResponse<OrderResponse> createOrder(
+    public ResponseEntity<ApiResponse<OrderResponse>> createOrder(
             Authentication authentication,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody CreateOrderRequest request
     ) {
         CurrentUser currentUser = CurrentUser.from(authentication);
-        return ApiResponse.ok(orderService.createOrder(currentUser.userId(), request));
+        return idempotentResponse(orderService.createOrder(currentUser.userId(), idempotencyKey, request));
     }
 
     @PostMapping("/buy-now")
-    public ApiResponse<OrderResponse> buyNow(
+    public ResponseEntity<ApiResponse<OrderResponse>> buyNow(
             Authentication authentication,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody BuyNowRequest request
     ) {
         CurrentUser currentUser = CurrentUser.from(authentication);
-        return ApiResponse.ok(orderService.buyNow(currentUser.userId(), request));
+        return idempotentResponse(orderService.buyNow(currentUser.userId(), idempotencyKey, request));
     }
 
     @GetMapping
@@ -72,5 +77,11 @@ public class OrderController {
     ) {
         CurrentUser currentUser = CurrentUser.from(authentication);
         return ApiResponse.ok(orderService.cancelOrder(currentUser.userId(), orderNo, request));
+    }
+
+    private ResponseEntity<ApiResponse<OrderResponse>> idempotentResponse(IdempotentOrderResult result) {
+        return ResponseEntity.ok()
+                .header("Idempotency-Replayed", Boolean.toString(result.replayed()))
+                .body(ApiResponse.ok(result.order()));
     }
 }

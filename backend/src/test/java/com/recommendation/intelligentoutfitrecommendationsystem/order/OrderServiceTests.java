@@ -11,8 +11,14 @@ import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.Create
 import com.recommendation.intelligentoutfitrecommendationsystem.order.mapper.OrderMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderCheckoutItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderItem;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderOperation;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.SalesOrder;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.service.IdempotentOrderResult;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.service.OrderCreationResult;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.service.OrderIdempotencyCoordinator;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.service.OrderRequestFingerprint;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.service.OrderService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -23,6 +29,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -30,12 +37,15 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class OrderServiceTests {
+
+    private static final String IDEMPOTENCY_KEY = "2d36f872-e8d1-4e4f-b12e-a9702c88e890";
 
     @Mock
     private OrderMapper orderMapper;
@@ -49,8 +59,26 @@ class OrderServiceTests {
     @Mock
     private BehaviorEventService behaviorEventService;
 
+    @Mock
+    private OrderIdempotencyCoordinator idempotencyCoordinator;
+
+    @Mock
+    private OrderRequestFingerprint requestFingerprint;
+
     @InjectMocks
     private OrderService service;
+
+    @BeforeEach
+    void executeClaimedOrderActions() {
+        lenient().when(requestFingerprint.cart(any())).thenReturn("a".repeat(64));
+        lenient().when(requestFingerprint.buyNow(any(), any())).thenReturn("b".repeat(64));
+        lenient().when(idempotencyCoordinator.execute(any(), any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    Supplier<OrderCreationResult> action = invocation.getArgument(4);
+                    OrderCreationResult creation = action.get();
+                    return new IdempotentOrderResult(creation.order(), false);
+                });
+    }
 
     @Test
     void createOrderFromCartRecalculatesAmountLocksStockAndStoresSnapshots() {
@@ -65,7 +93,7 @@ class OrderServiceTests {
             return null;
         }).when(orderMapper).insertOrder(any(SalesOrder.class));
 
-        var response = service.createOrder(10L, request);
+        var response = service.createOrder(10L, IDEMPOTENCY_KEY, request).order();
 
         ArgumentCaptor<SalesOrder> orderCaptor = ArgumentCaptor.forClass(SalesOrder.class);
         ArgumentCaptor<List<OrderItem>> itemCaptor = ArgumentCaptor.forClass(List.class);
@@ -98,13 +126,21 @@ class OrderServiceTests {
         assertThat(response.orderNo()).startsWith("ORD");
         assertThat(response.status()).isEqualTo("UNPAID");
         assertThat(response.totalAmount()).isEqualByComparingTo("697.00");
+        verify(idempotencyCoordinator).execute(
+                eq(10L),
+                eq(OrderOperation.CART_CHECKOUT),
+                eq(IDEMPOTENCY_KEY),
+                eq("a".repeat(64)),
+                any(),
+                any()
+        );
     }
 
     @Test
     void createOrderRejectsUnsupportedSourceForThisPhase() {
         var request = new CreateOrderRequest("BUY_NOW", List.of(2102L));
 
-        assertThatThrownBy(() -> service.createOrder(10L, request))
+        assertThatThrownBy(() -> service.createOrder(10L, IDEMPOTENCY_KEY, request))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessage("order source is not supported: BUY_NOW");
     }
@@ -121,7 +157,7 @@ class OrderServiceTests {
             return null;
         }).when(orderMapper).insertOrder(any(SalesOrder.class));
 
-        var response = service.buyNow(10L, request);
+        var response = service.buyNow(10L, IDEMPOTENCY_KEY, request).order();
 
         ArgumentCaptor<List<OrderItem>> itemCaptor = ArgumentCaptor.forClass(List.class);
         verify(orderMapper).insertItems(itemCaptor.capture());
@@ -138,6 +174,14 @@ class OrderServiceTests {
                 });
         assertThat(response.status()).isEqualTo("UNPAID");
         assertThat(response.totalAmount()).isEqualByComparingTo("897.00");
+        verify(idempotencyCoordinator).execute(
+                eq(10L),
+                eq(OrderOperation.BUY_NOW),
+                eq(IDEMPOTENCY_KEY),
+                eq("b".repeat(64)),
+                any(),
+                any()
+        );
         assertThat(response.items())
                 .singleElement()
                 .satisfies(item -> {
@@ -152,7 +196,7 @@ class OrderServiceTests {
         var request = new BuyNowRequest(999999L, 1);
         when(orderMapper.findCheckoutItemBySkuId(999999L)).thenReturn(null);
 
-        assertThatThrownBy(() -> service.buyNow(10L, request))
+        assertThatThrownBy(() -> service.buyNow(10L, IDEMPOTENCY_KEY, request))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessage("sku not found: 999999");
         verify(inventoryMapper, never()).lockStock(any(), any());
@@ -165,7 +209,7 @@ class OrderServiceTests {
         when(orderMapper.findCheckoutItemsFromCart(10L, List.of(2102L, 2202L)))
                 .thenReturn(List.of(checkoutItem(2102L, "299.00", 1)));
 
-        assertThatThrownBy(() -> service.createOrder(10L, request))
+        assertThatThrownBy(() -> service.createOrder(10L, IDEMPOTENCY_KEY, request))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessage("cart item not found");
     }
@@ -177,7 +221,7 @@ class OrderServiceTests {
                 .thenReturn(List.of(checkoutItem(2102L, "299.00", 1)));
         when(inventoryMapper.lockStock(2102L, 1)).thenReturn(0);
 
-        assertThatThrownBy(() -> service.createOrder(10L, request))
+        assertThatThrownBy(() -> service.createOrder(10L, IDEMPOTENCY_KEY, request))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessage("insufficient stock for sku: 2102");
         verify(orderMapper, never()).insertOrder(any(SalesOrder.class));
