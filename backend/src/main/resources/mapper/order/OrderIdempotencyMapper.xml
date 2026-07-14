@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recommendation.intelligentoutfitrecommendationsystem.order.mapper.OrderIdempotencyMapper">
+
+    <insert id="insert"
+            parameterType="com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderIdempotencyRecord"
+            useGeneratedKeys="true"
+            keyProperty="id">
+        INSERT INTO order_idempotency (
+            user_id,
+            operation,
+            idempotency_key,
+            request_fingerprint,
+            order_id,
+            expires_at
+        ) VALUES (
+            #{userId},
+            #{operation},
+            #{idempotencyKey},
+            #{requestFingerprint},
+            #{orderId},
+            #{expiresAt}
+        )
+    </insert>
+
+    <delete id="deleteExpiredKey">
+        DELETE FROM order_idempotency
+        WHERE user_id = #{userId}
+          AND operation = #{operation}
+          AND idempotency_key = #{idempotencyKey}
+          AND expires_at &lt;= #{now}
+    </delete>
+
+    <select id="findByKey"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderIdempotencyRecord">
+        SELECT
+            id,
+            user_id,
+            operation,
+            idempotency_key,
+            request_fingerprint,
+            order_id,
+            expires_at,
+            created_at,
+            updated_at
+        FROM order_idempotency
+        WHERE user_id = #{userId}
+          AND operation = #{operation}
+          AND idempotency_key = #{idempotencyKey}
+    </select>
+
+    <update id="linkOrder">
+        UPDATE order_idempotency
+        SET order_id = #{orderId},
+            updated_at = CURRENT_TIMESTAMP(6)
+        WHERE id = #{id}
+          AND order_id IS NULL
+    </update>
+
+    <select id="findExpiredIds" resultType="java.lang.Long">
+        SELECT id
+        FROM order_idempotency
+        WHERE expires_at &lt;= #{now}
+        ORDER BY expires_at ASC, id ASC
+        LIMIT #{batchSize}
+    </select>
+
+    <delete id="deleteByIds">
+        DELETE FROM order_idempotency
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+</mapper>
