@@ -7,12 +7,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
@@ -31,6 +33,9 @@ class OrderControllerTests {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -218,6 +223,10 @@ class OrderControllerTests {
     void replaysBuyNowAndRejectsSameKeyWithDifferentQuantity() throws Exception {
         String accessToken = registerAndLogin(nextUsername());
         String key = UUID.randomUUID().toString();
+        Integer lockedStockBefore = jdbcTemplate.queryForObject(
+                "SELECT locked_stock FROM inventory WHERE sku_id = 2103",
+                Integer.class
+        );
         String body = """
                 {
                   "skuId": 2103,
@@ -258,6 +267,90 @@ class OrderControllerTests {
                                 """))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errorCode").value("idempotency_key_reused"));
+
+        Integer lockedStockAfter = jdbcTemplate.queryForObject(
+                "SELECT locked_stock FROM inventory WHERE sku_id = 2103",
+                Integer.class
+        );
+        Integer orderCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM sales_order WHERE order_no = ?",
+                Integer.class,
+                orderNo
+        );
+        Integer eventCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM behavior_event WHERE order_no = ? AND event_type = 'ORDER_CREATED'",
+                Integer.class,
+                orderNo
+        );
+        Integer idempotencyCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM order_idempotency WHERE idempotency_key = ?",
+                Integer.class,
+                key
+        );
+        assertThat(lockedStockAfter).isEqualTo(lockedStockBefore + 1);
+        assertThat(orderCount).isOne();
+        assertThat(eventCount).isOne();
+        assertThat(idempotencyCount).isOne();
+    }
+
+    @Test
+    void failedBuyNowRollsBackClaimAndAllowsSameKeyToRetry() throws Exception {
+        String accessToken = registerAndLogin(nextUsername());
+        String key = UUID.randomUUID().toString();
+        Integer availableBefore = jdbcTemplate.queryForObject(
+                "SELECT available_stock FROM inventory WHERE sku_id = 2005",
+                Integer.class
+        );
+        Integer lockedBefore = jdbcTemplate.queryForObject(
+                "SELECT locked_stock FROM inventory WHERE sku_id = 2005",
+                Integer.class
+        );
+        jdbcTemplate.update("UPDATE inventory SET available_stock = 0 WHERE sku_id = 2005");
+
+        try {
+            String body = """
+                    {
+                      "skuId": 2005,
+                      "quantity": 1
+                    }
+                    """;
+            mockMvc.perform(post("/api/orders/buy-now")
+                            .header("Authorization", "Bearer " + accessToken)
+                            .header("Idempotency-Key", key)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errorCode").value("bad_request"));
+            assertThat(jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM order_idempotency WHERE idempotency_key = ?",
+                    Integer.class,
+                    key
+            )).isZero();
+
+            jdbcTemplate.update(
+                    "UPDATE inventory SET available_stock = ?, locked_stock = ? WHERE sku_id = 2005",
+                    availableBefore,
+                    lockedBefore
+            );
+            mockMvc.perform(post("/api/orders/buy-now")
+                            .header("Authorization", "Bearer " + accessToken)
+                            .header("Idempotency-Key", key)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isOk())
+                    .andExpect(header().string("Idempotency-Replayed", "false"));
+            assertThat(jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM order_idempotency WHERE idempotency_key = ?",
+                    Integer.class,
+                    key
+            )).isOne();
+        } finally {
+            jdbcTemplate.update(
+                    "UPDATE inventory SET available_stock = ?, locked_stock = ? WHERE sku_id = 2005",
+                    availableBefore,
+                    lockedBefore
+            );
+        }
     }
 
     @Test
