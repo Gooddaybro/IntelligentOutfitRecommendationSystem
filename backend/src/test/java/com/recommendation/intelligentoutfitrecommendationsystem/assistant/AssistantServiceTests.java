@@ -42,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -323,7 +324,7 @@ class AssistantServiceTests {
     }
 
     @Test
-    void repeatedPythonFailuresOpenLocalFallbackGuardAndSkipPythonClient() {
+    void returnsSafeFallbackWhenResilientClientRejectsCall() {
         AssistantChatRequest request = new AssistantChatRequest(
                 "th_existing",
                 "recommend a jacket",
@@ -342,21 +343,15 @@ class AssistantServiceTests {
                 List.of(),
                 List.of()
         );
-        AssistantFallbackService fallbackService = new AssistantFallbackService(2);
-
         when(assistantContextService.buildContext(10L, "th_existing", request)).thenReturn(context);
         when(pythonAssistantClient.chat(any(PythonChatRequest.class)))
-                .thenThrow(new ExternalServiceException("python unavailable"));
+                .thenThrow(new ExternalServiceException("python circuit is open"));
 
-        AssistantService service = newAssistantService(fallbackService);
-        service.chat(10L, request);
-        service.chat(10L, request);
-        AssistantChatResponse guardedResponse = service.chat(10L, request);
+        AssistantChatResponse response = newAssistantService().chat(10L, request);
 
-        assertThat(guardedResponse.answer()).contains("AI 导购暂时不可用");
-        assertThat(guardedResponse.recommendedItems()).isEmpty();
-        verify(pythonAssistantClient, times(2)).chat(any(PythonChatRequest.class));
-        verify(conversationService, times(3)).appendMessage(eq(10L), eq("th_existing"), eq("assistant"), any(), any());
+        assertThat(response.answer()).contains("AI 导购暂时不可用");
+        assertThat(response.recommendedItems()).isEmpty();
+        verify(pythonAssistantClient).chat(any(PythonChatRequest.class));
     }
 
     @Test
@@ -475,7 +470,7 @@ class AssistantServiceTests {
     }
 
     @Test
-    void streamSkipsPythonWhenFallbackGuardIsOpen() {
+    void streamReturnsSafeFallbackWhenResilientClientRejectsCall() {
         AssistantChatRequest request = new AssistantChatRequest(
                 "th_stream_guard",
                 "推荐一件通勤外套",
@@ -494,16 +489,22 @@ class AssistantServiceTests {
                 List.of(),
                 List.of()
         );
-        AssistantFallbackService fallbackService = new AssistantFallbackService(1);
-        fallbackService.recordPythonFailure(new ExternalServiceException("first failure opens guard"));
         MDC.put("requestId", "req-stream-guard-test");
 
         when(assistantContextService.buildContext(10L, "th_stream_guard", request)).thenReturn(context);
+        doAnswer(invocation -> {
+            invocation.<PythonAssistantStreamHandler>getArgument(1)
+                    .onError("python_circuit_open", "python assistant circuit is open");
+            return null;
+        }).when(pythonAssistantStreamClient).streamChat(any(), any());
 
-        SseEmitter emitter = newAssistantService(fallbackService).streamChat(10L, request);
+        SseEmitter emitter = newAssistantService().streamChat(10L, request);
 
         assertThat(emitter).isNotNull();
-        verify(pythonAssistantStreamClient, never()).streamChat(any(PythonChatRequest.class), any(PythonAssistantStreamHandler.class));
+        verify(pythonAssistantStreamClient).streamChat(
+                any(PythonChatRequest.class),
+                any(PythonAssistantStreamHandler.class)
+        );
         verify(conversationService).appendMessage(
                 10L,
                 "th_stream_guard",
@@ -521,17 +522,13 @@ class AssistantServiceTests {
     }
 
     private AssistantService newAssistantService() {
-        return newAssistantService(new AssistantFallbackService(3));
-    }
-
-    private AssistantService newAssistantService(AssistantFallbackService fallbackService) {
         return new AssistantService(
                 conversationService,
                 assistantContextService,
                 assistantRateLimitService,
                 pythonAssistantClient,
                 pythonAssistantStreamClient,
-                fallbackService,
+                new AssistantFallbackService(),
                 directExecutor,
                 120_000L
         );

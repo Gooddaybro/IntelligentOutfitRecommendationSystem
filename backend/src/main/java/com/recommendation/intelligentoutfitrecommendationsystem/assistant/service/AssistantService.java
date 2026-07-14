@@ -90,7 +90,7 @@ public class AssistantService {
         conversationService.appendMessage(userId, threadId, "user", request.message(), requestId);
         AssistantContext context = assistantContextService.buildContext(userId, threadId, request);
         PythonChatRequest pythonRequest = toPythonRequest(userId, threadId, request, context);
-        PythonChatResponse pythonResponse = callPythonOrFallback(pythonRequest, request, context);
+        PythonChatResponse pythonResponse = callPythonOrFallback(pythonRequest);
 
         String answer = requireAnswer(pythonResponse);
         conversationService.appendMessage(userId, threadId, "assistant", answer, requestId);
@@ -130,13 +130,6 @@ public class AssistantService {
             return emitter;
         }
 
-        if (assistantFallbackService.shouldBypassPython()) {
-            AssistantStreamErrorEvent error = assistantFallbackService.streamFallbackError();
-            sendEvent(emitter, active, "error", error);
-            emitter.complete();
-            return emitter;
-        }
-
         try {
             assistantStreamingExecutor.execute(() -> streamToPython(
                     pythonRequest,
@@ -154,22 +147,13 @@ public class AssistantService {
         return emitter;
     }
 
-    private PythonChatResponse callPythonOrFallback(
-            PythonChatRequest pythonRequest,
-            AssistantChatRequest request,
-            AssistantContext context
-    ) {
-        if (assistantFallbackService.shouldBypassPython()) {
-            return assistantFallbackService.chatFallbackResponse(pythonRequest, request, context);
-        }
+    private PythonChatResponse callPythonOrFallback(PythonChatRequest pythonRequest) {
         try {
             PythonChatResponse pythonResponse = pythonAssistantClient.chat(pythonRequest);
             requireAnswer(pythonResponse);
-            assistantFallbackService.recordPythonSuccess();
             return pythonResponse;
         } catch (RuntimeException exception) {
-            assistantFallbackService.recordPythonFailure(exception);
-            return assistantFallbackService.chatFallbackResponse(pythonRequest, request, context);
+            return assistantFallbackService.chatFallbackResponse(pythonRequest);
         }
     }
 
@@ -423,13 +407,11 @@ public class AssistantService {
             try {
                 answer = requireAnswer(response);
             } catch (RuntimeException exception) {
-                assistantFallbackService.recordPythonFailure(exception);
                 AssistantStreamErrorEvent error = assistantFallbackService.streamFallbackError();
                 sendEvent(emitter, active, "error", error);
                 emitter.complete();
                 return;
             }
-            assistantFallbackService.recordPythonSuccess();
             conversationService.appendMessage(userId, threadId, "assistant", answer, requestId);
             List<AssistantRecommendationItem> recommendedItems = toRecommendedItems(response.productRefs(), context.candidates());
             AssistantStreamDoneEvent done = new AssistantStreamDoneEvent(
@@ -451,7 +433,6 @@ public class AssistantService {
             if (!active.get()) {
                 return;
             }
-            assistantFallbackService.recordPythonFailure(null);
             AssistantStreamErrorEvent error = assistantFallbackService.streamFallbackError();
             sendEvent(emitter, active, "error", error);
             emitter.complete();

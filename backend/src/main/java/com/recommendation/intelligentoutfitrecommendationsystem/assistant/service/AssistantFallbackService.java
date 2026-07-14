@@ -1,15 +1,11 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.assistant.service;
 
-import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantChatRequest;
-import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantContext;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantStreamErrorEvent;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatResponse;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * AI 服务降级策略。
@@ -25,32 +21,7 @@ public class AssistantFallbackService {
     private static final String SAFE_STREAM_FALLBACK = "AI 导购暂时不可用，请稍后再试。";
     private static final String FALLBACK_INTENT = "assistant_fallback";
 
-    private final AtomicInteger consecutiveFailures = new AtomicInteger();
-    private final int failureThreshold;
-
-    public AssistantFallbackService(
-            @Value("${app.ai.fallback.failure-threshold:3}") int failureThreshold
-    ) {
-        this.failureThreshold = Math.max(1, failureThreshold);
-    }
-
-    public boolean shouldBypassPython() {
-        return consecutiveFailures.get() >= failureThreshold;
-    }
-
-    public void recordPythonSuccess() {
-        consecutiveFailures.set(0);
-    }
-
-    public void recordPythonFailure(Throwable ignoredFailure) {
-        consecutiveFailures.incrementAndGet();
-    }
-
-    public PythonChatResponse chatFallbackResponse(
-            PythonChatRequest pythonRequest,
-            AssistantChatRequest request,
-            AssistantContext context
-    ) {
+    public PythonChatResponse chatFallbackResponse(PythonChatRequest pythonRequest) {
         return new PythonChatResponse(
                 pythonRequest.requestId(),
                 SAFE_CHAT_FALLBACK,
