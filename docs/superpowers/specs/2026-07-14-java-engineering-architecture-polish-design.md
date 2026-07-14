@@ -1,9 +1,8 @@
 # Java 成熟工程架构润色设计
 
-> **状态：** 设计方向已确认，书面方案待用户审阅  
-> **日期：** 2026-07-14  
+> **状态：** 设计方向已确认；Java AI 调用治理、Python 内部鉴权与 Redis 方案 A 已实现，后续阶段待推进`r`n> **日期：** 2026-07-14  
 > **目标：** 在不盲目拆微服务的前提下，用四周左右的有效开发时间，把当前 Java 后端提升为边界清晰、正确性可证明、故障可恢复、运行可观察、异步任务可靠的模块化单体。  
-> **协作约束：** LangGraph 运行时代码由另一台电脑并行推进；本方案以 Java 后端为主，只定义 Java 必须遵守的跨服务接口和验收条件，不重复修改 Python 内部实现。
+> **协作约束：** LangGraph 主体仍由另一台电脑并行推进；本机只补齐了 Python HTTP 边界的内部鉴权，并继续以 Java 后端工程化为主。
 
 ## 1. 为什么现在做 Java 工程架构润色
 
@@ -928,6 +927,91 @@ flowchart LR
 - Assistant 生产代码 Checkstyle：0 违规；
 - 依赖树仅新增 `resilience4j-circuitbreaker` 与其 `resilience4j-core`；
 - 全量 `mvnw.cmd verify` 尚未全绿：测试和打包通过，但被既有学习 Demo 的 18 个 Checkstyle 违规阻断；涉及 `CacheBreakdownDemo.java`、`CachePenetrationDemo.java`、`MQOutfitDemo.java`、`MQProductionDemo.java`。本轮未擅自修改学习代码；
-- Python 端强制校验 `X-Internal-Token` 以及 Java-Python 跨服务 Smoke Test 尚未在本 Java 分支验收，因此不能宣称服务间认证已经端到端完成；
-- Redis、订单幂等、ArchUnit、Actuator、RabbitMQ/Outbox 不属于本轮提交，仍按前文章节继续推进。
+- Python 端现已强制校验 `X-Internal-Token`，Java 发送与 Python 拒绝/接受两侧均有自动测试；尚未启动两个真实进程执行跨服务 Smoke Test，因此不把“双方单测通过”等同于完整端到端验收；
+- Redis 方案 A 已在下一阶段落地；订单幂等、ArchUnit、Actuator、RabbitMQ/Outbox 仍按前文章节继续推进。
+
+## 14. Python 内部鉴权与 Redis 方案 A 实施状态（2026-07-14）
+
+### 14.1 Python 服务边界鉴权
+
+- `/chat`、`/chat/stream`、`/chat/pipeline`、`/chat/langgraph`、`/chat/feedback` 统一校验 `X-Internal-Token`；
+- Secret 优先读取 `APP_AI_PYTHON_INTERNAL_TOKEN`，兼容 `APP_INTERNAL_API_TOKEN`，不写死在代码和配置样例中；
+- 使用常量时间比较，避免普通字符串比较带来的时序侧信道；
+- Token 未配置时 fail-closed 返回 503，缺失或错误时返回 401；
+- 健康检查保持公开，便于容器编排探活；
+- 日志与错误响应不回显 Secret。
+
+### 14.2 Redis 方案 A：静态快照缓存，动态事实回源
+
+推荐候选不再把价格和库存作为 Redis 中可长期复用的事实。新的读路径为：
+
+```text
+规范化推荐条件
+-> Redis 获取静态 RecommendationCandidateSnapshot
+-> miss 时从 MySQL 查询并写入静态快照
+-> 按 skuId 一次批量查询 MySQL 实时价格/库存/在售状态
+-> 过滤下架、无库存、价格缺失、超预算 SKU
+-> 组装完整 RecommendationCandidate
+-> 交给 Python 排序和解释
+```
+
+实现要点：
+
+- 静态快照只包含商品、类目、图片、颜色、尺码、材质、季节、风格和属性标签；
+- 实时事实模型只包含当前售价、SPU 价格区间、SKU 库存和 SPU 总库存；
+- 相同静态筛选条件的不同预算共用一个缓存键，预算在实时组装阶段过滤，避免缓存碎片；
+- Redis miss 或 Redis 故障仍可查询 MySQL，Redis 不成为交易事实源；
+- 缓存命中也必须查询实时事实，避免把过期库存或价格暴露给 AI。
+
+### 14.3 Redis Lua 原子限流
+
+原来的 `INCR` 与 `EXPIRE` 两条命令存在进程在两步之间退出时留下永久 key 的窗口。现在通过单段 Lua 脚本完成：
+
+```lua
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then
+    redis.call('PEXPIRE', KEYS[1], ARGV[1])
+end
+return count
+```
+
+该语义保证首次计数和 TTL 设置在 Redis 内原子完成；Java 侧继续保留 Redis 异常时的既有 fail-open 行为，防止缓存故障直接中断 AI 导购主链路。真实 Redis Testcontainers 测试已覆盖顺序计数、并发唯一计数和 TTL，但本机 Docker 未启动时会按测试配置跳过，不能把“测试代码存在”表述为“容器集成测试已实际执行”。
+
+### 14.4 当前已完成框架图
+
+```mermaid
+flowchart LR
+    FE["前端"] -->|"JWT + HTTP/SSE"| JAVA["Java AssistantService<br/>授权、会话、候选可信化"]
+
+    subgraph Candidate["Java 推荐候选方案 A"]
+        KEY["规范化静态筛选条件<br/>预算不进入快照缓存键"]
+        CACHE["Redis 静态快照<br/>不含价格与库存"]
+        LIVE["MySQL 批量实时事实<br/>价格、库存、在售状态"]
+        HYDRATE["过滤 + 组装可信 Candidate"]
+        KEY --> CACHE
+        CACHE --> HYDRATE
+        LIVE --> HYDRATE
+    end
+
+    JAVA --> KEY
+    HYDRATE --> CLIENT["Resilience4j + 独立超时<br/>requestId / MDC"]
+    CLIENT -->|"X-Internal-Token"| AUTH["Python FastAPI 鉴权依赖<br/>401 / 503 fail-closed"]
+    AUTH --> GRAPH["LangGraph / RAG / 排序解释"]
+    GRAPH -->|"JSON 或 SSE token/done/error"| JAVA
+
+    JAVA --> LIMIT["Redis Lua 原子限流<br/>INCR + PEXPIRE"]
+    LIMIT -. "Redis 故障按既有策略 fail-open" .-> JAVA
+```
+
+### 14.5 本阶段对应知识点
+
+| 已完成能力 | 工程知识 | 面试表达 |
+| --- | --- | --- |
+| Python 统一鉴权依赖 | 服务间身份认证、Secret 外置、fail-closed | Python 不是可由浏览器直接调用的公开后端 |
+| 常量时间 Token 比较 | 安全编码、时序攻击基础防护 | 不用普通字符串比较认证 Secret |
+| 静态/动态候选拆分 | Cache-Aside、事实源、缓存一致性 | Redis 提速但不决定库存和价格真相 |
+| 批量实时补齐 | 避免 N+1、读模型组装 | 一次 SQL 补齐所有 SKU 交易事实 |
+| 预算不进入快照键 | 缓存键设计、低基数复用 | 动态条件后过滤，减少无意义缓存分片 |
+| Lua 限流 | Redis 原子性、固定窗口限流 | 消除 INCR 成功但 EXPIRE 丢失的永久 key 窗口 |
+| Testcontainers 测试 | 基础设施语义验证 | Mock 验证调用形状，真实 Redis 验证 TTL/并发语义 |
 
