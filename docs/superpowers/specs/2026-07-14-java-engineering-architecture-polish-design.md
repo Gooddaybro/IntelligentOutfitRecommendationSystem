@@ -873,3 +873,61 @@ backend/src/test/java/.../messaging/
 
 > Java 后端采用模块化单体而不是过早拆微服务。通过 ArchUnit 固化模块依赖，跨模块只能经过公开的 Application Service 或 Facade；订单、库存和支付继续使用本地事务保证交易正确性。Redis 只缓存静态商品和画像，并通过 Lua 实现原子限流，实时库存仍由 MySQL 校验。Java 调 Python 时使用内部服务身份、独立超时、Resilience4j 熔断和 Trace 传播。对于真正可异步的 RAG 重建任务，系统使用 RabbitMQ、Transactional Outbox、Publisher Confirm、手动 ACK、数据库幂等、有限重试和 DLQ，保证 at-least-once 下的业务幂等。只有出现独立团队、扩容、发布或数据所有权需求后，才会从现有稳定模块 Interface 拆出微服务。
 
+## 13. Java AI Client Reliability 实施状态（2026-07-14）
+
+### 13.1 本轮已经完成
+
+- Java 同步 `/chat` 和 SSE `/chat/stream` 请求均发送 `X-Internal-Token`；
+- 内部 Token 支持独立环境变量 `APP_AI_PYTHON_INTERNAL_TOKEN`，并兼容复用 `APP_INTERNAL_API_TOKEN`；
+- 同步请求和 SSE 请求使用独立读取超时，避免长连接被同步接口的短超时误杀；
+- 使用 Resilience4j Core 2.4.0 装饰原始 HTTP Adapter，同步与 SSE 共用一个 Python 依赖熔断器；
+- CircuitBreaker 已覆盖 `CLOSED → OPEN → HALF_OPEN → CLOSED` 自动恢复测试；
+- SSE 的 done、error、异常结束都会向 CircuitBreaker 记录唯一终态；
+- `AssistantFallbackService` 已改为无状态安全响应构造器，不再自己维护失败次数；
+- CircuitBreaker OPEN 时，同步请求和 SSE 请求都会快速进入已有的安全降级路径；
+- SSE 有界线程池通过 TaskDecorator 传播并清理 MDC，避免 requestId 丢失或串线；
+- 熔断功能支持 `app.ai.circuit-breaker.enabled` 开关，便于测试替身和紧急配置回滚。
+
+### 13.2 当前框架图
+
+```mermaid
+flowchart LR
+    FE["前端 / 面试演示"] -->|"JWT + HTTP/SSE"| CTRL["AssistantController"]
+    CTRL --> SVC["AssistantService<br/>会话、上下文、候选商品、消息落库"]
+    SVC --> IFACE["PythonAssistantClient / StreamClient"]
+    IFACE --> CB["ResilientPythonAssistantClient<br/>Resilience4j CircuitBreaker"]
+    CB -->|"允许调用"| HTTP["RestPythonAssistantClient<br/>JDK HttpClient"]
+    CB -->|"OPEN / 调用失败"| FB["AssistantFallbackService<br/>无状态安全降级"]
+    HTTP -->|"X-Internal-Token<br/>同步 30s / SSE 120s"| PY["Python LangGraph 服务"]
+    PY -->|"JSON 或 token/done/error"| HTTP
+    SVC --> EXEC["assistantStreamingExecutor<br/>有界线程池 + MDC TaskDecorator"]
+    SVC --> DB["MySQL<br/>会话与事实数据"]
+
+    CBSTATE["CLOSED → OPEN → HALF_OPEN → CLOSED"] -. "失败率与等待窗口" .-> CB
+    MDCCTX["requestId / MDC"] -. "复制、执行后清理" .-> EXEC
+```
+
+### 13.3 本轮对应的工程知识
+
+| 改进 | 对应知识点 | 面试可说明的价值 |
+| --- | --- | --- |
+| HTTP Adapter 与熔断 Decorator 分离 | 端口适配器、装饰器模式、依赖倒置 | 业务层不感知 HTTP 和熔断库，策略可替换、可单测 |
+| 同步/SSE 独立超时 | 超时预算、长短请求隔离 | 避免一个全局 timeout 同时伤害普通请求和长连接 |
+| `X-Internal-Token` | 服务间认证、Secret 外置 | 防止前端绕过 Java 直接伪造 Python 内部调用 |
+| Resilience4j 状态机 | 熔断、快速失败、半开探测、自愈 | Python 故障不会持续拖垮 Java，也不会永久旁路 Python |
+| 无状态 Fallback | 单一职责、线程安全 | 降级文案与故障状态解耦，不再存在 JVM 全局计数竞态 |
+| SSE 终态记录 | 流式协议生命周期、exactly-once terminal bookkeeping | done/error/异常结束只记录一次，熔断统计不会重复 |
+| MDC TaskDecorator | ThreadLocal、线程池上下文传播与清理 | 异步日志仍能关联 requestId，同时防止线程复用造成串线 |
+| 核心依赖而非 Boot Starter | 兼容性控制、最小依赖原则 | Spring Boot 4 基线下只引入已验证能力，避免 Starter 自动配置风险 |
+| 测试先行 | RED-GREEN-REFACTOR、故障路径测试 | 不只测试成功路径，还证明 OPEN、HALF_OPEN、超时与安全降级行为 |
+
+### 13.4 验证结果与剩余门禁
+
+- AI 聚焦测试：15 个测试全部通过；
+- Java 全量测试：198 个测试通过，0 失败，0 错误，2 个跳过；
+- Assistant 生产代码 Checkstyle：0 违规；
+- 依赖树仅新增 `resilience4j-circuitbreaker` 与其 `resilience4j-core`；
+- 全量 `mvnw.cmd verify` 尚未全绿：测试和打包通过，但被既有学习 Demo 的 18 个 Checkstyle 违规阻断；涉及 `CacheBreakdownDemo.java`、`CachePenetrationDemo.java`、`MQOutfitDemo.java`、`MQProductionDemo.java`。本轮未擅自修改学习代码；
+- Python 端强制校验 `X-Internal-Token` 以及 Java-Python 跨服务 Smoke Test 尚未在本 Java 分支验收，因此不能宣称服务间认证已经端到端完成；
+- Redis、订单幂等、ArchUnit、Actuator、RabbitMQ/Outbox 不属于本轮提交，仍按前文章节继续推进。
+
