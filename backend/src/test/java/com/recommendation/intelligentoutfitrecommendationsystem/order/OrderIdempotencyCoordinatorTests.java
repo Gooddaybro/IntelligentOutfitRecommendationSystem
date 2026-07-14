@@ -29,6 +29,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -102,6 +103,7 @@ class OrderIdempotencyCoordinatorTests {
         assertThat(result.order().orderNo()).isEqualTo("ORD-1");
         assertThat(executions).hasValue(1);
         verify(mapper).linkOrder(41L, 91L);
+        verify(mapper, never()).deleteExpiredKey(any(), any(), any(), any());
         verify(mapper, never()).findByKey(any(), any(), any());
     }
 
@@ -176,6 +178,42 @@ class OrderIdempotencyCoordinatorTests {
                 .hasMessage("duplicate order number");
 
         verify(mapper, never()).findByKey(any(), any(), any());
+    }
+
+    @Test
+    void expiredClaimIsDeletedAfterConflictAndKeyIsClaimedOnceMore() {
+        when(transactionManager.getTransaction(any())).thenReturn(transactionStatus);
+        String key = UUID.randomUUID().toString();
+        OrderIdempotencyRecord expired = existingRecord(key, "a".repeat(64), 91L);
+        expired.setExpiresAt(LocalDateTime.now().minusMinutes(1));
+        doThrow(new DuplicateKeyException("expired claim"))
+                .doAnswer(invocation -> {
+                    OrderIdempotencyRecord record = invocation.getArgument(0);
+                    record.setId(42L);
+                    return null;
+                })
+                .when(mapper).insert(any(OrderIdempotencyRecord.class));
+        when(mapper.findByKey(10L, "BUY_NOW", key)).thenReturn(expired);
+        when(mapper.deleteExpiredKey(any(), any(), any(), any())).thenReturn(1);
+        when(mapper.linkOrder(42L, 92L)).thenReturn(1);
+        AtomicInteger executions = new AtomicInteger();
+
+        IdempotentOrderResult result = coordinator.execute(
+                10L,
+                OrderOperation.BUY_NOW,
+                key,
+                "a".repeat(64),
+                () -> {
+                    executions.incrementAndGet();
+                    return new OrderCreationResult(92L, order("ORD-NEW"));
+                },
+                orderId -> order("ORD-OLD")
+        );
+
+        assertThat(result.replayed()).isFalse();
+        assertThat(result.order().orderNo()).isEqualTo("ORD-NEW");
+        assertThat(executions).hasValue(1);
+        verify(mapper).deleteExpiredKey(eq(10L), eq("BUY_NOW"), eq(key), any());
     }
 
     private OrderIdempotencyRecord existingRecord(

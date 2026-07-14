@@ -135,7 +135,6 @@ public class OrderIdempotencyCoordinator {
             Supplier<OrderCreationResult> createAction
     ) {
         LocalDateTime now = LocalDateTime.now();
-        mapper.deleteExpiredKey(userId, operation.name(), key, now);
         OrderIdempotencyRecord record = new OrderIdempotencyRecord();
         record.setUserId(userId);
         record.setOperation(operation.name());
@@ -173,6 +172,12 @@ public class OrderIdempotencyCoordinator {
         }
         if (!existing.getExpiresAt().isAfter(LocalDateTime.now())) {
             if (allowExpiredRetry) {
+                transactionTemplate.executeWithoutResult(status -> mapper.deleteExpiredKey(
+                        userId,
+                        operation.name(),
+                        key,
+                        LocalDateTime.now()
+                ));
                 return executeAttempt(
                         userId,
                         operation,
