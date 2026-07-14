@@ -261,6 +261,7 @@ class PaymentControllerTests {
     private String createOrder(String accessToken, long skuId) throws Exception {
         String body = mockMvc.perform(post("/api/orders")
                         .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", java.util.UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
