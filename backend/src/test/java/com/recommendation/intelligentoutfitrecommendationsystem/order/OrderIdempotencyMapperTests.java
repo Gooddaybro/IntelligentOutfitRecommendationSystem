@@ -49,6 +49,27 @@ class OrderIdempotencyMapperTests {
                 .isInstanceOf(DuplicateKeyException.class);
     }
 
+    @Test
+    void selectsAndDeletesExpiredRecordsInBoundedBatches() {
+        LocalDateTime now = LocalDateTime.now();
+        OrderIdempotencyRecord firstExpired = record("BUY_NOW", UUID.randomUUID().toString());
+        firstExpired.setExpiresAt(now.minusHours(2));
+        OrderIdempotencyRecord secondExpired = record("BUY_NOW", UUID.randomUUID().toString());
+        secondExpired.setExpiresAt(now.minusHours(1));
+        OrderIdempotencyRecord active = record("BUY_NOW", UUID.randomUUID().toString());
+        active.setExpiresAt(now.plusHours(1));
+        mapper.insert(firstExpired);
+        mapper.insert(secondExpired);
+        mapper.insert(active);
+
+        var expiredIds = mapper.findExpiredIds(now, 1);
+
+        assertThat(expiredIds).containsExactly(firstExpired.getId());
+        assertThat(mapper.deleteByIds(expiredIds)).isOne();
+        assertThat(mapper.findByKey(9001L, "BUY_NOW", active.getIdempotencyKey())).isNotNull();
+        assertThat(mapper.findExpiredIds(now, 10)).containsExactly(secondExpired.getId());
+    }
+
     private OrderIdempotencyRecord record(String operation, String key) {
         OrderIdempotencyRecord record = new OrderIdempotencyRecord();
         record.setUserId(9001L);

@@ -13,6 +13,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import java.util.Objects;
+import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -73,6 +74,27 @@ public class OrderIdempotencyCoordinator {
                 replayLoader,
                 true
         );
+    }
+
+    /**
+     * 在一个短事务中删除一批已过期幂等记录。
+     *
+     * @return 本次实际删除的记录数；没有过期记录时返回零
+     */
+    public int cleanupExpired() {
+        if (properties.getCleanupBatchSize() <= 0) {
+            throw new IllegalStateException("order idempotency cleanup batch size must be positive");
+        }
+        return Objects.requireNonNull(transactionTemplate.execute(status -> {
+            List<Long> ids = mapper.findExpiredIds(
+                    LocalDateTime.now(),
+                    properties.getCleanupBatchSize()
+            );
+            if (ids.isEmpty()) {
+                return 0;
+            }
+            return mapper.deleteByIds(ids);
+        }));
     }
 
     private IdempotentOrderResult executeAttempt(
