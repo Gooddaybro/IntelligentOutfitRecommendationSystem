@@ -1015,3 +1015,12 @@ flowchart LR
 | Lua 限流 | Redis 原子性、固定窗口限流 | 消除 INCR 成功但 EXPIRE 丢失的永久 key 窗口 |
 | Testcontainers 测试 | 基础设施语义验证 | Mock 验证调用形状，真实 Redis 验证 TTL/并发语义 |
 
+## 15. 下一阶段：订单创建幂等
+
+订单幂等方案已经确认，详细设计见：
+
+```text
+docs/superpowers/specs/2026-07-14-order-idempotency-design.md
+```
+
+本阶段采用 MySQL 独立 `order_idempotency` 表，通过 `(user_id, operation, idempotency_key)` 唯一约束保护购物车结算和立即购买。幂等占位、库存锁定、订单创建、购物车清理、行为事件和 `order_id` 关联处于同一个本地事务；相同 Key 的重复请求返回同一订单，相同 Key 换参数返回 HTTP 409。该能力为后续 MQ `eventId + Inbox` 消费幂等建立模型，但不提前引入 RabbitMQ。
