@@ -10,6 +10,8 @@ import com.recommendation.intelligentoutfitrecommendationsystem.product.model.Pr
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.ProductDetail;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.ProductSearchItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidateLiveFact;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidateSnapshot;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.SkuSearchItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.service.ProductCatalogService;
 import org.junit.jupiter.api.BeforeEach;
@@ -119,68 +121,123 @@ class ProductCatalogServiceTests {
     @Test
     void findRecommendationCandidatesUsesQueryDto() {
         var query = new RecommendationCandidateQuery("外套", "commute", "autumn", null, null, 400);
-        when(redisCacheService.getList(anyString(), eq(RecommendationCandidate.class)))
+        List<RecommendationCandidateSnapshot> snapshots = List.of(recommendationSnapshot(2101L));
+        when(redisCacheService.getList(anyString(), eq(RecommendationCandidateSnapshot.class)))
                 .thenReturn(Optional.empty());
-        when(productMapper.findRecommendationCandidates(query))
-                .thenReturn(List.of(recommendationCandidate()));
+        when(productMapper.findRecommendationCandidateSnapshots(query)).thenReturn(snapshots);
+        when(productMapper.findRecommendationCandidateLiveFacts(List.of(2101L)))
+                .thenReturn(List.of(recommendationLiveFact(2101L, 299, 11)));
 
         var candidates = service.findRecommendationCandidates(query);
 
         assertThat(candidates).extracting(RecommendationCandidate::getSpuCode)
                 .containsExactly("JACKET_COMMUTE_001");
-        verify(productMapper).findRecommendationCandidates(query);
-        verify(redisCacheService).setValue(anyString(), eq(candidates), any(Duration.class));
+        verify(productMapper).findRecommendationCandidateSnapshots(query);
+        verify(redisCacheService).setValue(anyString(), eq(snapshots), any(Duration.class));
     }
 
     @Test
     void findRecommendationCandidatesNormalizesSkirtCategoryAlias() {
         var query = new RecommendationCandidateQuery("裙子", null, null, null, null, 400);
-        when(redisCacheService.getList(anyString(), eq(RecommendationCandidate.class)))
+        when(redisCacheService.getList(anyString(), eq(RecommendationCandidateSnapshot.class)))
                 .thenReturn(Optional.empty());
-        when(productMapper.findRecommendationCandidates(any()))
-                .thenReturn(List.of(recommendationCandidate()));
+        when(productMapper.findRecommendationCandidateSnapshots(any()))
+                .thenReturn(List.of(recommendationSnapshot(2101L)));
+        when(productMapper.findRecommendationCandidateLiveFacts(List.of(2101L)))
+                .thenReturn(List.of(recommendationLiveFact(2101L, 299, 11)));
 
         service.findRecommendationCandidates(query);
 
         ArgumentCaptor<RecommendationCandidateQuery> queryCaptor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
-        verify(productMapper).findRecommendationCandidates(queryCaptor.capture());
+        verify(productMapper).findRecommendationCandidateSnapshots(queryCaptor.capture());
         assertThat(queryCaptor.getValue().getCategory()).isEqualTo("半裙");
     }
 
     @Test
-    void findRecommendationCandidatesReturnsCachedListWithoutQueryingMapper() {
+    void findRecommendationCandidatesHydratesCachedSnapshotsWithLiveFacts() {
         var query = new RecommendationCandidateQuery("外套", "commute", "autumn", null, null, 400);
-        List<RecommendationCandidate> cachedCandidates = List.of(recommendationCandidate());
-        when(redisCacheService.getList(anyString(), eq(RecommendationCandidate.class)))
-                .thenReturn(Optional.of(cachedCandidates));
+        when(redisCacheService.getList(anyString(), eq(RecommendationCandidateSnapshot.class)))
+                .thenReturn(Optional.of(List.of(recommendationSnapshot(2101L))));
+        when(productMapper.findRecommendationCandidateLiveFacts(List.of(2101L)))
+                .thenReturn(List.of(recommendationLiveFact(2101L, 259, 7)));
 
         var candidates = service.findRecommendationCandidates(query);
 
         assertThat(candidates).extracting(RecommendationCandidate::getSpuCode)
                 .containsExactly("JACKET_COMMUTE_001");
-        verify(productMapper, never()).findRecommendationCandidates(query);
+        assertThat(candidates.getFirst().getSalePrice()).isEqualByComparingTo("259");
+        assertThat(candidates.getFirst().getAvailableStock()).isEqualTo(7);
+        verify(productMapper, never()).findRecommendationCandidateSnapshots(query);
+        verify(productMapper).findRecommendationCandidateLiveFacts(List.of(2101L));
         verify(redisCacheService, never()).setValue(any(), any(), any());
+    }
+
+    @Test
+    void findRecommendationCandidatesFiltersUnavailableMissingAndOverBudgetLiveFacts() {
+        var query = new RecommendationCandidateQuery("外套", null, null, null, null, 400);
+        when(redisCacheService.getList(anyString(), eq(RecommendationCandidateSnapshot.class)))
+                .thenReturn(Optional.of(List.of(
+                        recommendationSnapshot(2101L),
+                        recommendationSnapshot(2102L),
+                        recommendationSnapshot(2103L),
+                        recommendationSnapshot(2104L)
+                )));
+        when(productMapper.findRecommendationCandidateLiveFacts(List.of(2101L, 2102L, 2103L, 2104L)))
+                .thenReturn(List.of(
+                        recommendationLiveFact(2101L, 299, 0),
+                        recommendationLiveFact(2102L, 500, 8),
+                        recommendationLiveFact(2103L, 250, 5)
+                ));
+
+        var candidates = service.findRecommendationCandidates(query);
+
+        assertThat(candidates).extracting(RecommendationCandidate::getSkuId)
+                .containsExactly(2103L);
+        assertThat(candidates.getFirst().getStockStatus()).isEqualTo("in_stock");
+        assertThat(candidates.getFirst().getSalePrice()).isEqualByComparingTo("250");
     }
 
     @Test
     void findRecommendationCandidatesUsesDifferentCacheKeysForDifferentGenderFilters() {
         var maleQuery = new RecommendationCandidateQuery(null, null, null, null, null, 400, "male");
         var femaleQuery = new RecommendationCandidateQuery(null, null, null, null, null, 400, "female");
-        when(redisCacheService.getList(anyString(), eq(RecommendationCandidate.class)))
+        when(redisCacheService.getList(anyString(), eq(RecommendationCandidateSnapshot.class)))
                 .thenReturn(Optional.empty());
-        when(productMapper.findRecommendationCandidates(maleQuery))
-                .thenReturn(List.of(recommendationCandidate()));
-        when(productMapper.findRecommendationCandidates(femaleQuery))
-                .thenReturn(List.of(recommendationCandidate()));
+        when(productMapper.findRecommendationCandidateSnapshots(maleQuery))
+                .thenReturn(List.of(recommendationSnapshot(2101L)));
+        when(productMapper.findRecommendationCandidateSnapshots(femaleQuery))
+                .thenReturn(List.of(recommendationSnapshot(2101L)));
+        when(productMapper.findRecommendationCandidateLiveFacts(List.of(2101L)))
+                .thenReturn(List.of(recommendationLiveFact(2101L, 299, 11)));
 
         service.findRecommendationCandidates(maleQuery);
         service.findRecommendationCandidates(femaleQuery);
 
         ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
         verify(redisCacheService, org.mockito.Mockito.times(2))
-                .getList(keyCaptor.capture(), eq(RecommendationCandidate.class));
+                .getList(keyCaptor.capture(), eq(RecommendationCandidateSnapshot.class));
         assertThat(keyCaptor.getAllValues()).hasSize(2);
         assertThat(keyCaptor.getAllValues().get(0)).isNotEqualTo(keyCaptor.getAllValues().get(1));
+    }
+
+    @Test
+    void findRecommendationCandidatesReusesStaticSnapshotCacheAcrossBudgets() {
+        var lowBudgetQuery = new RecommendationCandidateQuery("外套", "commute", null, null, null, 200);
+        var highBudgetQuery = new RecommendationCandidateQuery("外套", "commute", null, null, null, 500);
+        when(redisCacheService.getList(anyString(), eq(RecommendationCandidateSnapshot.class)))
+                .thenReturn(Optional.of(List.of(recommendationSnapshot(2101L))));
+        when(productMapper.findRecommendationCandidateLiveFacts(List.of(2101L)))
+                .thenReturn(List.of(recommendationLiveFact(2101L, 299, 11)));
+
+        service.findRecommendationCandidates(lowBudgetQuery);
+        service.findRecommendationCandidates(highBudgetQuery);
+
+        ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
+        verify(redisCacheService, org.mockito.Mockito.times(2))
+                .getList(keyCaptor.capture(), eq(RecommendationCandidateSnapshot.class));
+        assertThat(keyCaptor.getAllValues()).hasSize(2).allSatisfy(
+                key -> assertThat(key).isEqualTo(keyCaptor.getAllValues().getFirst())
+        );
     }
 
     @Test
@@ -275,6 +332,40 @@ class ProductCatalogServiceTests {
                 "JACKET_COMMUTE_001-BLK-M",
                 11,
                 "适用场景:通勤"
+        );
+    }
+
+    private RecommendationCandidateSnapshot recommendationSnapshot(Long skuId) {
+        return new RecommendationCandidateSnapshot(
+                1002L,
+                skuId,
+                "JACKET_COMMUTE_001",
+                "通勤夹克",
+                "外套",
+                "https://example.com/jacket.jpg",
+                "regular",
+                "黑色",
+                "M",
+                "聚酯纤维",
+                "autumn",
+                "commute",
+                "JACKET_COMMUTE_001-BLK-M",
+                "适用场景:通勤"
+        );
+    }
+
+    private RecommendationCandidateLiveFact recommendationLiveFact(
+            Long skuId,
+            int salePrice,
+            int availableStock
+    ) {
+        return new RecommendationCandidateLiveFact(
+                skuId,
+                BigDecimal.valueOf(salePrice),
+                BigDecimal.valueOf(salePrice),
+                BigDecimal.valueOf(salePrice + 100L),
+                availableStock,
+                availableStock
         );
     }
 }

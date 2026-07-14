@@ -5,6 +5,8 @@ import com.recommendation.intelligentoutfitrecommendationsystem.product.model.Pr
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.ProductDetail;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.ProductSearchItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidateLiveFact;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidateSnapshot;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.SkuSearchItem;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -32,6 +34,14 @@ public interface ProductMapper {
 
     List<RecommendationCandidate> findRecommendationCandidates(
             @Param("query") RecommendationCandidateQuery query
+    );
+
+    List<RecommendationCandidateSnapshot> findRecommendationCandidateSnapshots(
+            @Param("query") RecommendationCandidateQuery query
+    );
+
+    List<RecommendationCandidateLiveFact> findRecommendationCandidateLiveFacts(
+            @Param("skuIds") List<Long> skuIds
     );
 
     List<String> findMaterials(@Param("spuId") Long spuId);

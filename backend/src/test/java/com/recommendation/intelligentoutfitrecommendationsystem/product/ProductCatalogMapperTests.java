@@ -5,9 +5,12 @@ import com.recommendation.intelligentoutfitrecommendationsystem.product.mapper.P
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -17,6 +20,9 @@ class ProductCatalogMapperTests {
 
     @Autowired
     private ProductMapper mapper;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Test
     void searchProductsFindsBasicTshirtByKeyword() {
@@ -138,5 +144,43 @@ class ProductCatalogMapperTests {
 
         assertThat(candidates).anyMatch(candidate -> candidate.getSpuCode().contains("SKIRT"));
         assertThat(candidates).noneMatch(candidate -> candidate.getSpuCode().contains("OXFORD_SHIRT"));
+    }
+
+    @Test
+    @Transactional
+    void recommendationSnapshotsIgnoreDynamicBudgetAndStockWhileLiveFactsStayCurrent() {
+        jdbcTemplate.update("UPDATE inventory SET available_stock = 0 WHERE sku_id = ?", 2101L);
+        var query = new RecommendationCandidateQuery("外套", "commute", "autumn", null, null, 1);
+
+        var snapshots = mapper.findRecommendationCandidateSnapshots(query);
+        var facts = mapper.findRecommendationCandidateLiveFacts(List.of(2101L));
+
+        assertThat(snapshots).extracting("skuId").contains(2101L);
+        assertThat(snapshots)
+                .filteredOn(snapshot -> snapshot.getSkuId().equals(2101L))
+                .first()
+                .satisfies(snapshot -> {
+                    assertThat(snapshot.getSpuCode()).isEqualTo("JACKET_COMMUTE_001");
+                    assertThat(snapshot).hasAllNullFieldsOrPropertiesExcept(
+                            "spuId",
+                            "skuId",
+                            "spuCode",
+                            "name",
+                            "categoryName",
+                            "mainImageUrl",
+                            "fitType",
+                            "color",
+                            "size",
+                            "materials",
+                            "seasons",
+                            "styleTags",
+                            "skuCode",
+                            "attributeTags"
+                    );
+                });
+        assertThat(facts).singleElement().satisfies(fact -> {
+            assertThat(fact.getSalePrice()).isEqualByComparingTo("299.00");
+            assertThat(fact.getAvailableStock()).isZero();
+        });
     }
 }

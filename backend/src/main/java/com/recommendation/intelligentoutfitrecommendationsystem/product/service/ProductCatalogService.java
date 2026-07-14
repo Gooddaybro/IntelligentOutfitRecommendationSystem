@@ -11,17 +11,23 @@ import com.recommendation.intelligentoutfitrecommendationsystem.product.model.Pr
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.ProductDetail;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.ProductSearchItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidateLiveFact;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidateSnapshot;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.SkuSearchItem;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * 商品目录服务，负责商品搜索、详情装配、SKU 查询和推荐候选商品池筛选。
@@ -113,14 +119,91 @@ public class ProductCatalogService {
             throw new BadRequestException("budgetMax must not be negative");
         }
         String cacheKey = recommendationCandidatesCacheKey(normalizedQuery);
-        var cachedCandidates = redisCacheService.getList(cacheKey, RecommendationCandidate.class);
-        if (cachedCandidates.isPresent()) {
-            return cachedCandidates.get();
+        var cachedSnapshots = redisCacheService.getList(cacheKey, RecommendationCandidateSnapshot.class);
+        List<RecommendationCandidateSnapshot> snapshots;
+        if (cachedSnapshots.isPresent()) {
+            snapshots = cachedSnapshots.get();
+        } else {
+            snapshots = productMapper.findRecommendationCandidateSnapshots(normalizedQuery);
+            redisCacheService.setValue(
+                    cacheKey,
+                    snapshots,
+                    cacheTtlProperties.recommendationCandidatesTtl()
+            );
         }
-        // Java 只负责提供可靠候选商品池，最终自然语言解释和个性化排序交给 Python AI 服务。
-        List<RecommendationCandidate> candidates = productMapper.findRecommendationCandidates(normalizedQuery);
-        redisCacheService.setValue(cacheKey, candidates, cacheTtlProperties.recommendationCandidatesTtl());
-        return candidates;
+        return hydrateRecommendationCandidates(snapshots, normalizedQuery.getBudgetMax());
+    }
+
+    private List<RecommendationCandidate> hydrateRecommendationCandidates(
+            List<RecommendationCandidateSnapshot> snapshots,
+            Integer budgetMax
+    ) {
+        if (snapshots == null || snapshots.isEmpty()) {
+            return List.of();
+        }
+        List<Long> skuIds = snapshots.stream()
+                .map(RecommendationCandidateSnapshot::getSkuId)
+                .distinct()
+                .toList();
+        Map<Long, RecommendationCandidateLiveFact> factsBySkuId = productMapper
+                .findRecommendationCandidateLiveFacts(skuIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        RecommendationCandidateLiveFact::getSkuId,
+                        Function.identity()
+                ));
+        return snapshots.stream()
+                .filter(snapshot -> isPurchasable(factsBySkuId.get(snapshot.getSkuId()), budgetMax))
+                .map(snapshot -> toRecommendationCandidate(
+                        snapshot,
+                        factsBySkuId.get(snapshot.getSkuId())
+                ))
+                .sorted(Comparator
+                        .comparing(RecommendationCandidate::getAvailableStock, Comparator.reverseOrder())
+                        .thenComparing(RecommendationCandidate::getSalePrice)
+                        .thenComparing(RecommendationCandidate::getSpuId)
+                        .thenComparing(RecommendationCandidate::getSkuId))
+                .toList();
+    }
+
+    private boolean isPurchasable(
+            RecommendationCandidateLiveFact fact,
+            Integer budgetMax
+    ) {
+        return fact != null
+                && fact.getAvailableStock() != null
+                && fact.getAvailableStock() > 0
+                && fact.getSalePrice() != null
+                && (budgetMax == null
+                || fact.getSalePrice().compareTo(BigDecimal.valueOf(budgetMax.longValue())) <= 0);
+    }
+
+    private RecommendationCandidate toRecommendationCandidate(
+            RecommendationCandidateSnapshot snapshot,
+            RecommendationCandidateLiveFact fact
+    ) {
+        return new RecommendationCandidate(
+                snapshot.getSpuId(),
+                snapshot.getSkuId(),
+                snapshot.getSpuCode(),
+                snapshot.getName(),
+                snapshot.getCategoryName(),
+                snapshot.getMainImageUrl(),
+                snapshot.getFitType(),
+                snapshot.getColor(),
+                snapshot.getSize(),
+                snapshot.getMaterials(),
+                snapshot.getSeasons(),
+                snapshot.getStyleTags(),
+                fact.getSalePrice(),
+                "in_stock",
+                fact.getMinPrice(),
+                fact.getMaxPrice(),
+                fact.getTotalAvailableStock(),
+                snapshot.getSkuCode(),
+                fact.getAvailableStock(),
+                snapshot.getAttributeTags()
+        );
     }
 
     private Map<String, String> toAttributesMap(List<ProductAttributeItem> attributes) {
@@ -142,8 +225,7 @@ public class ProductCatalogService {
                 "season=" + normalizeQueryPart(query.getSeason()),
                 "material=" + normalizeQueryPart(query.getMaterial()),
                 "fit=" + normalizeQueryPart(query.getFit()),
-                "gender=" + normalizeQueryPart(query.getGender()),
-                "budgetMax=" + (query.getBudgetMax() == null ? "" : query.getBudgetMax().toString())
+                "gender=" + normalizeQueryPart(query.getGender())
         );
     }
 
