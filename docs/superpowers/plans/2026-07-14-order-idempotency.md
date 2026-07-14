@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Implementation status (2026-07-14):** Code and automated H2 verification complete. Real MySQL Testcontainers execution is blocked because this machine has no Docker daemon; full Checkstyle is blocked only by 18 pre-existing learning-demo violations.
+
 **Goal:** Make cart checkout and buy-now idempotent for 24 hours with a client UUID, a MySQL unique constraint, atomic order creation, safe replay, conflict detection, and bounded cleanup.
 
 **Architecture:** `OrderService` normalizes business input and delegates execution to an `OrderIdempotencyCoordinator`. The coordinator uses `TransactionTemplate` so the idempotency claim, inventory update, order rows, cart cleanup, behavior event, and `order_id` link commit or roll back together; duplicate-claim resolution happens outside the failed transaction. Redis remains outside the correctness path.
@@ -47,7 +49,7 @@
 
 **Files:** migration, model, enum, mapper, mapper XML, `OrderIdempotencyMapperTests`, `MySqlFlywayMigrationTests`.
 
-- [ ] **Step 1: Write a failing Mapper integration test**
+- [x] **Step 1: Write a failing Mapper integration test**
 
 Add tests that insert a claim, read it by `(userId, operation, key)`, link it to an existing seeded order, and assert a second identical claim violates the unique key:
 
@@ -74,7 +76,7 @@ void rejectsDuplicateUserOperationAndKey() {
 }
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```powershell
 .\mvnw.cmd "-Dtest=OrderIdempotencyMapperTests" test
@@ -82,11 +84,11 @@ void rejectsDuplicateUserOperationAndKey() {
 
 Expected: test compilation fails because the model and mapper do not exist.
 
-- [ ] **Step 3: Add `V16__order_idempotency_schema.sql`**
+- [x] **Step 3: Add `V16__order_idempotency_schema.sql`**
 
 Use the exact schema approved in the design: `CHAR(36)` Key, `CHAR(64)` fingerprint, nullable `order_id`, unique `(user_id, operation, idempotency_key)`, expiry index, and user/order foreign keys.
 
-- [ ] **Step 4: Add the model and stable operation enum**
+- [x] **Step 4: Add the model and stable operation enum**
 
 ```java
 public enum OrderOperation {
@@ -112,7 +114,7 @@ public class OrderIdempotencyRecord {
 
 Both top-level types require boundary-focused Javadoc.
 
-- [ ] **Step 5: Add mapper methods and SQL**
+- [x] **Step 5: Add mapper methods and SQL**
 
 ```java
 void insert(OrderIdempotencyRecord record);
@@ -130,11 +132,11 @@ int deleteByIds(List<Long> ids);
 
 `insert` must use generated keys. `linkOrder` must update only rows whose `order_id IS NULL`. Cleanup must first select ordered IDs with `LIMIT`, then delete those exact IDs.
 
-- [ ] **Step 6: Extend the real-MySQL migration assertion**
+- [x] **Step 6: Extend the real-MySQL migration assertion**
 
 Add `SELECT COUNT(*) FROM order_idempotency` and an `INFORMATION_SCHEMA.STATISTICS` assertion for `uk_order_idempotency` to `MySqlFlywayMigrationTests`.
 
-- [ ] **Step 7: Run GREEN and Checkstyle**
+- [x] **Step 7: Run GREEN and Checkstyle**
 
 ```powershell
 .\mvnw.cmd "-Dtest=OrderIdempotencyMapperTests" test
@@ -143,7 +145,7 @@ Add `SELECT COUNT(*) FROM order_idempotency` and an `INFORMATION_SCHEMA.STATISTI
 
 Expected: mapper tests pass and order production code has zero violations.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```powershell
 git add backend/src/main backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/order/OrderIdempotencyMapperTests.java backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/support/MySqlFlywayMigrationTests.java
@@ -154,7 +156,7 @@ git commit -m "feat: add order idempotency persistence"
 
 **Files:** `OrderRequestFingerprint.java`, `OrderRequestFingerprintTests.java`.
 
-- [ ] **Step 1: Write failing fingerprint tests**
+- [x] **Step 1: Write failing fingerprint tests**
 
 ```java
 @Test
@@ -177,7 +179,7 @@ void operationIsPartOfCanonicalInput() {
 }
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```powershell
 .\mvnw.cmd "-Dtest=OrderRequestFingerprintTests" test
@@ -185,7 +187,7 @@ void operationIsPartOfCanonicalInput() {
 
 Expected: compilation fails because `OrderRequestFingerprint` is missing.
 
-- [ ] **Step 3: Implement deterministic UTF-8 SHA-256 hashing**
+- [x] **Step 3: Implement deterministic UTF-8 SHA-256 hashing**
 
 Expose only the business APIs:
 
@@ -196,7 +198,7 @@ public String buyNow(Long skuId, Integer quantity)
 
 The cart method must `distinct().sorted()` before joining. Canonical inputs must begin with `CART_CHECKOUT|source=CART|` or `BUY_NOW|` respectively. Keep the raw `hash` helper package-private for focused testing, not public API.
 
-- [ ] **Step 4: Run GREEN and commit**
+- [x] **Step 4: Run GREEN and commit**
 
 ```powershell
 .\mvnw.cmd "-Dtest=OrderRequestFingerprintTests" test
@@ -208,7 +210,7 @@ git commit -m "feat: fingerprint order creation requests"
 
 **Files:** coordinator, properties, result records, conflict exception, coordinator tests.
 
-- [ ] **Step 1: Write failing tests for Key validation and first execution**
+- [x] **Step 1: Write failing tests for Key validation and first execution**
 
 Use a mocked mapper and a real `TransactionTemplate` backed by a mocked `PlatformTransactionManager`: return a mocked `TransactionStatus` from `getTransaction`, and leave `commit`/`rollback` as Mockito no-ops. Assert invalid UUIDs never call the mapper and a first claim calls the supplied action exactly once.
 
@@ -224,7 +226,7 @@ assertThat(result.order().orderNo()).isEqualTo("ORD-1");
 verify(mapper).linkOrder(41L, 91L);
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```powershell
 .\mvnw.cmd "-Dtest=OrderIdempotencyCoordinatorTests" test
@@ -232,7 +234,7 @@ verify(mapper).linkOrder(41L, 91L);
 
 Expected: compilation fails for the missing coordinator/result types.
 
-- [ ] **Step 3: Add configuration and result records**
+- [x] **Step 3: Add configuration and result records**
 
 ```java
 @ConfigurationProperties(prefix = "app.order.idempotency")
@@ -254,11 +256,11 @@ public record IdempotentOrderResult(OrderResponse order, boolean replayed) {
 
 Register the properties in `IntelligentOutfitRecommendationSystemApplication` and add production/test defaults.
 
-- [ ] **Step 4: Add conflict exception and HTTP mapping**
+- [x] **Step 4: Add conflict exception and HTTP mapping**
 
 `IdempotencyKeyConflictException` carries the approved message. `GlobalExceptionHandler` maps it to HTTP 409 and error code `idempotency_key_reused`.
 
-- [ ] **Step 5: Implement first execution in `TransactionTemplate`**
+- [x] **Step 5: Implement first execution in `TransactionTemplate`**
 
 The public coordinator API is:
 
@@ -275,17 +277,17 @@ public IdempotentOrderResult execute(
 
 Inside the transaction: delete an expired matching Key, insert the claim, execute `createAction`, require non-null `orderId`, link the row, and return `replayed=false`.
 
-- [ ] **Step 6: Write RED tests for duplicate replay, conflict, and action failure**
+- [x] **Step 6: Write RED tests for duplicate replay, conflict, and action failure**
 
 Simulate only the claim insert throwing `DuplicateKeyException`. Assert same fingerprint loads the existing `orderId`; a different fingerprint throws `IdempotencyKeyConflictException`; an exception from the action escapes and does not enter replay logic.
 
-- [ ] **Step 7: Implement duplicate resolution outside the failed transaction**
+- [x] **Step 7: Implement duplicate resolution outside the failed transaction**
 
 Wrap `DuplicateKeyException` thrown specifically by `mapper.insert` in a private `IdempotencyClaimConflictException`. Catch only that marker outside `TransactionTemplate`; do not reinterpret duplicate keys thrown by order insertion or event persistence.
 
 If an existing row has expired at the resolution boundary, allow exactly one new claim attempt. Missing, unlinked, or repeatedly expired records must fail closed with `IllegalStateException` rather than loop.
 
-- [ ] **Step 8: Run GREEN and commit**
+- [x] **Step 8: Run GREEN and commit**
 
 ```powershell
 .\mvnw.cmd "-Dtest=OrderIdempotencyCoordinatorTests" test
@@ -298,7 +300,7 @@ git commit -m "feat: coordinate idempotent order transactions"
 
 **Files:** `OrderService`, `OrderMapper`, `OrderMapper.xml`, `OrderServiceTests`.
 
-- [ ] **Step 1: Adapt service tests first**
+- [x] **Step 1: Adapt service tests first**
 
 Change calls to include a UUID and assert `response.order()` fields. Stub the coordinator with `thenAnswer` so business tests execute the supplied `createAction`; add explicit tests that cart and buy-now pass different operations and stable fingerprints.
 
@@ -310,7 +312,7 @@ when(coordinator.execute(eq(10L), eq(OrderOperation.CART_CHECKOUT), eq(KEY), any
         });
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```powershell
 .\mvnw.cmd "-Dtest=OrderServiceTests" test
@@ -318,7 +320,7 @@ when(coordinator.execute(eq(10L), eq(OrderOperation.CART_CHECKOUT), eq(KEY), any
 
 Expected: compilation/signature failures because service methods do not accept a Key or return the new result.
 
-- [ ] **Step 3: Change the public creation signatures**
+- [x] **Step 3: Change the public creation signatures**
 
 ```java
 public IdempotentOrderResult createOrder(Long userId, String idempotencyKey, CreateOrderRequest request)
@@ -327,7 +329,7 @@ public IdempotentOrderResult buyNow(Long userId, String idempotencyKey, BuyNowRe
 
 Remove `@Transactional` from these two public methods only. Their private creation action now returns `OrderCreationResult(order.getId(), response)`, and it runs inside the coordinator transaction. Cancellation and timeout-closing transactions remain unchanged.
 
-- [ ] **Step 4: Add owner-scoped replay lookup**
+- [x] **Step 4: Add owner-scoped replay lookup**
 
 ```java
 SalesOrder findOrderByUserIdAndId(Long userId, Long orderId);
@@ -335,13 +337,13 @@ SalesOrder findOrderByUserIdAndId(Long userId, Long orderId);
 
 The SQL must require both columns. `OrderService` loads its items and maps the current order status for replay. Missing replay resources fail closed instead of creating another order.
 
-- [ ] **Step 5: Run GREEN and related regression tests**
+- [x] **Step 5: Run GREEN and related regression tests**
 
 ```powershell
 .\mvnw.cmd "-Dtest=OrderServiceTests,OrderMapperTests" test
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add backend/src/main/java/com/recommendation/intelligentoutfitrecommendationsystem/order backend/src/main/resources/mapper/order backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/order/OrderServiceTests.java backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/order/OrderMapperTests.java
@@ -352,7 +354,7 @@ git commit -m "feat: make order creation idempotent"
 
 **Files:** `OrderController`, `OrderControllerTests`, `GlobalExceptionHandler` tests if present.
 
-- [ ] **Step 1: Write failing MockMvc tests**
+- [x] **Step 1: Write failing MockMvc tests**
 
 For both endpoints add cases for missing Key, invalid UUID, first response header, same-Key replay, and different-payload conflict. Capture the first `orderNo` and assert the replay matches it:
 
@@ -368,7 +370,7 @@ mockMvc.perform(post("/api/orders/buy-now")
 
 Repeat with the same Key and body expecting `true`; repeat with changed quantity expecting 409 and `idempotency_key_reused`.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```powershell
 .\mvnw.cmd "-Dtest=OrderControllerTests" test
@@ -376,15 +378,15 @@ Repeat with the same Key and body expecting `true`; repeat with changed quantity
 
 Expected: missing Key is currently accepted and replay header is absent.
 
-- [ ] **Step 3: Modify controller signatures and response**
+- [x] **Step 3: Modify controller signatures and response**
 
 Read `@RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey`. Return `ResponseEntity<ApiResponse<OrderResponse>>` and set `Idempotency-Replayed` from `IdempotentOrderResult`.
 
-- [ ] **Step 4: Add unique UUID headers to every existing create/buy-now test**
+- [x] **Step 4: Add unique UUID headers to every existing create/buy-now test**
 
 Do not add the header to list, detail, cancel, payment, or timeout endpoints. This preserves the agreed command boundary.
 
-- [ ] **Step 5: Run GREEN and commit**
+- [x] **Step 5: Run GREEN and commit**
 
 ```powershell
 .\mvnw.cmd "-Dtest=OrderControllerTests,OrderServiceTests" test
@@ -396,17 +398,17 @@ git commit -m "feat: require order idempotency keys"
 
 **Files:** properties, cleanup scheduler, mapper tests, scheduler tests, property files.
 
-- [ ] **Step 1: Write failing cleanup tests**
+- [x] **Step 1: Write failing cleanup tests**
 
 Mapper test: insert two expired and one active record, select at most one expired ID, delete it, and assert the active record remains. Scheduler unit test: verify one scheduled invocation delegates once with the configured batch size.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```powershell
 .\mvnw.cmd "-Dtest=OrderIdempotencyMapperTests,OrderIdempotencyCleanupSchedulerTests" test
 ```
 
-- [ ] **Step 3: Implement bounded cleanup**
+- [x] **Step 3: Implement bounded cleanup**
 
 `OrderIdempotencyCoordinator.cleanupExpired()` reads at most `cleanupBatchSize` ordered IDs and deletes only those IDs. `OrderIdempotencyCleanupScheduler` uses:
 
@@ -425,7 +427,7 @@ app.order.idempotency.cleanup-delay=PT1H
 app.order.idempotency.cleanup-batch-size=500
 ```
 
-- [ ] **Step 4: Run GREEN and commit**
+- [x] **Step 4: Run GREEN and commit**
 
 ```powershell
 .\mvnw.cmd "-Dtest=OrderIdempotencyMapperTests,OrderIdempotencyCleanupSchedulerTests" test
@@ -437,7 +439,7 @@ git commit -m "feat: clean expired order idempotency records"
 
 **Files:** `OrderControllerTests`, possibly a focused Spring integration test.
 
-- [ ] **Step 1: Add database-level acceptance assertions**
+- [x] **Step 1: Add database-level acceptance assertions**
 
 Autowire `JdbcTemplate` in the test. Around a unique user and SKU, assert first and repeated requests produce:
 
@@ -450,7 +452,7 @@ behavior_event ORDER_CREATED delta = 1
 
 For a forced insufficient-stock request, assert no idempotency row and no order remain, then replenish/select a valid quantity and retry the same Key successfully.
 
-- [ ] **Step 2: Run RED/GREEN as needed without changing the contract**
+- [x] **Step 2: Run RED/GREEN as needed without changing the contract**
 
 ```powershell
 .\mvnw.cmd "-Dtest=OrderControllerTests" test
@@ -458,7 +460,7 @@ For a forced insufficient-stock request, assert no idempotency row and no order 
 
 Fix only transaction-boundary defects exposed by the test. Do not add Redis locks or persist failed outcomes.
 
-- [ ] **Step 3: Run all order tests and commit**
+- [x] **Step 3: Run all order tests and commit**
 
 ```powershell
 .\mvnw.cmd "-Dtest=OrderControllerTests,OrderServiceTests,OrderMapperTests,OrderIdempotencyMapperTests,OrderIdempotencyCoordinatorTests,OrderIdempotencyCleanupSchedulerTests,OrderTimeoutSchedulerTests" test
@@ -470,13 +472,13 @@ git commit -m "test: prove order idempotency transaction semantics"
 
 **Files:** `OrderIdempotencyMySqlConcurrencyTests`, `MySqlFlywayMigrationTests`.
 
-- [ ] **Step 1: Write the Testcontainers concurrency test**
+- [x] **Step 1: Write the Testcontainers concurrency test**
 
 Extend `BaseMySqlContainerTest`, gate it with the existing `RUN_MYSQL_TESTS=true`, and submit two `buyNow` calls with the same user, Key, SKU, and quantity through a two-thread executor and a start latch.
 
 Assert both results have the same `orderNo`, exactly one result is replayed, the order count increases by one, the lock-stock delta equals one purchase, and the unique logical Key has one row.
 
-- [ ] **Step 2: Run the test when Docker is available**
+- [ ] **Step 2: Run the test when Docker is available** — attempted; blocked by `Could not find a valid Docker environment`.
 
 ```powershell
 $env:RUN_MYSQL_TESTS='true'
@@ -485,7 +487,7 @@ $env:RUN_MYSQL_TESTS='true'
 
 Expected with Docker: both tests pass. Without Docker: record the environment blocker explicitly; do not claim real MySQL concurrency was executed.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```powershell
 git add backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/order/OrderIdempotencyMySqlConcurrencyTests.java backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/support/MySqlFlywayMigrationTests.java
@@ -496,7 +498,7 @@ git commit -m "test: cover concurrent order idempotency"
 
 **Files:** the two design documents and implementation plan checkboxes/status.
 
-- [ ] **Step 1: Run focused quality gates**
+- [x] **Step 1: Run focused quality gates**
 
 ```powershell
 .\mvnw.cmd "-Dtest=Order*Tests" test
@@ -505,7 +507,7 @@ git commit -m "test: cover concurrent order idempotency"
 
 Expected: all focused tests pass and modified production packages have zero Checkstyle violations.
 
-- [ ] **Step 2: Run full verification**
+- [x] **Step 2: Run full verification**
 
 ```powershell
 .\mvnw.cmd verify
@@ -513,11 +515,11 @@ Expected: all focused tests pass and modified production packages have zero Chec
 
 Record the exact test count and any existing learning-demo Checkstyle blockers. Do not silently modify user learning files as part of this feature.
 
-- [ ] **Step 3: Update documentation evidence**
+- [x] **Step 3: Update documentation evidence**
 
 Mark the design implemented only for behaviors actually verified. Add the final architecture, transaction sequence, test counts, Docker/Testcontainers status, commit list, and the MQ preparation explanation.
 
-- [ ] **Step 4: Commit documentation**
+- [x] **Step 4: Commit documentation**
 
 ```powershell
 git add docs/superpowers/specs docs/superpowers/plans/2026-07-14-order-idempotency.md

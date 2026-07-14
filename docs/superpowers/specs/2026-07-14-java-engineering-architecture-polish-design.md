@@ -928,7 +928,7 @@ flowchart LR
 - 依赖树仅新增 `resilience4j-circuitbreaker` 与其 `resilience4j-core`；
 - 全量 `mvnw.cmd verify` 尚未全绿：测试和打包通过，但被既有学习 Demo 的 18 个 Checkstyle 违规阻断；涉及 `CacheBreakdownDemo.java`、`CachePenetrationDemo.java`、`MQOutfitDemo.java`、`MQProductionDemo.java`。本轮未擅自修改学习代码；
 - Python 端现已强制校验 `X-Internal-Token`，Java 发送与 Python 拒绝/接受两侧均有自动测试；尚未启动两个真实进程执行跨服务 Smoke Test，因此不把“双方单测通过”等同于完整端到端验收；
-- Redis 方案 A 已在下一阶段落地；订单幂等、ArchUnit、Actuator、RabbitMQ/Outbox 仍按前文章节继续推进。
+- Redis 方案 A 与订单创建幂等已经落地；ArchUnit、Actuator、RabbitMQ/Outbox 仍按前文章节继续推进。
 
 ## 14. Python 内部鉴权与 Redis 方案 A 实施状态（2026-07-14）
 
@@ -1015,7 +1015,7 @@ flowchart LR
 | Lua 限流 | Redis 原子性、固定窗口限流 | 消除 INCR 成功但 EXPIRE 丢失的永久 key 窗口 |
 | Testcontainers 测试 | 基础设施语义验证 | Mock 验证调用形状，真实 Redis 验证 TTL/并发语义 |
 
-## 15. 下一阶段：订单创建幂等
+## 15. 已完成阶段：订单创建幂等
 
 订单幂等方案已经确认，详细设计见：
 
@@ -1024,3 +1024,26 @@ docs/superpowers/specs/2026-07-14-order-idempotency-design.md
 ```
 
 本阶段采用 MySQL 独立 `order_idempotency` 表，通过 `(user_id, operation, idempotency_key)` 唯一约束保护购物车结算和立即购买。幂等占位、库存锁定、订单创建、购物车清理、行为事件和 `order_id` 关联处于同一个本地事务；相同 Key 的重复请求返回同一订单，相同 Key 换参数返回 HTTP 409。该能力为后续 MQ `eventId + Inbox` 消费幂等建立模型，但不提前引入 RabbitMQ。
+
+### 15.1 实施结论
+
+- 两个下单入口现已强制 UUID `Idempotency-Key`，并用 `Idempotency-Replayed` 暴露首次执行/重放语义；
+- MySQL 唯一约束是最终防线，Redis 不进入正确性链路；
+- 下单失败时幂等占位与库存、订单一起回滚，同一 Key 可以安全重试；
+- 请求摘要冲突返回 HTTP 409；重放查询继续校验用户归属；
+- 过期 Key 采用定时批量清理，并在冲突解析到过期记录时执行一次有界删除重试；
+- 全量测试 `224` 个全部通过（`5` 个环境型跳过）；全量 Checkstyle 仍被既有学习 Demo 的 `18` 个违规阻断；
+- 真实 MySQL 并发 Testcontainers 用例已编写，但本机缺少 Docker 环境，仍需在 CI 或 Docker 可用机器完成最终门禁。
+
+### 15.2 对应工程知识
+
+| 落地能力 | 对应知识 |
+| --- | --- |
+| `Idempotency-Key` + 请求摘要 | HTTP 命令幂等、重试安全、冲突检测 |
+| 数据库唯一约束 | 并发竞争裁决、最终正确性边界 |
+| 单一本地事务 | 原子性、失败回滚、避免“订单成功但幂等记录失败” |
+| 事务外解析唯一键冲突 | Spring 事务回滚语义、已提交数据可见性 |
+| 有界过期清理 | 数据生命周期、批处理事务控制 |
+| MySQL 并发 Testcontainers | 方言/锁语义验证，避免只相信 H2 |
+| Redis 不参与交易正确性 | Cache 非 Source of Truth、降级边界 |
+| `eventId + Inbox` 类比 | 为 RabbitMQ at-least-once 消费幂等做准备 |

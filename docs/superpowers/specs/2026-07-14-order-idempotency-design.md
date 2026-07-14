@@ -1,6 +1,6 @@
 # 订单创建幂等设计
 
-> **状态：** 已确认，等待实施计划  
+> **状态：** 已实现；真实 MySQL 并发用例待 Docker 环境验收
 > **日期：** 2026-07-14  
 > **范围：** `POST /api/orders` 与 `POST /api/orders/buy-now`  
 > **核心决策：** 使用 MySQL 独立幂等表和唯一约束保证最终正确性，不以 Redis 锁作为交易防线。
@@ -194,8 +194,8 @@ public record IdempotentOrderResult(OrderResponse order, boolean replayed) {
 ```text
 校验 JWT、Key 和业务参数
 -> 生成 request_fingerprint
--> 删除当前逻辑 Key 的过期记录
--> 插入幂等占位
+-> 直接尝试插入幂等占位
+-> 仅在唯一键冲突且旧记录已过期时，于独立事务删除旧记录并限次重试
 -> 读取可信商品/购物车事实
 -> 条件更新库存
 -> 创建订单和明细
@@ -243,7 +243,7 @@ app:
 
 采用两层机制：
 
-1. 请求路径在占位前删除同一逻辑 Key 的已过期记录，保证定时任务延迟时仍可复用过期 Key；
+1. 请求路径先尝试 `INSERT`，避免首次请求执行预删除产生 MySQL gap lock；仅当唯一键冲突且查到旧记录已过期时，才在独立事务中删除该逻辑 Key 并限次重试；
 2. 后台任务每小时按 `expires_at` 和主键顺序批量删除最多 500 条，限制单次事务规模并防止表无限增长。
 
 清理只删除 `order_idempotency`，不会删除订单、订单明细或行为事件。超过 24 小时后使用原 Key属于新的购买意图。
@@ -343,3 +343,48 @@ MQ eventId
 - 新增 Java 类符合项目 Javadoc 与 Checkstyle 规则；
 - 聚焦单元测试、接口测试和 Mapper 测试通过；
 - 全量 `mvnw.cmd verify` 的结果和既有门禁阻塞如实记录。
+
+## 14. 实施结果与验证证据
+
+### 14.1 已落地能力
+
+- 新增 Flyway V16、`order_idempotency` 表、MyBatis Mapper 和 24 小时配置；
+- 购物车结算与立即购买强制 UUID `Idempotency-Key`；
+- 首次成功返回 `Idempotency-Replayed: false`，同请求重放返回 `true`；
+- 同 Key 换参数返回 HTTP 409 / `idempotency_key_reused`；
+- 幂等占位、库存变更、订单/明细、购物车清理、行为事件、结果关联处于同一事务；
+- 重放通过 `order_id + user_id` 查询，未绕过数据归属边界；
+- 增加过期记录限量清理调度器；
+- 支付与售后端到端测试夹具已补齐新的幂等请求头。
+
+### 14.2 并发实现修正
+
+初版设计中的“首次请求先删除过期 Key”会让 MySQL 在不存在记录时获取范围锁，两个首次并发请求可能形成不必要的 gap-lock 竞争。因此实际实现采用：
+
+```text
+先 INSERT
+-> 成功：执行订单事务
+-> 唯一键冲突：事务外读取已提交记录
+   -> 未过期且摘要相同：重放
+   -> 未过期且摘要不同：409
+   -> 已过期：独立事务删除，最多重试一次
+```
+
+数据库唯一约束仍是最终正确性边界，Redis 不参与交易幂等。
+
+### 14.3 自动验证
+
+- 全量单元/集成测试：`224` 个，`0` 失败，`0` 错误，`5` 跳过；
+- 订单相关聚焦测试：`47` 个，`0` 失败，`0` 错误，`1` 跳过；
+- 支付与售后回归测试：`11` 个，全部通过；
+- 新增代码聚焦 Checkstyle：`0` 违规；
+- 全量 Checkstyle 仍被既有学习 Demo 的 `18` 个违规阻断，涉及 `CacheBreakdownDemo.java`、`CachePenetrationDemo.java`、`MQOutfitDemo.java`、`MQProductionDemo.java`，本阶段未修改这些学习文件。
+
+### 14.4 尚未通过的环境门禁
+
+`OrderIdempotencyMySqlConcurrencyTests` 与 `MySqlFlywayMigrationTests` 已具备真实 MySQL Testcontainers 用例，但本机没有可用 Docker daemon。设置 `RUN_MYSQL_TESTS=true` 后启动失败于 `Could not find a valid Docker environment`，因此不能宣称真实 MySQL 并发语义已经在本机通过。Docker 可用后执行：
+
+```powershell
+$env:RUN_MYSQL_TESTS='true'
+.\mvnw.cmd "-Dtest=OrderIdempotencyMySqlConcurrencyTests,MySqlFlywayMigrationTests" test
+```
