@@ -35,7 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ActiveProfiles("test")
-@SpringBootTest
+@SpringBootTest(properties = "app.ai.circuit-breaker.enabled=false")
 @AutoConfigureMockMvc
 class AssistantControllerTests {
 

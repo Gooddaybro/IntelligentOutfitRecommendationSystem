@@ -4,6 +4,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.Py
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ExternalServiceException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
@@ -17,6 +18,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 @Primary
 @Component
+@ConditionalOnProperty(name = "app.ai.circuit-breaker.enabled", havingValue = "true", matchIfMissing = true)
 public class ResilientPythonAssistantClient implements PythonAssistantClient, PythonAssistantStreamClient {
 
     private final RestPythonAssistantClient delegate;
