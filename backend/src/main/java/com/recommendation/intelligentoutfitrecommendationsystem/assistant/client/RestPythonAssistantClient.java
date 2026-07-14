@@ -26,17 +26,26 @@ import java.util.stream.Stream;
 @Component
 public class RestPythonAssistantClient implements PythonAssistantClient, PythonAssistantStreamClient {
 
+    private static final String INTERNAL_TOKEN_HEADER = "X-Internal-Token";
+
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
     private final String chatUrl;
     private final String streamChatUrl;
     private final Duration readTimeout;
+    private final Duration streamReadTimeout;
+    private final String internalToken;
 
     public RestPythonAssistantClient(
             @Value("${app.ai.python-base-url}") String pythonBaseUrl,
             @Value("${app.ai.connect-timeout-ms}") long connectTimeoutMs,
-            @Value("${app.ai.read-timeout-ms}") long readTimeoutMs
+            @Value("${app.ai.read-timeout-ms}") long readTimeoutMs,
+            @Value("${app.ai.stream-read-timeout-ms:${app.ai.stream-timeout-ms:120000}}") long streamReadTimeoutMs,
+            @Value("${app.ai.python-internal-token:${app.internal-api.token}}") String internalToken
     ) {
+        if (internalToken == null || internalToken.isBlank()) {
+            throw new IllegalArgumentException("python assistant internal token must not be blank");
+        }
         // Python 请求包含 LocalDateTime 聊天历史，必须注册 JavaTime 模块并使用 ISO 字符串格式保持跨服务契约稳定。
         this.objectMapper = new ObjectMapper()
                 .findAndRegisterModules()
@@ -49,6 +58,8 @@ public class RestPythonAssistantClient implements PythonAssistantClient, PythonA
         this.chatUrl = pythonBaseUrl.replaceAll("/+$", "") + "/chat";
         this.streamChatUrl = pythonBaseUrl.replaceAll("/+$", "") + "/chat/stream";
         this.readTimeout = Duration.ofMillis(readTimeoutMs);
+        this.streamReadTimeout = Duration.ofMillis(streamReadTimeoutMs);
+        this.internalToken = internalToken;
     }
 
     @Override
@@ -57,6 +68,7 @@ public class RestPythonAssistantClient implements PythonAssistantClient, PythonA
             HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(chatUrl))
                     .timeout(readTimeout)
                     .header("Content-Type", "application/json")
+                    .header(INTERNAL_TOKEN_HEADER, internalToken)
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(request)))
                     .build();
             HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
@@ -78,9 +90,10 @@ public class RestPythonAssistantClient implements PythonAssistantClient, PythonA
     public void streamChat(PythonChatRequest request, PythonAssistantStreamHandler handler) {
         try {
             HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(streamChatUrl))
-                    .timeout(readTimeout)
+                    .timeout(streamReadTimeout)
                     .header("Content-Type", "application/json")
                     .header("Accept", "text/event-stream")
+                    .header(INTERNAL_TOKEN_HEADER, internalToken)
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(request)))
                     .build();
             HttpResponse<Stream<String>> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofLines());

@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RestPythonAssistantClientTests {
 
@@ -35,8 +36,10 @@ class RestPythonAssistantClientTests {
     @Test
     void serializesPythonChatRequestUsingSnakeCaseContract() throws Exception {
         AtomicReference<String> requestBody = new AtomicReference<>();
+        AtomicReference<String> internalToken = new AtomicReference<>();
         server = HttpServer.create(new InetSocketAddress(0), 0);
         server.createContext("/chat", exchange -> {
+            internalToken.set(exchange.getRequestHeaders().getFirst("X-Internal-Token"));
             requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             byte[] body = """
                     {
@@ -62,7 +65,9 @@ class RestPythonAssistantClientTests {
         server.start();
 
         String baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
-        RestPythonAssistantClient client = new RestPythonAssistantClient(baseUrl, 1000, 5000);
+        RestPythonAssistantClient client = new RestPythonAssistantClient(
+                baseUrl, 1000, 5000, 9000, "test-python-token"
+        );
         PythonChatRequest request = new PythonChatRequest(
                 "req-client-test",
                 "th_client_001",
@@ -123,6 +128,7 @@ class RestPythonAssistantClientTests {
         PythonChatResponse response = client.chat(request);
 
         assertThat(response.requestId()).isEqualTo("req-client-test");
+        assertThat(internalToken.get()).isEqualTo("test-python-token");
         assertThat(response.answer()).isEqualTo("ok");
         assertThat(response.intent()).isEqualTo("recommendation");
         assertThat(response.productRefs())
@@ -162,10 +168,12 @@ class RestPythonAssistantClientTests {
     @Test
     void streamsPythonTokensAndDoneResponseFromStreamEndpoint() throws Exception {
         AtomicReference<String> acceptHeader = new AtomicReference<>();
+        AtomicReference<String> internalToken = new AtomicReference<>();
         AtomicReference<String> requestBody = new AtomicReference<>();
         server = HttpServer.create(new InetSocketAddress(0), 0);
         server.createContext("/chat/stream", exchange -> {
             acceptHeader.set(exchange.getRequestHeaders().getFirst("Accept"));
+            internalToken.set(exchange.getRequestHeaders().getFirst("X-Internal-Token"));
             requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             byte[] body = """
                     event: token
@@ -183,12 +191,15 @@ class RestPythonAssistantClientTests {
         server.start();
 
         String baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
-        RestPythonAssistantClient client = new RestPythonAssistantClient(baseUrl, 1000, 5000);
+        RestPythonAssistantClient client = new RestPythonAssistantClient(
+                baseUrl, 1000, 5000, 9000, "test-python-token"
+        );
         CapturingStreamHandler handler = new CapturingStreamHandler();
 
         client.streamChat(minimalPythonRequest(), handler);
 
         assertThat(acceptHeader.get()).isEqualTo("text/event-stream");
+        assertThat(internalToken.get()).isEqualTo("test-python-token");
         assertThat(requestBody.get())
                 .contains("\"request_id\":\"req-stream-test\"")
                 .contains("\"query\":\"hello\"");
@@ -199,6 +210,42 @@ class RestPythonAssistantClientTests {
                 .extracting("spuId", "skuId", "reason")
                 .containsExactly(org.assertj.core.api.Assertions.tuple(1001L, 2001L, "尺码匹配"));
         assertThat(handler.errors).isEmpty();
+    }
+
+    @Test
+    void rejectsBlankInternalToken() {
+        assertThatThrownBy(() -> new RestPythonAssistantClient(
+                "http://localhost:8000", 1000, 5000, 9000, "  "
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("internal token");
+    }
+
+    @Test
+    void usesIndependentTimeoutForStreamRequests() throws Exception {
+        server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/chat/stream", exchange -> {
+            try {
+                Thread.sleep(250);
+                exchange.sendResponseHeaders(200, 0);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            } finally {
+                exchange.close();
+            }
+        });
+        server.start();
+
+        String baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
+        RestPythonAssistantClient client = new RestPythonAssistantClient(
+                baseUrl, 1000, 5000, 50, "test-python-token"
+        );
+        CapturingStreamHandler handler = new CapturingStreamHandler();
+
+        client.streamChat(minimalPythonRequest(), handler);
+
+        assertThat(handler.errors)
+                .containsExactly("python_stream_unavailable:failed to call python assistant stream");
     }
 
     private PythonChatRequest minimalPythonRequest() {
