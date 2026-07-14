@@ -25,4 +25,17 @@ class GlobalExceptionHandlerTests {
         assertThat(response.message()).isEqualTo("Request failed. Please try again later.");
         assertThat(response.message()).doesNotContain("secret");
     }
+
+    @Test
+    void idempotencyConflictsUseStableBusinessCode() {
+        var response = handler.handleIdempotencyConflict(
+                new IdempotencyKeyConflictException(
+                        "Idempotency-Key was already used with different request parameters"
+                )
+        );
+
+        assertThat(response.errorCode()).isEqualTo("idempotency_key_reused");
+        assertThat(response.message())
+                .isEqualTo("Idempotency-Key was already used with different request parameters");
+    }
 }

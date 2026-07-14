@@ -44,6 +44,12 @@ public class GlobalExceptionHandler {
         return ApiResponse.error("rate_limit_exceeded", exception.getMessage());
     }
 
+    @ExceptionHandler(IdempotencyKeyConflictException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ApiResponse<Void> handleIdempotencyConflict(IdempotencyKeyConflictException exception) {
+        return ApiResponse.error("idempotency_key_reused", exception.getMessage());
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResponse<Void> handleValidation(MethodArgumentNotValidException exception) {
