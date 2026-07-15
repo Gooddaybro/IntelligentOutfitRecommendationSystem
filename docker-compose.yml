@@ -21,6 +21,19 @@ services:
     command: redis-server --appendonly yes
     volumes:
       - intelligent_outfit_redis_data:/data
+  rabbitmq:
+    image: rabbitmq:4.1.8-management
+    container_name: intelligent_outfit_rabbitmq
+    ports:
+      - "${RABBITMQ_AMQP_HOST_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_HOST_PORT:-15672}:15672"
+      - "${RABBITMQ_PROMETHEUS_HOST_PORT:-15692}:15692"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-app}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-app-dev-password}
+    volumes:
+      - ./observability/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      - intelligent_outfit_rabbitmq_data:/var/lib/rabbitmq
   prometheus:
     image: prom/prometheus:v2.54.1
     container_name: intelligent_outfit_prometheus
@@ -50,4 +63,5 @@ services:
 volumes:
   intelligent_outfit_mysql_data:
   intelligent_outfit_redis_data:
+  intelligent_outfit_rabbitmq_data:
   intelligent_outfit_grafana_data:

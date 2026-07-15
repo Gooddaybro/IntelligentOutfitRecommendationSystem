@@ -8,6 +8,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.common.api.ApiRe
 import com.recommendation.intelligentoutfitrecommendationsystem.security.CurrentUser;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api/ai/tasks")
+@Profile({"web", "test"})
 public class AiTaskController {
 
     private final AiTaskApplicationService applicationService;
