@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recommendation.intelligentoutfitrecommendationsystem.aitask.mapper.AiTaskRedriveAuditMapper">
+    <insert id="insertRedriveAudit">
+        INSERT INTO ai_task_redrive_audit (
+            task_id, previous_event_id, new_event_id, redriven_by, reason
+        ) VALUES (
+            #{taskId}, #{previousEventId}, #{newEventId}, #{redrivenBy}, #{reason}
+        )
+    </insert>
+</mapper>

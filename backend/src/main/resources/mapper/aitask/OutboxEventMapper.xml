@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recommendation.intelligentoutfitrecommendationsystem.aitask.mapper.OutboxEventMapper">
+
+    <insert id="insertOutbox" parameterType="com.recommendation.intelligentoutfitrecommendationsystem.aitask.model.OutboxEvent"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO outbox_event (
+            event_id, aggregate_type, aggregate_id, event_type, schema_version,
+            payload, status, available_at
+        ) VALUES (
+            #{eventId}, #{aggregateType}, #{aggregateId}, #{eventType}, #{schemaVersion},
+            #{payload}, #{status}, #{availableAt}
+        )
+    </insert>
+
+    <!-- Relay 只读取到期且没有有效租约的事件；真正的所有权仍由 claimOutbox 条件更新决定。 -->
+    <select id="findPublishable" resultType="com.recommendation.intelligentoutfitrecommendationsystem.aitask.model.OutboxEvent">
+        SELECT * FROM outbox_event
+        WHERE status = 'NEW' AND available_at &lt;= #{now}
+          AND (claim_until IS NULL OR claim_until &lt;= #{now})
+        ORDER BY id
+        LIMIT #{limit}
+    </select>
+
+    <update id="claimOutbox">
+        UPDATE outbox_event
+        SET claimed_by = #{claimedBy}, claim_until = #{claimUntil},
+            publish_attempts = publish_attempts + 1, updated_at = #{now}
+        WHERE event_id = #{eventId} AND status = 'NEW' AND available_at &lt;= #{now}
+          AND (claim_until IS NULL OR claim_until &lt;= #{now})
+    </update>
+
+    <update id="markPublished">
+        UPDATE outbox_event
+        SET status = 'PUBLISHED', published_at = #{publishedAt}, claimed_by = NULL,
+            claim_until = NULL, last_error = NULL, updated_at = #{publishedAt}
+        WHERE event_id = #{eventId} AND status = 'NEW' AND claimed_by = #{claimedBy}
+    </update>
+
+    <update id="releaseClaim">
+        UPDATE outbox_event
+        SET claimed_by = NULL, claim_until = NULL, last_error = #{lastError},
+            updated_at = CURRENT_TIMESTAMP(6)
+        WHERE event_id = #{eventId} AND status = 'NEW' AND claimed_by = #{claimedBy}
+    </update>
+</mapper>
