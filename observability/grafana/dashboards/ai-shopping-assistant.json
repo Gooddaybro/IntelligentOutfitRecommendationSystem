@@ -1,61 +1,255 @@
 {
-  "annotations": {"list": []},
+  "annotations": {
+    "list": []
+  },
   "editable": true,
   "panels": [
     {
       "type": "timeseries",
       "title": "AI 请求结果",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "sum by (mode, outcome) (rate(app_ai_requests_total[5m]))", "legendFormat": "{{mode}} / {{outcome}}"}],
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (mode, outcome) (rate(app_ai_requests_total[5m]))",
+          "legendFormat": "{{mode}} / {{outcome}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      }
     },
     {
       "type": "timeseries",
       "title": "AI P95 延迟",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "histogram_quantile(0.95, sum by (le, mode) (rate(app_ai_request_duration_seconds_bucket[5m])))", "legendFormat": "{{mode}}"}],
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, mode) (rate(app_ai_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{mode}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      }
     },
     {
       "type": "stat",
       "title": "熔断状态",
       "description": "0=closed, 1=open, 2=half-open, 3=disabled, 4=forced-open, 5=metrics-only",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "app_ai_circuit_state", "legendFormat": "state"}],
-      "gridPos": {"h": 7, "w": 6, "x": 0, "y": 8}
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "app_ai_circuit_state",
+          "legendFormat": "state"
+        }
+      ],
+      "gridPos": {
+        "h": 7,
+        "w": 6,
+        "x": 0,
+        "y": 8
+      }
     },
     {
       "type": "timeseries",
       "title": "Fallback 增量",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "sum by (mode) (increase(app_ai_fallbacks_total[15m]))", "legendFormat": "{{mode}}"}],
-      "gridPos": {"h": 7, "w": 6, "x": 6, "y": 8}
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (mode) (increase(app_ai_fallbacks_total[15m]))",
+          "legendFormat": "{{mode}}"
+        }
+      ],
+      "gridPos": {
+        "h": 7,
+        "w": 6,
+        "x": 6,
+        "y": 8
+      }
     },
     {
       "type": "timeseries",
       "title": "候选与丢弃引用",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        {"expr": "app_ai_candidates_sum / clamp_min(app_ai_candidates_count, 1)", "legendFormat": "平均候选数"},
-        {"expr": "increase(app_ai_discarded_references_total[15m])", "legendFormat": "丢弃引用"}
+        {
+          "expr": "app_ai_candidates_sum / clamp_min(app_ai_candidates_count, 1)",
+          "legendFormat": "平均候选数"
+        },
+        {
+          "expr": "increase(app_ai_discarded_references_total[15m])",
+          "legendFormat": "丢弃引用"
+        }
       ],
-      "gridPos": {"h": 7, "w": 6, "x": 12, "y": 8}
+      "gridPos": {
+        "h": 7,
+        "w": 6,
+        "x": 12,
+        "y": 8
+      }
     },
     {
       "type": "bargauge",
       "title": "推荐转化漏斗",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "sum by (stage) (increase(app_recommendation_funnel_total[24h]))", "legendFormat": "{{stage}}"}],
-      "gridPos": {"h": 7, "w": 6, "x": 18, "y": 8}
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (stage) (increase(app_recommendation_funnel_total[24h]))",
+          "legendFormat": "{{stage}}"
+        }
+      ],
+      "gridPos": {
+        "h": 7,
+        "w": 6,
+        "x": 18,
+        "y": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "title": "AI ??????",
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(app_ai_task_executions_total{taskType=\"rag_rebuild\"}[5m]))",
+          "legendFormat": "{{outcome}}{{stage}}{{queue}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 16
+      }
+    },
+    {
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "title": "Outbox ????",
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(app_ai_task_publish_total[5m]))",
+          "legendFormat": "{{outcome}}{{stage}}{{queue}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 16
+      }
+    },
+    {
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "title": "Worker ????",
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(app_ai_task_consume_total[5m]))",
+          "legendFormat": "{{outcome}}{{stage}}{{queue}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 16
+      }
+    },
+    {
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "title": "??????",
+      "targets": [
+        {
+          "expr": "sum by (stage) (increase(app_ai_task_retries_total[15m]))",
+          "legendFormat": "{{outcome}}{{stage}}{{queue}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      }
+    },
+    {
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "title": "RAG ???? DLQ ??",
+      "targets": [
+        {
+          "expr": "sum by (queue) (rabbitmq_queue_messages{queue=~\"ai.task.rag-rebuild.(v1|dlq.v1)\"})",
+          "legendFormat": "{{outcome}}{{stage}}{{queue}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      }
     }
   ],
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": ["ai", "recommendation"],
-  "templating": {"list": []},
-  "time": {"from": "now-6h", "to": "now"},
+  "tags": [
+    "ai",
+    "recommendation"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
   "timezone": "browser",
   "title": "AI 导购",
   "uid": "ai-shopping-assistant",
-  "version": 1
+  "version": 2
 }

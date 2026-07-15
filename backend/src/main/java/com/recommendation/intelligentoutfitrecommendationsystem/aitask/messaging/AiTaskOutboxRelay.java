@@ -2,9 +2,11 @@ package com.recommendation.intelligentoutfitrecommendationsystem.aitask.messagin
 
 import com.recommendation.intelligentoutfitrecommendationsystem.aitask.mapper.OutboxEventMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.aitask.model.OutboxEvent;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
 import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -28,6 +30,7 @@ public class AiTaskOutboxRelay {
     private final AiTaskMessagingProperties properties;
     private final Clock clock;
     private final boolean publisherEnabled;
+    private final ApplicationMetrics metrics;
     private final String relayId = "relay-" + UUID.randomUUID();
 
     public AiTaskOutboxRelay(
@@ -37,11 +40,24 @@ public class AiTaskOutboxRelay {
             Clock clock,
             @Value("${app.ai-task.publisher-enabled:false}") boolean publisherEnabled
     ) {
+        this(rabbitTemplate, outboxMapper, properties, clock, publisherEnabled, null);
+    }
+
+    @Autowired
+    public AiTaskOutboxRelay(
+            RabbitTemplate rabbitTemplate,
+            OutboxEventMapper outboxMapper,
+            AiTaskMessagingProperties properties,
+            Clock clock,
+            @Value("${app.ai-task.publisher-enabled:false}") boolean publisherEnabled,
+            ApplicationMetrics metrics
+    ) {
         this.rabbitTemplate = rabbitTemplate;
         this.outboxMapper = outboxMapper;
         this.properties = properties;
         this.clock = clock;
         this.publisherEnabled = publisherEnabled;
+        this.metrics = metrics;
     }
 
     /**
@@ -82,8 +98,10 @@ public class AiTaskOutboxRelay {
                 throw new IllegalStateException("rabbit publish was not confirmed");
             }
             outboxMapper.markPublished(event.getEventId(), relayId, now());
+            recordPublish("confirmed");
         } catch (Exception exception) {
             outboxMapper.releaseClaim(event.getEventId(), relayId, safeMessage(exception));
+            recordPublish("error");
         }
     }
 
@@ -94,5 +112,11 @@ public class AiTaskOutboxRelay {
     private String safeMessage(Exception exception) {
         String value = exception.getClass().getSimpleName() + ": " + exception.getMessage();
         return value.length() <= 500 ? value : value.substring(0, 500);
+    }
+
+    private void recordPublish(String outcome) {
+        if (metrics != null) {
+            metrics.recordAiTaskPublish(outcome);
+        }
     }
 }

@@ -29,6 +29,14 @@ public class ApplicationMetrics {
             "closed", "open", "half_open", "disabled", "forced_open", "metrics_only");
     private static final Set<String> RECOMMENDATION_STAGES = Set.of(
             "exposure", "click", "favorite", "cart", "order", "payment");
+    private static final Set<String> AI_TASK_TYPES = Set.of("rag_rebuild");
+    private static final Set<String> AI_TASK_OUTCOMES = Set.of(
+            "created", "replayed", "success", "failed");
+    private static final Set<String> AI_TASK_PUBLISH_OUTCOMES = Set.of(
+            "confirmed", "nack", "returned", "timeout", "error");
+    private static final Set<String> AI_TASK_CONSUME_OUTCOMES = Set.of(
+            "success", "duplicate", "retry", "dlq", "error");
+    private static final Set<String> AI_TASK_RETRY_STAGES = Set.of("1", "2", "3");
 
     private final MeterRegistry registry;
     private final DistributionSummary candidateSummary;
@@ -91,6 +99,38 @@ public class ApplicationMetrics {
     public void recordRecommendationFunnel(String stage) {
         registry.counter("app.recommendation.funnel", "stage", bounded(stage, RECOMMENDATION_STAGES))
                 .increment();
+    }
+
+    public void recordAiTask(String taskType, String outcome, Duration duration) {
+        String safeType = bounded(normalize(taskType), AI_TASK_TYPES);
+        String safeOutcome = bounded(normalize(outcome), AI_TASK_OUTCOMES);
+        registry.counter(
+                "app.ai.task.executions", "taskType", safeType, "outcome", safeOutcome
+        ).increment();
+        registry.timer(
+                "app.ai.task.duration", "taskType", safeType, "outcome", safeOutcome
+        ).record(nonNegative(duration));
+    }
+
+    public void recordAiTaskPublish(String outcome) {
+        registry.counter(
+                "app.ai.task.publish",
+                "outcome", bounded(normalize(outcome), AI_TASK_PUBLISH_OUTCOMES)
+        ).increment();
+    }
+
+    public void recordAiTaskConsume(String outcome, Duration duration) {
+        String safeOutcome = bounded(normalize(outcome), AI_TASK_CONSUME_OUTCOMES);
+        registry.counter("app.ai.task.consume", "outcome", safeOutcome).increment();
+        registry.timer("app.ai.task.consume.duration", "outcome", safeOutcome)
+                .record(nonNegative(duration));
+    }
+
+    public void recordAiTaskRetry(String stage) {
+        registry.counter(
+                "app.ai.task.retries",
+                "stage", bounded(stage, AI_TASK_RETRY_STAGES)
+        ).increment();
     }
 
     private String bounded(String value, Set<String> allowed) {

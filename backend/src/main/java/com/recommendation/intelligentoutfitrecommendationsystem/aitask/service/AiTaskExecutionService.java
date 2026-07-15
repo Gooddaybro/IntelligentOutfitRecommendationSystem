@@ -8,6 +8,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.aitask.mapper.Ai
 import com.recommendation.intelligentoutfitrecommendationsystem.aitask.mapper.ConsumerInboxMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.aitask.messaging.AiTaskMessage;
 import com.recommendation.intelligentoutfitrecommendationsystem.aitask.model.AiTask;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
@@ -45,6 +46,7 @@ public class AiTaskExecutionService {
     private final RagRebuildClient rebuildClient;
     private final TransactionOperations transactions;
     private final Clock clock;
+    private final ApplicationMetrics metrics;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final String workerId = "worker-" + UUID.randomUUID();
 
@@ -54,9 +56,13 @@ public class AiTaskExecutionService {
             ConsumerInboxMapper inboxMapper,
             RagRebuildClient rebuildClient,
             PlatformTransactionManager transactionManager,
-            Clock clock
+            Clock clock,
+            ApplicationMetrics metrics
     ) {
-        this(taskMapper, inboxMapper, rebuildClient, new TransactionTemplate(transactionManager), clock);
+        this(
+                taskMapper, inboxMapper, rebuildClient,
+                new TransactionTemplate(transactionManager), clock, metrics
+        );
     }
 
     public AiTaskExecutionService(
@@ -66,17 +72,30 @@ public class AiTaskExecutionService {
             TransactionOperations transactions,
             Clock clock
     ) {
+        this(taskMapper, inboxMapper, rebuildClient, transactions, clock, null);
+    }
+
+    public AiTaskExecutionService(
+            AiTaskMapper taskMapper,
+            ConsumerInboxMapper inboxMapper,
+            RagRebuildClient rebuildClient,
+            TransactionOperations transactions,
+            Clock clock,
+            ApplicationMetrics metrics
+    ) {
         this.taskMapper = taskMapper;
         this.inboxMapper = inboxMapper;
         this.rebuildClient = rebuildClient;
         this.transactions = transactions;
         this.clock = clock;
+        this.metrics = metrics;
     }
 
     /**
      * 执行一条有效事件；成功返回前，任务终态和 Inbox 已在同一事务中提交。
      */
     public ExecutionOutcome execute(AiTaskMessage message) {
+        long startedAt = System.nanoTime();
         validate(message);
         if (inboxMapper.exists(CONSUMER_NAME, message.eventId())) {
             return ExecutionOutcome.DUPLICATE;
@@ -113,6 +132,11 @@ public class AiTaskExecutionService {
             }
             inboxMapper.insertInbox(CONSUMER_NAME, message.eventId(), task.getTaskId(), now());
         });
+        if (metrics != null) {
+            metrics.recordAiTask(
+                    "RAG_REBUILD", "success", Duration.ofNanos(System.nanoTime() - startedAt)
+            );
+        }
         return ExecutionOutcome.SUCCESS;
     }
 

@@ -76,4 +76,29 @@ class ApplicationMetricsTests {
         assertThat(registry.get("app.recommendation.funnel").tag("stage", "other").counter().count())
                 .isEqualTo(1);
     }
+
+    @Test
+    void recordsAiTaskMetricsWithOnlyFixedCardinalityTags() {
+        metrics.recordAiTask("RAG_REBUILD", "success", Duration.ofSeconds(2));
+        metrics.recordAiTaskPublish("confirmed");
+        metrics.recordAiTaskConsume("retry", Duration.ofMillis(50));
+        metrics.recordAiTaskRetry("2");
+        metrics.recordAiTask("task-user-controlled", "event-user-controlled", Duration.ZERO);
+
+        assertThat(registry.get("app.ai.task.executions")
+                .tags("taskType", "rag_rebuild", "outcome", "success").counter().count())
+                .isEqualTo(1);
+        assertThat(registry.get("app.ai.task.publish").tag("outcome", "confirmed").counter().count())
+                .isEqualTo(1);
+        assertThat(registry.get("app.ai.task.consume").tag("outcome", "retry").counter().count())
+                .isEqualTo(1);
+        assertThat(registry.get("app.ai.task.retries").tag("stage", "2").counter().count())
+                .isEqualTo(1);
+        assertThat(registry.get("app.ai.task.executions")
+                .tags("taskType", "other", "outcome", "other").counter().count())
+                .isEqualTo(1);
+        assertThat(registry.getMeters())
+                .allSatisfy(meter -> assertThat(meter.getId().getTags())
+                        .noneMatch(tag -> tag.getKey().toLowerCase().contains("id")));
+    }
 }
