@@ -33,6 +33,7 @@
         <checkstyle.version>10.12.5</checkstyle.version>
         <maven-checkstyle-plugin.version>3.3.1</maven-checkstyle-plugin.version>
         <resilience4j.version>2.4.0</resilience4j.version>
+        <archunit.version>1.4.1</archunit.version>
     </properties>
     <dependencies>
         <dependency>
@@ -135,6 +136,12 @@
         <dependency>
             <groupId>org.springframework.restdocs</groupId>
             <artifactId>spring-restdocs-mockmvc</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
+            <version>${archunit.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

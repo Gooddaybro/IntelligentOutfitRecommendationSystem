@@ -5,7 +5,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.cart.service.Car
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.BuyNowRequest;
-import com.recommendation.intelligentoutfitrecommendationsystem.inventory.mapper.InventoryMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.inventory.service.InventoryApplicationService;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.CancelOrderRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.CreateOrderRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.mapper.OrderMapper;
@@ -37,6 +37,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -51,7 +52,7 @@ class OrderServiceTests {
     private OrderMapper orderMapper;
 
     @Mock
-    private InventoryMapper inventoryMapper;
+    private InventoryApplicationService inventoryApplicationService;
 
     @Mock
     private CartService cartService;
@@ -85,8 +86,6 @@ class OrderServiceTests {
         var request = new CreateOrderRequest("CART", List.of(2102L, 2202L));
         when(orderMapper.findCheckoutItemsFromCart(10L, List.of(2102L, 2202L)))
                 .thenReturn(List.of(checkoutItem(2102L, "299.00", 1), checkoutItem(2202L, "199.00", 2)));
-        when(inventoryMapper.lockStock(2102L, 1)).thenReturn(1);
-        when(inventoryMapper.lockStock(2202L, 2)).thenReturn(1);
         doAnswer(invocation -> {
             SalesOrder order = invocation.getArgument(0);
             order.setId(88L);
@@ -150,7 +149,6 @@ class OrderServiceTests {
         var request = new BuyNowRequest(2102L, 3);
         OrderCheckoutItem checkoutItem = checkoutItem(2102L, "299.00", 0);
         when(orderMapper.findCheckoutItemBySkuId(2102L)).thenReturn(checkoutItem);
-        when(inventoryMapper.lockStock(2102L, 3)).thenReturn(1);
         doAnswer(invocation -> {
             SalesOrder order = invocation.getArgument(0);
             order.setId(89L);
@@ -199,7 +197,7 @@ class OrderServiceTests {
         assertThatThrownBy(() -> service.buyNow(10L, IDEMPOTENCY_KEY, request))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessage("sku not found: 999999");
-        verify(inventoryMapper, never()).lockStock(any(), any());
+        verify(inventoryApplicationService, never()).lock(any(), any());
         verify(orderMapper, never()).insertOrder(any(SalesOrder.class));
     }
 
@@ -219,7 +217,8 @@ class OrderServiceTests {
         var request = new CreateOrderRequest("CART", List.of(2102L));
         when(orderMapper.findCheckoutItemsFromCart(10L, List.of(2102L)))
                 .thenReturn(List.of(checkoutItem(2102L, "299.00", 1)));
-        when(inventoryMapper.lockStock(2102L, 1)).thenReturn(0);
+        doThrow(new BadRequestException("insufficient stock for sku: 2102"))
+                .when(inventoryApplicationService).lock(2102L, 1);
 
         assertThatThrownBy(() -> service.createOrder(10L, IDEMPOTENCY_KEY, request))
                 .isInstanceOf(BadRequestException.class)
@@ -233,7 +232,6 @@ class OrderServiceTests {
         SalesOrder order = salesOrder(88L, 10L, "ORDCANCEL1", "UNPAID");
         when(orderMapper.findOrderByUserIdAndOrderNoForUpdate(10L, "ORDCANCEL1")).thenReturn(order);
         when(orderMapper.findItemsByOrderId(88L)).thenReturn(List.of(orderItem(2102L, 2)));
-        when(inventoryMapper.releaseLockedStock(2102L, 2)).thenReturn(1);
         when(orderMapper.updateOrderClosed(88L, "CANCELLED", "用户不想买了")).thenReturn(1);
 
         var response = service.cancelOrder(10L, "ORDCANCEL1", new CancelOrderRequest("用户不想买了"));
@@ -251,7 +249,7 @@ class OrderServiceTests {
         assertThatThrownBy(() -> service.cancelOrder(10L, "ORDPAID1", new CancelOrderRequest("用户不想买了")))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessage("paid order cannot be cancelled in this phase");
-        verify(inventoryMapper, never()).releaseLockedStock(any(), any());
+        verify(inventoryApplicationService, never()).release(any(), any());
         verify(orderMapper, never()).updateOrderClosed(any(), any(), any());
     }
 
@@ -262,7 +260,7 @@ class OrderServiceTests {
 
         service.closeExpiredOrder("ORDPAID1", "TIMEOUT_UNPAID_30_MINUTES");
 
-        verify(inventoryMapper, never()).releaseLockedStock(any(), any());
+        verify(inventoryApplicationService, never()).release(any(), any());
         verify(orderMapper, never()).updateOrderClosed(any(), any(), any());
     }
 
@@ -271,13 +269,12 @@ class OrderServiceTests {
         SalesOrder order = salesOrder(88L, 10L, "ORDTIMEOUT1", "UNPAID");
         when(orderMapper.findOrderByOrderNoForUpdate("ORDTIMEOUT1")).thenReturn(order);
         when(orderMapper.findItemsByOrderId(88L)).thenReturn(List.of(orderItem(2203L, 1)));
-        when(inventoryMapper.releaseLockedStock(2203L, 1)).thenReturn(1);
         when(orderMapper.updateOrderClosed(88L, "CLOSED", "TIMEOUT_UNPAID_30_MINUTES")).thenReturn(1);
 
         service.closeExpiredOrder("ORDTIMEOUT1", "TIMEOUT_UNPAID_30_MINUTES");
 
         verify(orderMapper).updateOrderClosed(88L, "CLOSED", "TIMEOUT_UNPAID_30_MINUTES");
-        verify(inventoryMapper).releaseLockedStock(eq(2203L), eq(1));
+        verify(inventoryApplicationService).release(eq(2203L), eq(1));
     }
 
     @Test

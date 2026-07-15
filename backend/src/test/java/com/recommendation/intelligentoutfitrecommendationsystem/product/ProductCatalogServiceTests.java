@@ -14,6 +14,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.product.model.Re
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidateSnapshot;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.SkuSearchItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.service.ProductCatalogService;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.service.RecommendationCandidateQueryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -45,6 +46,7 @@ class ProductCatalogServiceTests {
     private RedisCacheService redisCacheService;
 
     private ProductCatalogService service;
+    private RecommendationCandidateQueryService candidateService;
 
     @BeforeEach
     void setUp() {
@@ -52,6 +54,8 @@ class ProductCatalogServiceTests {
         cacheTtlProperties.setProductDetailJitterMinutes(0);
         cacheTtlProperties.setRecommendationCandidatesJitterMinutes(0);
         service = new ProductCatalogService(productMapper, redisCacheService, cacheTtlProperties);
+        candidateService = new RecommendationCandidateQueryService(
+                productMapper, redisCacheService, cacheTtlProperties);
     }
 
     @Test
@@ -128,7 +132,7 @@ class ProductCatalogServiceTests {
         when(productMapper.findRecommendationCandidateLiveFacts(List.of(2101L)))
                 .thenReturn(List.of(recommendationLiveFact(2101L, 299, 11)));
 
-        var candidates = service.findRecommendationCandidates(query);
+        var candidates = candidateService.findCandidates(query);
 
         assertThat(candidates).extracting(RecommendationCandidate::getSpuCode)
                 .containsExactly("JACKET_COMMUTE_001");
@@ -146,7 +150,7 @@ class ProductCatalogServiceTests {
         when(productMapper.findRecommendationCandidateLiveFacts(List.of(2101L)))
                 .thenReturn(List.of(recommendationLiveFact(2101L, 299, 11)));
 
-        service.findRecommendationCandidates(query);
+        candidateService.findCandidates(query);
 
         ArgumentCaptor<RecommendationCandidateQuery> queryCaptor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
         verify(productMapper).findRecommendationCandidateSnapshots(queryCaptor.capture());
@@ -161,7 +165,7 @@ class ProductCatalogServiceTests {
         when(productMapper.findRecommendationCandidateLiveFacts(List.of(2101L)))
                 .thenReturn(List.of(recommendationLiveFact(2101L, 259, 7)));
 
-        var candidates = service.findRecommendationCandidates(query);
+        var candidates = candidateService.findCandidates(query);
 
         assertThat(candidates).extracting(RecommendationCandidate::getSpuCode)
                 .containsExactly("JACKET_COMMUTE_001");
@@ -189,7 +193,7 @@ class ProductCatalogServiceTests {
                         recommendationLiveFact(2103L, 250, 5)
                 ));
 
-        var candidates = service.findRecommendationCandidates(query);
+        var candidates = candidateService.findCandidates(query);
 
         assertThat(candidates).extracting(RecommendationCandidate::getSkuId)
                 .containsExactly(2103L);
@@ -210,8 +214,8 @@ class ProductCatalogServiceTests {
         when(productMapper.findRecommendationCandidateLiveFacts(List.of(2101L)))
                 .thenReturn(List.of(recommendationLiveFact(2101L, 299, 11)));
 
-        service.findRecommendationCandidates(maleQuery);
-        service.findRecommendationCandidates(femaleQuery);
+        candidateService.findCandidates(maleQuery);
+        candidateService.findCandidates(femaleQuery);
 
         ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
         verify(redisCacheService, org.mockito.Mockito.times(2))
@@ -229,8 +233,8 @@ class ProductCatalogServiceTests {
         when(productMapper.findRecommendationCandidateLiveFacts(List.of(2101L)))
                 .thenReturn(List.of(recommendationLiveFact(2101L, 299, 11)));
 
-        service.findRecommendationCandidates(lowBudgetQuery);
-        service.findRecommendationCandidates(highBudgetQuery);
+        candidateService.findCandidates(lowBudgetQuery);
+        candidateService.findCandidates(highBudgetQuery);
 
         ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
         verify(redisCacheService, org.mockito.Mockito.times(2))

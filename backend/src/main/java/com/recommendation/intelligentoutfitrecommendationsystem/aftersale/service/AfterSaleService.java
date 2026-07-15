@@ -7,8 +7,8 @@ import com.recommendation.intelligentoutfitrecommendationsystem.aftersale.mapper
 import com.recommendation.intelligentoutfitrecommendationsystem.aftersale.model.AfterSaleRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
-import com.recommendation.intelligentoutfitrecommendationsystem.order.mapper.OrderMapper;
-import com.recommendation.intelligentoutfitrecommendationsystem.order.model.SalesOrder;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.service.OrderApplicationService;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.service.OrderApplicationService.OrderView;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,11 +41,11 @@ public class AfterSaleService {
 
     private final AfterSaleMapper afterSaleMapper;
 
-    private final OrderMapper orderMapper;
+    private final OrderApplicationService orderApplicationService;
 
-    public AfterSaleService(AfterSaleMapper afterSaleMapper, OrderMapper orderMapper) {
+    public AfterSaleService(AfterSaleMapper afterSaleMapper, OrderApplicationService orderApplicationService) {
         this.afterSaleMapper = afterSaleMapper;
-        this.orderMapper = orderMapper;
+        this.orderApplicationService = orderApplicationService;
     }
 
     @Transactional
@@ -55,26 +55,26 @@ public class AfterSaleService {
         String type = normalizeType(request == null ? null : request.type());
         String reason = normalizeRequiredText(request == null ? null : request.reason(), "reason");
 
-        SalesOrder order = orderMapper.findOrderByUserIdAndOrderNoForUpdate(userId, orderNo);
+        OrderView order = orderApplicationService.lockOwnedOrder(userId, orderNo);
         if (order == null) {
             throw new ResourceNotFoundException("order not found: " + orderNo);
         }
-        if (!PAID_STATUS.equals(order.getStatus())) {
+        if (!PAID_STATUS.equals(order.status())) {
             throw new BadRequestException("only paid orders can request after-sale service: " + orderNo);
         }
-        if (afterSaleMapper.findOpenByOrderId(order.getId()) != null) {
+        if (afterSaleMapper.findOpenByOrderId(order.id()) != null) {
             throw new BadRequestException("after-sale request already exists for order: " + orderNo);
         }
 
         AfterSaleRequest afterSale = new AfterSaleRequest();
         afterSale.setRequestNo(generateRequestNo());
-        afterSale.setOrderId(order.getId());
-        afterSale.setOrderNo(order.getOrderNo());
-        afterSale.setUserId(order.getUserId());
+        afterSale.setOrderId(order.id());
+        afterSale.setOrderNo(order.orderNo());
+        afterSale.setUserId(order.userId());
         afterSale.setType(type);
         afterSale.setReason(reason);
         afterSale.setStatus(REQUESTED_STATUS);
-        afterSale.setRefundAmount(order.getTotalAmount());
+        afterSale.setRefundAmount(order.totalAmount());
         afterSaleMapper.insert(afterSale);
         return toResponse(afterSale);
     }

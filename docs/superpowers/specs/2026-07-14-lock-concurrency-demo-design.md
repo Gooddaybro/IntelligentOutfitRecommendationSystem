@@ -8,7 +8,7 @@
 
 - 生产库存路径保持不动；当前 `OrderService` 使用事务，`InventoryMapper.lockStock` 使用 `available_stock >= quantity` 条件更新。
 - 现有未跟踪的 `backend/src/main/java/com/recommendation/learning/OversellingLockDemo.java` 保留，不覆盖、不重命名。
-- 新 Demo 放在 `com.recommendation.learning` 包下，只使用 JDK 并发工具。
+- 新 Demo 放在测试源码集的 `com.recommendation.learning` 包下，只使用 JDK 并发工具，不进入生产 JAR。
 
 ## 设计
 
@@ -20,7 +20,7 @@
 
 ### 文件职责
 
-- `LockConcurrencyTraceDemo.java`：库存状态、并发编排、轨迹输出和三个 learner-owned 核心方法。
+- `backend/src/test/java/com/recommendation/learning/LockConcurrencyTraceDemo.java`：库存状态、并发编排、轨迹输出和三个 learner-owned 核心方法。
 - `LockConcurrencyTraceDemoTest.java`：验证三个场景的成功数、最终库存、版本号和关键轨迹。
 
 ### 学习边界
@@ -40,6 +40,7 @@ cd backend
 
 ```powershell
 cd backend
-java -cp target/classes com.recommendation.learning.LockConcurrencyTraceDemo
+.\mvnw.cmd -q test-compile
+java -cp target/test-classes com.recommendation.learning.LockConcurrencyTraceDemo
 ```
 

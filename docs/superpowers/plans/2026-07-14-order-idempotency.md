@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Implementation status (2026-07-14):** Code and automated H2 verification complete. Real MySQL Testcontainers execution is blocked because this machine has no Docker daemon; full Checkstyle is blocked only by 18 pre-existing learning-demo violations.
+**Implementation status (updated 2026-07-15):** Code and automated H2 verification complete. Learning demos have been moved out of production sources, so full Maven verify and Checkstyle now pass. Real MySQL Testcontainers execution remains blocked because this machine has no Docker daemon.
 
 **Goal:** Make cart checkout and buy-now idempotent for 24 hours with a client UUID, a MySQL unique constraint, atomic order creation, safe replay, conflict detection, and bounded cleanup.
 

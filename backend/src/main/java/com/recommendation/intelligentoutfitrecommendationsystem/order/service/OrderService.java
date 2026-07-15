@@ -5,7 +5,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service
 import com.recommendation.intelligentoutfitrecommendationsystem.cart.service.CartService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
-import com.recommendation.intelligentoutfitrecommendationsystem.inventory.mapper.InventoryMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.inventory.service.InventoryApplicationService;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.BuyNowRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.CancelOrderRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.CreateOrderRequest;
@@ -54,7 +54,7 @@ public class OrderService {
 
     private final OrderMapper orderMapper;
 
-    private final InventoryMapper inventoryMapper;
+    private final InventoryApplicationService inventoryApplicationService;
 
     private final CartService cartService;
 
@@ -66,14 +66,14 @@ public class OrderService {
 
     public OrderService(
             OrderMapper orderMapper,
-            InventoryMapper inventoryMapper,
+            InventoryApplicationService inventoryApplicationService,
             CartService cartService,
             BehaviorEventService behaviorEventService,
             OrderIdempotencyCoordinator idempotencyCoordinator,
             OrderRequestFingerprint requestFingerprint
     ) {
         this.orderMapper = orderMapper;
-        this.inventoryMapper = inventoryMapper;
+        this.inventoryApplicationService = inventoryApplicationService;
         this.cartService = cartService;
         this.behaviorEventService = behaviorEventService;
         this.idempotencyCoordinator = idempotencyCoordinator;
@@ -318,18 +318,12 @@ public class OrderService {
     }
 
     private void lockStock(OrderCheckoutItem item) {
-        int affectedRows = inventoryMapper.lockStock(item.getSkuId(), item.getQuantity());
-        if (affectedRows == 0) {
-            throw new BadRequestException("insufficient stock for sku: " + item.getSkuId());
-        }
+        inventoryApplicationService.lock(item.getSkuId(), item.getQuantity());
     }
 
     private void releaseLockedStock(SalesOrder order) {
         for (OrderItem item : orderMapper.findItemsByOrderId(order.getId())) {
-            int affectedRows = inventoryMapper.releaseLockedStock(item.getSkuId(), item.getQuantity());
-            if (affectedRows == 0) {
-                throw new BadRequestException("locked stock is inconsistent for sku: " + item.getSkuId());
-            }
+            inventoryApplicationService.release(item.getSkuId(), item.getQuantity());
         }
     }
 

@@ -21,7 +21,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.behavior.dto.Beh
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ExternalServiceException;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.ConversationResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.MessageResponse;
-import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationService;
+import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationApplicationService;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserBodyDataResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserPreferencesResponse;
@@ -52,7 +52,7 @@ public class AssistantService {
 
     private static final int TITLE_MAX_LENGTH = 30;
 
-    private final ConversationService conversationService;
+    private final ConversationApplicationService conversationService;
     private final AssistantContextService assistantContextService;
     private final AssistantRateLimitService assistantRateLimitService;
     private final PythonAssistantClient pythonAssistantClient;
@@ -62,7 +62,7 @@ public class AssistantService {
     private final long streamTimeoutMs;
 
     public AssistantService(
-            ConversationService conversationService,
+            ConversationApplicationService conversationService,
             AssistantContextService assistantContextService,
             AssistantRateLimitService assistantRateLimitService,
             PythonAssistantClient pythonAssistantClient,
@@ -164,7 +164,7 @@ public class AssistantService {
         }
         String threadId = request.threadId().trim();
         // 复用旧会话时必须确认归属，不能让前端传入任意 threadId 续写他人上下文。
-        conversationService.requireConversation(userId, threadId);
+        conversationService.assertOwned(userId, threadId);
         return threadId;
     }
 

@@ -4,7 +4,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.common.api.ApiRe
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.ConversationResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.CreateConversationRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.MessageResponse;
-import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationService;
+import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationApplicationService;
 import com.recommendation.intelligentoutfitrecommendationsystem.security.CurrentUser;
 import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
@@ -27,9 +27,9 @@ import java.util.List;
 @RequestMapping("/api/conversations")
 public class ConversationController {
 
-    private final ConversationService conversationService;
+    private final ConversationApplicationService conversationService;
 
-    public ConversationController(ConversationService conversationService) {
+    public ConversationController(ConversationApplicationService conversationService) {
         this.conversationService = conversationService;
     }
 

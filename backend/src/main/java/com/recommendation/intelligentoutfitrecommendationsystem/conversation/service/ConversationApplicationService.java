@@ -19,14 +19,14 @@ import java.util.UUID;
  * 所有读写都以 userId + threadId 做边界校验，避免前端或 AI 链路通过 threadId 访问其他用户会话。
  */
 @Service
-public class ConversationService {
+public class ConversationApplicationService {
 
     private static final String ACTIVE_STATUS = "active";
     private static final String SUCCEEDED_STATUS = "succeeded";
 
     private final ConversationMapper conversationMapper;
 
-    public ConversationService(ConversationMapper conversationMapper) {
+    public ConversationApplicationService(ConversationMapper conversationMapper) {
         this.conversationMapper = conversationMapper;
     }
 
@@ -85,7 +85,19 @@ public class ConversationService {
         return toMessageResponse(message);
     }
 
-    public ChatSession requireConversation(Long userId, String threadId) {
+    /**
+     * 验证当前用户拥有指定会话，不向模块外暴露持久化模型。
+     *
+     * @param userId 当前认证用户 ID
+     * @param threadId 前端或 Assistant 提供的会话标识
+     * @throws BadRequestException threadId 为空时抛出
+     * @throws ResourceNotFoundException 会话不存在或不属于当前用户时抛出
+     */
+    public void assertOwned(Long userId, String threadId) {
+        requireConversation(userId, threadId);
+    }
+
+    private ChatSession requireConversation(Long userId, String threadId) {
         if (isBlank(threadId)) {
             throw new BadRequestException("threadId must not be blank");
         }

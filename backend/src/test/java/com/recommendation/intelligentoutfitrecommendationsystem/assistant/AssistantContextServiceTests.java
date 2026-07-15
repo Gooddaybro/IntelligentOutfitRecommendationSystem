@@ -5,9 +5,9 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.As
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.AssistantContextService;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.dto.BehaviorSummaryResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorSummaryService;
-import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationService;
+import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationApplicationService;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.dto.RecommendationCandidateQuery;
-import com.recommendation.intelligentoutfitrecommendationsystem.product.service.ProductCatalogService;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.service.RecommendationCandidateQueryService;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserBodyDataResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserProfileResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.service.UserProfileService;
@@ -29,11 +29,11 @@ class AssistantContextServiceTests {
     @Test
     void extractsBudgetMaxFromNaturalLanguageWhenRequestFilterIsMissing() {
         UserProfileService userProfileService = mock(UserProfileService.class);
-        ProductCatalogService productCatalogService = mock(ProductCatalogService.class);
-        ConversationService conversationService = mock(ConversationService.class);
+        RecommendationCandidateQueryService recommendationCandidateQueryService = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversationService = mock(ConversationApplicationService.class);
         AssistantContextService service = new AssistantContextService(
                 userProfileService,
-                productCatalogService,
+                recommendationCandidateQueryService,
                 conversationService,
                 mock(BehaviorSummaryService.class)
         );
@@ -48,12 +48,12 @@ class AssistantContextServiceTests {
                 null
         );
         when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
-        when(productCatalogService.findRecommendationCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
+        when(recommendationCandidateQueryService.findCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
 
         AssistantContext context = service.buildContext(10L, "thread-budget", request);
 
         ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
-        verify(productCatalogService).findRecommendationCandidates(captor.capture());
+        verify(recommendationCandidateQueryService).findCandidates(captor.capture());
         assertThat(captor.getValue().getBudgetMax()).isEqualTo(500);
         assertThat(context.demandIntent().budgetMax()).isEqualTo(500);
         assertThat(context.demandIntent().hardFilters()).contains("budgetMax");
@@ -62,11 +62,11 @@ class AssistantContextServiceTests {
     @Test
     void explicitBudgetMaxWinsOverMessageBudget() {
         UserProfileService userProfileService = mock(UserProfileService.class);
-        ProductCatalogService productCatalogService = mock(ProductCatalogService.class);
-        ConversationService conversationService = mock(ConversationService.class);
+        RecommendationCandidateQueryService recommendationCandidateQueryService = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversationService = mock(ConversationApplicationService.class);
         AssistantContextService service = new AssistantContextService(
                 userProfileService,
-                productCatalogService,
+                recommendationCandidateQueryService,
                 conversationService,
                 mock(BehaviorSummaryService.class)
         );
@@ -81,23 +81,23 @@ class AssistantContextServiceTests {
                 300
         );
         when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
-        when(productCatalogService.findRecommendationCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
+        when(recommendationCandidateQueryService.findCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
 
         service.buildContext(10L, "thread-budget", request);
 
         ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
-        verify(productCatalogService).findRecommendationCandidates(captor.capture());
+        verify(recommendationCandidateQueryService).findCandidates(captor.capture());
         assertThat(captor.getValue().getBudgetMax()).isEqualTo(300);
     }
 
     @Test
     void messageMaleDemandSetsRecommendationGenderToMale() {
         UserProfileService userProfileService = mock(UserProfileService.class);
-        ProductCatalogService productCatalogService = mock(ProductCatalogService.class);
-        ConversationService conversationService = mock(ConversationService.class);
+        RecommendationCandidateQueryService recommendationCandidateQueryService = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversationService = mock(ConversationApplicationService.class);
         AssistantContextService service = new AssistantContextService(
                 userProfileService,
-                productCatalogService,
+                recommendationCandidateQueryService,
                 conversationService,
                 mock(BehaviorSummaryService.class)
         );
@@ -113,12 +113,12 @@ class AssistantContextServiceTests {
                 null
         );
         when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
-        when(productCatalogService.findRecommendationCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
+        when(recommendationCandidateQueryService.findCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
 
         AssistantContext context = service.buildContext(10L, "thread-gender", request);
 
         ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
-        verify(productCatalogService).findRecommendationCandidates(captor.capture());
+        verify(recommendationCandidateQueryService).findCandidates(captor.capture());
         assertThat(captor.getValue().getGender()).isEqualTo("male");
         assertThat(context.demandIntent().targetGender()).isEqualTo("male");
         assertThat(context.demandIntent().hardFilters()).containsExactly("targetGender");
@@ -127,11 +127,11 @@ class AssistantContextServiceTests {
     @Test
     void messageSkirtDemandSetsRecommendationCategoryToSkirtCategory() {
         UserProfileService userProfileService = mock(UserProfileService.class);
-        ProductCatalogService productCatalogService = mock(ProductCatalogService.class);
-        ConversationService conversationService = mock(ConversationService.class);
+        RecommendationCandidateQueryService recommendationCandidateQueryService = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversationService = mock(ConversationApplicationService.class);
         AssistantContextService service = new AssistantContextService(
                 userProfileService,
-                productCatalogService,
+                recommendationCandidateQueryService,
                 conversationService
         );
         AssistantChatRequest request = new AssistantChatRequest(
@@ -146,12 +146,12 @@ class AssistantContextServiceTests {
                 null
         );
         when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
-        when(productCatalogService.findRecommendationCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
+        when(recommendationCandidateQueryService.findCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
 
         AssistantContext context = service.buildContext(10L, "thread-category", request);
 
         ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
-        verify(productCatalogService).findRecommendationCandidates(captor.capture());
+        verify(recommendationCandidateQueryService).findCandidates(captor.capture());
         assertThat(captor.getValue().getCategory()).isEqualTo("半裙");
         assertThat(context.demandIntent().targetGender()).isEqualTo("female");
         assertThat(context.demandIntent().category()).isEqualTo("半裙");
@@ -161,11 +161,11 @@ class AssistantContextServiceTests {
     @Test
     void demandIntentExtractsCommuteSceneStyleAndBudget() {
         UserProfileService userProfileService = mock(UserProfileService.class);
-        ProductCatalogService productCatalogService = mock(ProductCatalogService.class);
-        ConversationService conversationService = mock(ConversationService.class);
+        RecommendationCandidateQueryService recommendationCandidateQueryService = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversationService = mock(ConversationApplicationService.class);
         AssistantContextService service = new AssistantContextService(
                 userProfileService,
-                productCatalogService,
+                recommendationCandidateQueryService,
                 conversationService
         );
         AssistantChatRequest request = new AssistantChatRequest(
@@ -179,12 +179,12 @@ class AssistantContextServiceTests {
                 null
         );
         when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
-        when(productCatalogService.findRecommendationCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
+        when(recommendationCandidateQueryService.findCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
 
         AssistantContext context = service.buildContext(10L, "thread-intent", request);
 
         ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
-        verify(productCatalogService).findRecommendationCandidates(captor.capture());
+        verify(recommendationCandidateQueryService).findCandidates(captor.capture());
         assertThat(captor.getValue().getGender()).isEqualTo("female");
         assertThat(captor.getValue().getStyle()).isEqualTo("commute");
         assertThat(captor.getValue().getBudgetMax()).isEqualTo(500);
@@ -198,11 +198,11 @@ class AssistantContextServiceTests {
     @Test
     void winterWarmDemandUsesWinterSeasonCandidateFilter() {
         UserProfileService userProfileService = mock(UserProfileService.class);
-        ProductCatalogService productCatalogService = mock(ProductCatalogService.class);
-        ConversationService conversationService = mock(ConversationService.class);
+        RecommendationCandidateQueryService recommendationCandidateQueryService = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversationService = mock(ConversationApplicationService.class);
         AssistantContextService service = new AssistantContextService(
                 userProfileService,
-                productCatalogService,
+                recommendationCandidateQueryService,
                 conversationService
         );
         AssistantChatRequest request = new AssistantChatRequest(
@@ -216,12 +216,12 @@ class AssistantContextServiceTests {
                 null
         );
         when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
-        when(productCatalogService.findRecommendationCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
+        when(recommendationCandidateQueryService.findCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
 
         AssistantContext context = service.buildContext(10L, "thread-winter-warm", request);
 
         ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
-        verify(productCatalogService).findRecommendationCandidates(captor.capture());
+        verify(recommendationCandidateQueryService).findCandidates(captor.capture());
         assertThat(captor.getValue().getSeason()).isEqualTo("winter");
         assertThat(context.demandIntent().attributes()).contains("保暖");
     }
@@ -229,11 +229,11 @@ class AssistantContextServiceTests {
     @Test
     void versatileDemandUsesExistingStyleCodeInsteadOfBasic() {
         UserProfileService userProfileService = mock(UserProfileService.class);
-        ProductCatalogService productCatalogService = mock(ProductCatalogService.class);
-        ConversationService conversationService = mock(ConversationService.class);
+        RecommendationCandidateQueryService recommendationCandidateQueryService = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversationService = mock(ConversationApplicationService.class);
         AssistantContextService service = new AssistantContextService(
                 userProfileService,
-                productCatalogService,
+                recommendationCandidateQueryService,
                 conversationService
         );
         AssistantChatRequest request = new AssistantChatRequest(
@@ -247,12 +247,12 @@ class AssistantContextServiceTests {
                 null
         );
         when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
-        when(productCatalogService.findRecommendationCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
+        when(recommendationCandidateQueryService.findCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
 
         AssistantContext context = service.buildContext(10L, "thread-versatile", request);
 
         ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
-        verify(productCatalogService).findRecommendationCandidates(captor.capture());
+        verify(recommendationCandidateQueryService).findCandidates(captor.capture());
         assertThat(captor.getValue().getStyle()).isEqualTo("minimal");
         assertThat(context.demandIntent().style()).contains("minimal").doesNotContain("basic");
     }
@@ -260,11 +260,11 @@ class AssistantContextServiceTests {
     @Test
     void synonymWarmOuterwearDemandMapsToWinterOuterwearIntent() {
         UserProfileService userProfileService = mock(UserProfileService.class);
-        ProductCatalogService productCatalogService = mock(ProductCatalogService.class);
-        ConversationService conversationService = mock(ConversationService.class);
+        RecommendationCandidateQueryService recommendationCandidateQueryService = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversationService = mock(ConversationApplicationService.class);
         AssistantContextService service = new AssistantContextService(
                 userProfileService,
-                productCatalogService,
+                recommendationCandidateQueryService,
                 conversationService
         );
         AssistantChatRequest request = new AssistantChatRequest(
@@ -278,12 +278,12 @@ class AssistantContextServiceTests {
                 null
         );
         when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
-        when(productCatalogService.findRecommendationCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
+        when(recommendationCandidateQueryService.findCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
 
         AssistantContext context = service.buildContext(10L, "thread-synonym-warm", request);
 
         ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
-        verify(productCatalogService).findRecommendationCandidates(captor.capture());
+        verify(recommendationCandidateQueryService).findCandidates(captor.capture());
         assertThat(captor.getValue().getCategory()).isEqualTo("外套");
         assertThat(captor.getValue().getSeason()).isEqualTo("winter");
         assertThat(context.demandIntent().attributes()).contains("保暖");
@@ -292,11 +292,11 @@ class AssistantContextServiceTests {
     @Test
     void studentDailyBudgetVisualDemandStaysSoftWithoutNumericBudget() {
         UserProfileService userProfileService = mock(UserProfileService.class);
-        ProductCatalogService productCatalogService = mock(ProductCatalogService.class);
-        ConversationService conversationService = mock(ConversationService.class);
+        RecommendationCandidateQueryService recommendationCandidateQueryService = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversationService = mock(ConversationApplicationService.class);
         AssistantContextService service = new AssistantContextService(
                 userProfileService,
-                productCatalogService,
+                recommendationCandidateQueryService,
                 conversationService
         );
         AssistantChatRequest request = new AssistantChatRequest(
@@ -310,12 +310,12 @@ class AssistantContextServiceTests {
                 null
         );
         when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
-        when(productCatalogService.findRecommendationCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
+        when(recommendationCandidateQueryService.findCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
 
         AssistantContext context = service.buildContext(10L, "thread-student-soft", request);
 
         ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
-        verify(productCatalogService).findRecommendationCandidates(captor.capture());
+        verify(recommendationCandidateQueryService).findCandidates(captor.capture());
         assertThat(captor.getValue().getBudgetMax()).isNull();
         assertThat(context.demandIntent().budgetMax()).isNull();
         assertThat(context.demandIntent().scene()).contains("campus", "daily");
@@ -326,11 +326,11 @@ class AssistantContextServiceTests {
     @Test
     void messageFemaleRecipientOverridesMaleProfileGender() {
         UserProfileService userProfileService = mock(UserProfileService.class);
-        ProductCatalogService productCatalogService = mock(ProductCatalogService.class);
-        ConversationService conversationService = mock(ConversationService.class);
+        RecommendationCandidateQueryService recommendationCandidateQueryService = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversationService = mock(ConversationApplicationService.class);
         AssistantContextService service = new AssistantContextService(
                 userProfileService,
-                productCatalogService,
+                recommendationCandidateQueryService,
                 conversationService,
                 mock(BehaviorSummaryService.class)
         );
@@ -350,23 +350,23 @@ class AssistantContextServiceTests {
         when(userProfileService.getBodyData(10L))
                 .thenReturn(new UserBodyDataResponse(10L, null, null, "male", null, null, null, null, null));
         when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
-        when(productCatalogService.findRecommendationCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
+        when(recommendationCandidateQueryService.findCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
 
         service.buildContext(10L, "thread-gender", request);
 
         ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
-        verify(productCatalogService).findRecommendationCandidates(captor.capture());
+        verify(recommendationCandidateQueryService).findCandidates(captor.capture());
         assertThat(captor.getValue().getGender()).isEqualTo("female");
     }
 
     @Test
     void profileGenderIsUsedWhenMessageDoesNotMentionGender() {
         UserProfileService userProfileService = mock(UserProfileService.class);
-        ProductCatalogService productCatalogService = mock(ProductCatalogService.class);
-        ConversationService conversationService = mock(ConversationService.class);
+        RecommendationCandidateQueryService recommendationCandidateQueryService = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversationService = mock(ConversationApplicationService.class);
         AssistantContextService service = new AssistantContextService(
                 userProfileService,
-                productCatalogService,
+                recommendationCandidateQueryService,
                 conversationService,
                 mock(BehaviorSummaryService.class)
         );
@@ -396,24 +396,24 @@ class AssistantContextServiceTests {
                         null
                 ));
         when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
-        when(productCatalogService.findRecommendationCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
+        when(recommendationCandidateQueryService.findCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
 
         service.buildContext(10L, "thread-gender", request);
 
         ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
-        verify(productCatalogService).findRecommendationCandidates(captor.capture());
+        verify(recommendationCandidateQueryService).findCandidates(captor.capture());
         assertThat(captor.getValue().getGender()).isEqualTo("female");
     }
 
     @Test
     void assistantContextIncludesBehaviorSummary() {
         UserProfileService userProfileService = mock(UserProfileService.class);
-        ProductCatalogService productCatalogService = mock(ProductCatalogService.class);
-        ConversationService conversationService = mock(ConversationService.class);
+        RecommendationCandidateQueryService recommendationCandidateQueryService = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversationService = mock(ConversationApplicationService.class);
         BehaviorSummaryService behaviorSummaryService = mock(BehaviorSummaryService.class);
         AssistantContextService service = new AssistantContextService(
                 userProfileService,
-                productCatalogService,
+                recommendationCandidateQueryService,
                 conversationService,
                 behaviorSummaryService
         );
@@ -438,7 +438,7 @@ class AssistantContextServiceTests {
         );
         when(behaviorSummaryService.getSummary(10L)).thenReturn(summary);
         when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
-        when(productCatalogService.findRecommendationCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
+        when(recommendationCandidateQueryService.findCandidates(org.mockito.Mockito.any())).thenReturn(List.of());
 
         var context = service.buildContext(10L, "thread-behavior", request);
 

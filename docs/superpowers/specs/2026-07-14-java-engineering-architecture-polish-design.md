@@ -1,6 +1,8 @@
 # Java 成熟工程架构润色设计
 
-> **状态：** 设计方向已确认；Java AI 调用治理、Python 内部鉴权与 Redis 方案 A 已实现，后续阶段待推进`r`n> **日期：** 2026-07-14  
+> **状态：** 设计方向已确认；第一周可信基线代码已落地，真实基础设施门禁仍需补验，后续阶段待推进
+>
+> **日期：** 2026-07-14
 > **目标：** 在不盲目拆微服务的前提下，用四周左右的有效开发时间，把当前 Java 后端提升为边界清晰、正确性可证明、故障可恢复、运行可观察、异步任务可靠的模块化单体。  
 > **协作约束：** LangGraph 主体仍由另一台电脑并行推进；本机只补齐了 Python HTTP 边界的内部鉴权，并继续以 Java 后端工程化为主。
 
@@ -313,6 +315,12 @@ UNIQUE(user_id, idempotency_key)
 - Redis Lua 集成测试通过；
 - 并发重复下单只产生一个业务结果。
 
+### 学习 Demo 隔离实施状态（2026-07-15）
+
+- `com.recommendation.learning` 已从 `src/main/java` 移到 `src/test/java`，不再进入生产 JAR，也不再污染生产 Checkstyle；
+- 并发锁 Demo 仍由 `LockConcurrencyTraceDemoTest` 自动验证，并可从 `target/test-classes` 运行时间线；
+- 学习代码内容和 learner-owned 方法均保留，本次只调整 Maven 源码集边界。
+
 ## 5.2 第二周：把模块化单体做实
 
 ### 目标
@@ -427,6 +435,34 @@ Assistant 不直接依赖 Conversation 内部 Mapper 或 Model。
 - Assistant 通过公开查询 Interface 获取候选与会话；
 - 没有批量创建一实现一接口的无用抽象；
 - 架构依赖图和表所有权文档与代码一致。
+
+### 第二周 Phase A 实施状态（2026-07-15）
+
+- 已新增 `docs/architecture/java-module-boundaries.md`，记录逻辑模块、依赖方向、表所有权与临时例外；
+- ArchUnit 已加入 Maven 测试门禁，验证顶层包无环、Controller 不访问 Mapper、`common` 不反向依赖业务模块；
+- 跨模块 Mapper 规则只保留 `PaymentService -> OrderMapper` 和 `AfterSaleService -> OrderMapper` 两个显式临时例外；
+- 已建立具体的 `InventoryApplicationService`，由它统一实现 `lock`、`confirm`、`release` 的参数和失败语义；
+- `OrderService` 与 `PaymentService` 不再直接依赖 `InventoryMapper`，事务边界仍由订单和支付用例持有；
+- 2026-07-15 全量 `mvnw.cmd verify` 共发现 `236` 个测试，`0` 失败、`0` 错误、`5` 个环境型跳过，Checkstyle 为 `0` 违规；
+- Catalog Candidate Query、Conversation Application Service 和两个 OrderMapper 临时例外仍属于第二周后续工作，本阶段不宣称第二周完成。
+
+### 第二周 Phase B 实施状态（2026-07-15）
+
+- 已从 `ProductCatalogService` 提取完整的 `RecommendationCandidateQueryService`，静态缓存、实时事实补齐、可售过滤和排序规则保持在同一个深模块中；
+- 商品公开 API、internal API 和 Assistant 上下文组装统一调用候选查询边界，不保留浅层委托方法；
+- 原 `ConversationService` 已提升为 `ConversationApplicationService`，公开会话归属校验只返回成功/异常，不再向 Assistant 暴露 `ChatSession` 持久化模型；
+- Assistant 只通过候选查询和会话应用服务访问 Product/Conversation 模块，ArchUnit 已禁止重新依赖旧服务、会话 Mapper 或会话 Model；
+- Phase B 全量验证：`backend\\mvnw.cmd verify` 通过，共运行 237 个测试，0 失败、0 错误、5 跳过，Checkstyle 0 违规；
+- `PaymentService -> OrderMapper`、`AfterSaleService -> OrderMapper` 仍是两个显式临时例外，属于下一阶段；本阶段仍不宣称第二周完成。
+
+### 第二周 Phase C 实施状态（2026-07-15）
+
+- 已建立 `OrderApplicationService`，用不可变 `OrderView`、`OrderItemView` 隔离 `SalesOrder`、`OrderItem` 和 `OrderMapper`；
+- Payment 通过订单应用边界锁定用户订单/回调订单、读取支付所需明细并确认订单已支付，外层支付事务语义保持不变；
+- AfterSale 通过同一边界锁定用户订单并读取退款依据，不再直接访问订单持久化层；
+- ArchUnit 已删除全部跨模块 Mapper 临时白名单，任何新增跨模块 Mapper 访问都会导致测试失败；
+- 第二周完成标准中的架构门禁、无环依赖、Inventory/Catalog/Conversation/Order 边界及表所有权文档均已落地。
+- Phase C 全量验证：`backend\\mvnw.cmd verify` 通过，共运行 241 个测试，0 失败、0 错误、5 跳过，Checkstyle 0 违规；第二周模块化单体治理完成。
 
 ## 5.3 第三周：可靠性、可观测性与反馈闭环
 
@@ -926,7 +962,7 @@ flowchart LR
 - Java 全量测试：198 个测试通过，0 失败，0 错误，2 个跳过；
 - Assistant 生产代码 Checkstyle：0 违规；
 - 依赖树仅新增 `resilience4j-circuitbreaker` 与其 `resilience4j-core`；
-- 全量 `mvnw.cmd verify` 尚未全绿：测试和打包通过，但被既有学习 Demo 的 18 个 Checkstyle 违规阻断；涉及 `CacheBreakdownDemo.java`、`CachePenetrationDemo.java`、`MQOutfitDemo.java`、`MQProductionDemo.java`。本轮未擅自修改学习代码；
+- 2026-07-15 已将完整 `com.recommendation.learning` 包移到测试源码集；全量 `mvnw.cmd verify` 通过，生产 Checkstyle 为 `0` 违规，学习类不进入生产 JAR；
 - Python 端现已强制校验 `X-Internal-Token`，Java 发送与 Python 拒绝/接受两侧均有自动测试；尚未启动两个真实进程执行跨服务 Smoke Test，因此不把“双方单测通过”等同于完整端到端验收；
 - Redis 方案 A 与订单创建幂等已经落地；ArchUnit、Actuator、RabbitMQ/Outbox 仍按前文章节继续推进。
 
@@ -1032,7 +1068,7 @@ docs/superpowers/specs/2026-07-14-order-idempotency-design.md
 - 下单失败时幂等占位与库存、订单一起回滚，同一 Key 可以安全重试；
 - 请求摘要冲突返回 HTTP 409；重放查询继续校验用户归属；
 - 过期 Key 采用定时批量清理，并在冲突解析到过期记录时执行一次有界删除重试；
-- 全量测试 `224` 个全部通过（`5` 个环境型跳过）；全量 Checkstyle 仍被既有学习 Demo 的 `18` 个违规阻断；
+- 2026-07-15 全量 `mvnw.cmd verify` 共发现 `227` 个测试，`0` 失败、`0` 错误、`5` 个环境型跳过；全量 Checkstyle 为 `0` 违规；
 - 真实 MySQL 并发 Testcontainers 用例已编写，但本机缺少 Docker 环境，仍需在 CI 或 Docker 可用机器完成最终门禁。
 
 ### 15.2 对应工程知识

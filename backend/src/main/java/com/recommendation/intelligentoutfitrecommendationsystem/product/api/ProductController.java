@@ -6,6 +6,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.product.model.Pr
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.ProductSearchItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.service.ProductCatalogService;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.service.RecommendationCandidateQueryService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,9 +23,14 @@ import java.util.List;
 public class ProductController {
 
     private final ProductCatalogService productCatalogService;
+    private final RecommendationCandidateQueryService recommendationCandidateQueryService;
 
-    public ProductController(ProductCatalogService productCatalogService) {
+    public ProductController(
+            ProductCatalogService productCatalogService,
+            RecommendationCandidateQueryService recommendationCandidateQueryService
+    ) {
         this.productCatalogService = productCatalogService;
+        this.recommendationCandidateQueryService = recommendationCandidateQueryService;
     }
 
     /**
@@ -43,7 +49,7 @@ public class ProductController {
 
     @GetMapping("/recommendation-candidates")
     public ApiResponse<List<RecommendationCandidate>> findRecommendationCandidates(RecommendationCandidateQuery query) {
-        return ApiResponse.ok(productCatalogService.findRecommendationCandidates(query));
+        return ApiResponse.ok(recommendationCandidateQueryService.findCandidates(query));
     }
 
     @GetMapping("/{spuId}")

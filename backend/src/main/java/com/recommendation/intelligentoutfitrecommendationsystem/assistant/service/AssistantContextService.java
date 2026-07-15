@@ -4,9 +4,9 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.As
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantContext;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntent;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorSummaryService;
-import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationService;
+import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationApplicationService;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.dto.RecommendationCandidateQuery;
-import com.recommendation.intelligentoutfitrecommendationsystem.product.service.ProductCatalogService;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.service.RecommendationCandidateQueryService;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserBodyDataResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserProfileResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.service.UserProfileService;
@@ -24,30 +24,30 @@ import java.util.List;
 public class AssistantContextService {
 
     private final UserProfileService userProfileService;
-    private final ProductCatalogService productCatalogService;
-    private final ConversationService conversationService;
+    private final RecommendationCandidateQueryService recommendationCandidateQueryService;
+    private final ConversationApplicationService conversationService;
     private final BehaviorSummaryService behaviorSummaryService;
     private final DemandIntentResolver demandIntentResolver = new DemandIntentResolver();
 
     @Autowired
     public AssistantContextService(
             UserProfileService userProfileService,
-            ProductCatalogService productCatalogService,
-            ConversationService conversationService,
+            RecommendationCandidateQueryService recommendationCandidateQueryService,
+            ConversationApplicationService conversationService,
             BehaviorSummaryService behaviorSummaryService
     ) {
         this.userProfileService = userProfileService;
-        this.productCatalogService = productCatalogService;
+        this.recommendationCandidateQueryService = recommendationCandidateQueryService;
         this.conversationService = conversationService;
         this.behaviorSummaryService = behaviorSummaryService;
     }
 
     public AssistantContextService(
             UserProfileService userProfileService,
-            ProductCatalogService productCatalogService,
-            ConversationService conversationService
+            RecommendationCandidateQueryService recommendationCandidateQueryService,
+            ConversationApplicationService conversationService
     ) {
-        this(userProfileService, productCatalogService, conversationService, null);
+        this(userProfileService, recommendationCandidateQueryService, conversationService, null);
     }
 
     public AssistantContext buildContext(Long userId, String threadId, AssistantChatRequest request) {
@@ -70,7 +70,7 @@ public class AssistantContextService {
                 userProfileService.getPreferences(userId),
                 behaviorSummaryService == null ? null : behaviorSummaryService.getSummary(userId),
                 conversationService.getMessages(userId, threadId),
-                productCatalogService.findRecommendationCandidates(query),
+                recommendationCandidateQueryService.findCandidates(query),
                 demandIntent
         );
     }

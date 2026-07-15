@@ -4,10 +4,10 @@ import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorEventService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
-import com.recommendation.intelligentoutfitrecommendationsystem.inventory.mapper.InventoryMapper;
-import com.recommendation.intelligentoutfitrecommendationsystem.order.mapper.OrderMapper;
-import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderItem;
-import com.recommendation.intelligentoutfitrecommendationsystem.order.model.SalesOrder;
+import com.recommendation.intelligentoutfitrecommendationsystem.inventory.service.InventoryApplicationService;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.service.OrderApplicationService;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.service.OrderApplicationService.OrderItemView;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.service.OrderApplicationService.OrderView;
 import com.recommendation.intelligentoutfitrecommendationsystem.payment.dto.CreatePaymentRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.payment.dto.MockPaymentRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.payment.dto.PaymentResponse;
@@ -63,9 +63,9 @@ public class PaymentService {
 
     private final PaymentMapper paymentMapper;
 
-    private final OrderMapper orderMapper;
+    private final OrderApplicationService orderApplicationService;
 
-    private final InventoryMapper inventoryMapper;
+    private final InventoryApplicationService inventoryApplicationService;
 
     private final PaymentStrategyRegistry paymentStrategyRegistry;
 
@@ -75,15 +75,15 @@ public class PaymentService {
 
     public PaymentService(
             PaymentMapper paymentMapper,
-            OrderMapper orderMapper,
-            InventoryMapper inventoryMapper,
+            OrderApplicationService orderApplicationService,
+            InventoryApplicationService inventoryApplicationService,
             PaymentStrategyRegistry paymentStrategyRegistry,
             BehaviorEventService behaviorEventService,
             PaymentCallbackVerifier paymentCallbackVerifier
     ) {
         this.paymentMapper = paymentMapper;
-        this.orderMapper = orderMapper;
-        this.inventoryMapper = inventoryMapper;
+        this.orderApplicationService = orderApplicationService;
+        this.inventoryApplicationService = inventoryApplicationService;
         this.paymentStrategyRegistry = paymentStrategyRegistry;
         this.behaviorEventService = behaviorEventService;
         this.paymentCallbackVerifier = paymentCallbackVerifier;
@@ -117,15 +117,15 @@ public class PaymentService {
         String orderNo = normalizeOrderNo(request == null ? null : request.orderNo());
         String channel = normalizeChannel(request == null ? null : request.channel());
         PaymentStrategy strategy = paymentStrategyRegistry.getRequired(channel);
-        SalesOrder order = orderMapper.findOrderByUserIdAndOrderNoForUpdate(userId, orderNo);
+        OrderView order = orderApplicationService.lockOwnedOrder(userId, orderNo);
         if (order == null) {
             throw new ResourceNotFoundException("order not found: " + orderNo);
         }
-        if (PAID_STATUS.equals(order.getStatus())) {
+        if (PAID_STATUS.equals(order.status())) {
             return toResponse(findExistingSuccessPayment(order));
         }
         validatePayable(order);
-        Payment pendingPayment = paymentMapper.findPendingByOrderId(order.getId());
+        Payment pendingPayment = paymentMapper.findPendingByOrderId(order.id());
         if (pendingPayment != null) {
             return toResponse(pendingPayment);
         }
@@ -133,9 +133,9 @@ public class PaymentService {
         Payment payment = createPendingPayment(order, channel);
         PaymentResult result = strategy.pay(new PaymentRequestContext(
                 payment.getPaymentNo(),
-                order.getOrderNo(),
-                order.getUserId(),
-                order.getTotalAmount(),
+                order.orderNo(),
+                order.userId(),
+                order.totalAmount(),
                 channel
         ));
         applyProviderResult(payment, result);
@@ -220,7 +220,7 @@ public class PaymentService {
             return;
         }
 
-        SalesOrder order = orderMapper.findOrderByOrderNoForUpdate(callback.orderNo());
+        OrderView order = orderApplicationService.lockOrder(callback.orderNo());
         failureReason = validateCallbackOrder(callback, payment, order);
         if (failureReason != null) {
             log.setFailureReason(failureReason);
@@ -241,33 +241,30 @@ public class PaymentService {
         paymentMapper.insertCallbackLog(log);
     }
 
-    private Payment findExistingSuccessPayment(SalesOrder order) {
-        Payment payment = paymentMapper.findSuccessByOrderId(order.getId());
+    private Payment findExistingSuccessPayment(OrderView order) {
+        Payment payment = paymentMapper.findSuccessByOrderId(order.id());
         if (payment == null) {
-            throw new BadRequestException("successful payment record not found for order: " + order.getOrderNo());
+            throw new BadRequestException("successful payment record not found for order: " + order.orderNo());
         }
         return payment;
     }
 
-    private List<OrderItem> confirmSoldStock(SalesOrder order) {
-        List<OrderItem> items = orderMapper.findItemsByOrderId(order.getId());
-        for (OrderItem item : items) {
-            int affectedRows = inventoryMapper.confirmSoldStock(item.getSkuId(), item.getQuantity());
-            if (affectedRows == 0) {
-                throw new BadRequestException("locked stock is inconsistent for sku: " + item.getSkuId());
-            }
+    private List<OrderItemView> confirmSoldStock(OrderView order) {
+        List<OrderItemView> items = orderApplicationService.findItems(order.id());
+        for (OrderItemView item : items) {
+            inventoryApplicationService.confirm(item.skuId(), item.quantity());
         }
         return items;
     }
 
-    private Payment createPendingPayment(SalesOrder order, String channel) {
+    private Payment createPendingPayment(OrderView order, String channel) {
         LocalDateTime createdAt = LocalDateTime.now();
         Payment payment = new Payment();
         payment.setPaymentNo(generatePaymentNo(createdAt));
-        payment.setOrderId(order.getId());
-        payment.setOrderNo(order.getOrderNo());
-        payment.setUserId(order.getUserId());
-        payment.setAmount(order.getTotalAmount());
+        payment.setOrderId(order.id());
+        payment.setOrderNo(order.orderNo());
+        payment.setUserId(order.userId());
+        payment.setAmount(order.totalAmount());
         payment.setChannel(channel);
         payment.setStatus(PENDING_STATUS);
         return payment;
@@ -286,8 +283,8 @@ public class PaymentService {
         payment.setPaidAt(result.paidAt());
     }
 
-    private PaymentResponse confirmPaymentSuccess(SalesOrder order, Payment payment, PaymentResult result) {
-        List<OrderItem> paidItems = confirmSoldStock(order);
+    private PaymentResponse confirmPaymentSuccess(OrderView order, Payment payment, PaymentResult result) {
+        List<OrderItemView> paidItems = confirmSoldStock(order);
         LocalDateTime paidAt = result.paidAt() == null ? LocalDateTime.now() : result.paidAt();
         int updatedRows = paymentMapper.markPaymentSuccess(
                 payment.getPaymentNo(),
@@ -298,7 +295,7 @@ public class PaymentService {
         if (updatedRows == 0) {
             throw new BadRequestException("payment status changed before success confirmation: " + payment.getPaymentNo());
         }
-        markOrderPaid(order, paidAt);
+        orderApplicationService.markPaid(order, paidAt);
 
         payment.setStatus(SUCCESS_STATUS);
         payment.setProviderTradeNo(result.providerTradeNo());
@@ -309,28 +306,21 @@ public class PaymentService {
         return toResponse(payment);
     }
 
-    private void recordPaymentSuccessEvents(SalesOrder order, Payment payment, List<OrderItem> paidItems) {
-        for (OrderItem item : paidItems) {
+    private void recordPaymentSuccessEvents(OrderView order, Payment payment, List<OrderItemView> paidItems) {
+        for (OrderItemView item : paidItems) {
             behaviorEventService.recordBusinessEvent(new BehaviorEventCommand(
-                    "payment:success:" + payment.getPaymentNo() + ":" + item.getSkuId(),
-                    order.getUserId(),
+                    "payment:success:" + payment.getPaymentNo() + ":" + item.skuId(),
+                    order.userId(),
                     "PAYMENT_SUCCESS",
                     null,
-                    item.getSpuId(),
-                    item.getSkuId(),
+                    item.spuId(),
+                    item.skuId(),
                     null,
                     null,
-                    order.getOrderNo(),
-                    item.getQuantity(),
+                    order.orderNo(),
+                    item.quantity(),
                     null
             ));
-        }
-    }
-
-    private void markOrderPaid(SalesOrder order, LocalDateTime paidAt) {
-        int affectedRows = orderMapper.updateOrderPaid(order.getId(), paidAt);
-        if (affectedRows == 0) {
-            throw new BadRequestException("order status changed before payment: " + order.getOrderNo());
         }
     }
 
@@ -401,17 +391,17 @@ public class PaymentService {
         return null;
     }
 
-    private String validateCallbackOrder(ProviderPaymentCallback callback, Payment payment, SalesOrder order) {
+    private String validateCallbackOrder(ProviderPaymentCallback callback, Payment payment, OrderView order) {
         if (order == null) {
             return "order not found";
         }
-        if (!payment.getOrderId().equals(order.getId()) || !payment.getUserId().equals(order.getUserId())) {
+        if (!payment.getOrderId().equals(order.id()) || !payment.getUserId().equals(order.userId())) {
             return "order ownership mismatch";
         }
-        if (!callback.orderNo().equals(order.getOrderNo())) {
+        if (!callback.orderNo().equals(order.orderNo())) {
             return "order number mismatch";
         }
-        if (!UNPAID_STATUS.equals(order.getStatus())) {
+        if (!UNPAID_STATUS.equals(order.status())) {
             return "order is not unpaid";
         }
         return null;
@@ -460,12 +450,12 @@ public class PaymentService {
                 .collect(Collectors.joining("\n"));
     }
 
-    private void validatePayable(SalesOrder order) {
-        if (CANCELLED_STATUS.equals(order.getStatus()) || CLOSED_STATUS.equals(order.getStatus())) {
-            throw new BadRequestException("closed order cannot be paid: " + order.getOrderNo());
+    private void validatePayable(OrderView order) {
+        if (CANCELLED_STATUS.equals(order.status()) || CLOSED_STATUS.equals(order.status())) {
+            throw new BadRequestException("closed order cannot be paid: " + order.orderNo());
         }
-        if (!UNPAID_STATUS.equals(order.getStatus())) {
-            throw new BadRequestException("order is not unpaid: " + order.getOrderNo());
+        if (!UNPAID_STATUS.equals(order.status())) {
+            throw new BadRequestException("order is not unpaid: " + order.orderNo());
         }
     }
 

@@ -378,7 +378,7 @@ MQ eventId
 - 订单相关聚焦测试：`47` 个，`0` 失败，`0` 错误，`1` 跳过；
 - 支付与售后回归测试：`11` 个，全部通过；
 - 新增代码聚焦 Checkstyle：`0` 违规；
-- 全量 Checkstyle 仍被既有学习 Demo 的 `18` 个违规阻断，涉及 `CacheBreakdownDemo.java`、`CachePenetrationDemo.java`、`MQOutfitDemo.java`、`MQProductionDemo.java`，本阶段未修改这些学习文件。
+- 2026-07-15 学习 Demo 已整体移到测试源码集；全量 `mvnw.cmd verify` 通过，生产 Checkstyle 为 `0` 违规。真实 MySQL 并发用例仍因本机无 Docker 而跳过。
 
 ### 14.4 尚未通过的环境门禁
 

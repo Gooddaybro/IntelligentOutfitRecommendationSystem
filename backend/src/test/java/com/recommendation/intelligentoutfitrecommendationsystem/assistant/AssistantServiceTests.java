@@ -18,7 +18,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.common.error.Ext
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.ConversationResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.MessageResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate;
-import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationService;
+import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationApplicationService;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserBodyDataResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserPreferencesResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserProfileResponse;
@@ -53,7 +53,7 @@ import static org.mockito.Mockito.when;
 class AssistantServiceTests {
 
     @Mock
-    private ConversationService conversationService;
+    private ConversationApplicationService conversationService;
 
     @Mock
     private AssistantContextService assistantContextService;
@@ -398,7 +398,7 @@ class AssistantServiceTests {
 
         InOrder order = inOrder(conversationService, assistantContextService, pythonAssistantStreamClient);
         verify(assistantRateLimitService).assertAllowed(10L);
-        order.verify(conversationService).requireConversation(10L, "th_stream_existing");
+        order.verify(conversationService).assertOwned(10L, "th_stream_existing");
         order.verify(conversationService).appendMessage(
                 10L,
                 "th_stream_existing",

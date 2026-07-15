@@ -8,8 +8,8 @@ import com.recommendation.intelligentoutfitrecommendationsystem.aftersale.model.
 import com.recommendation.intelligentoutfitrecommendationsystem.aftersale.service.AfterSaleService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
-import com.recommendation.intelligentoutfitrecommendationsystem.order.mapper.OrderMapper;
-import com.recommendation.intelligentoutfitrecommendationsystem.order.model.SalesOrder;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.service.OrderApplicationService;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.service.OrderApplicationService.OrderView;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -33,15 +33,15 @@ class AfterSaleServiceTests {
     private AfterSaleMapper afterSaleMapper;
 
     @Mock
-    private OrderMapper orderMapper;
+    private OrderApplicationService orderApplicationService;
 
     @InjectMocks
     private AfterSaleService service;
 
     @Test
     void createRequestForPaidOrderUsesJavaOwnedOrderAmount() {
-        SalesOrder order = order(88L, 10L, "ORDPAID1", "PAID");
-        when(orderMapper.findOrderByUserIdAndOrderNoForUpdate(10L, "ORDPAID1")).thenReturn(order);
+        OrderView order = order(88L, 10L, "ORDPAID1", "PAID");
+        when(orderApplicationService.lockOwnedOrder(10L, "ORDPAID1")).thenReturn(order);
         when(afterSaleMapper.findOpenByOrderId(88L)).thenReturn(null);
 
         AfterSaleResponse response = service.create(10L, new CreateAfterSaleRequest(
@@ -64,8 +64,8 @@ class AfterSaleServiceTests {
 
     @Test
     void createRequestRejectsUnpaidOrder() {
-        SalesOrder order = order(88L, 10L, "ORDUNPAID1", "UNPAID");
-        when(orderMapper.findOrderByUserIdAndOrderNoForUpdate(10L, "ORDUNPAID1")).thenReturn(order);
+        OrderView order = order(88L, 10L, "ORDUNPAID1", "UNPAID");
+        when(orderApplicationService.lockOwnedOrder(10L, "ORDUNPAID1")).thenReturn(order);
 
         assertThatThrownBy(() -> service.create(10L, new CreateAfterSaleRequest(
                 "ORDUNPAID1",
@@ -78,8 +78,8 @@ class AfterSaleServiceTests {
 
     @Test
     void createRequestRejectsDuplicateOpenRequest() {
-        SalesOrder order = order(88L, 10L, "ORDPAID1", "PAID");
-        when(orderMapper.findOrderByUserIdAndOrderNoForUpdate(10L, "ORDPAID1")).thenReturn(order);
+        OrderView order = order(88L, 10L, "ORDPAID1", "PAID");
+        when(orderApplicationService.lockOwnedOrder(10L, "ORDPAID1")).thenReturn(order);
         when(afterSaleMapper.findOpenByOrderId(88L)).thenReturn(afterSale(1L, 88L, 10L, "ORDPAID1", "REQUESTED"));
 
         assertThatThrownBy(() -> service.create(10L, new CreateAfterSaleRequest(
@@ -123,14 +123,8 @@ class AfterSaleServiceTests {
         assertThat(responses.get(0).orderNo()).isEqualTo("ORDPAID1");
     }
 
-    private SalesOrder order(Long id, Long userId, String orderNo, String status) {
-        SalesOrder order = new SalesOrder();
-        order.setId(id);
-        order.setUserId(userId);
-        order.setOrderNo(orderNo);
-        order.setTotalAmount(new BigDecimal("299.00"));
-        order.setStatus(status);
-        return order;
+    private OrderView order(Long id, Long userId, String orderNo, String status) {
+        return new OrderView(id, userId, orderNo, new BigDecimal("299.00"), status);
     }
 
     private AfterSaleRequest afterSale(Long id, Long orderId, Long userId, String orderNo, String status) {
