@@ -1,12 +1,12 @@
 # Middleware Learning and Evolution Roadmap
 
-> **For agentic workers:** Treat this as the current middleware decision and learning roadmap. Do not add a message broker until the MQ decision gate is completed and a separate, focused implementation plan is approved.
+> **For agentic workers:** Track 2 decisions were approved on 2026-07-15. The focused design is `docs/superpowers/specs/2026-07-15-rabbitmq-rag-rebuild-mvp-design.md`; do not expand its implementation scope to the deferred scenarios below.
 
 **Goal:** Consolidate the implemented Redis capability, turn it into verifiable project knowledge, and prepare a low-risk path for a future MQ introduction.
 
 **Architecture:** Keep the Java modular monolith as the commerce source of truth and the Python service as the AI orchestration layer. Redis remains an acceleration and protection layer. A future broker may carry independent async work, but it must not replace Java transactions for order, inventory, or payment state.
 
-**Tech Stack:** Java 21, Spring Boot 4, MySQL 8, Redis 7.2, Spring Data Redis, React, Python FastAPI/LangGraph. No RabbitMQ, Kafka, RocketMQ, or Redis Streams runtime dependency is currently configured.
+**Tech Stack:** Java 21, Spring Boot 4, MySQL 8, Redis 7.2, Spring Data Redis, React, Python FastAPI/LangGraph. RabbitMQ is approved for the fourth-week `RAG_REBUILD` vertical slice but is not yet implemented.
 
 ## Current Snapshot — 2026-07-11
 
@@ -70,7 +70,7 @@ sh ./mvnw -Dtest=ProductCatalogServiceTests,UserProfileServiceTests,AssistantRat
 
 ## Track 2: MQ Decision Gate
 
-Do not add a broker, dependency, Docker service, or Java/Python code while this section remains undecided.
+The decision gate is complete. Implementation still requires a separate approved plan.
 
 ### Proposed first scenario
 
@@ -80,14 +80,27 @@ This is preferred over payment events as a first learning slice because a failed
 
 ### Decisions required before implementation
 
-- [ ] Confirm the first event name and one user-visible task outcome.
-- [ ] Confirm RabbitMQ as the first broker. Kafka, RocketMQ, and Redis Streams remain comparison topics, not project dependencies.
-- [ ] Define the task state transitions: `PENDING -> PROCESSING -> SUCCESS | FAILED`.
-- [ ] Define the JSON event envelope: `eventId`, `eventType`, `taskId`, `userId`, `occurredAt`, and `schemaVersion`.
-- [ ] Decide whether Java or Python consumes the first version; begin with one consumer boundary only.
-- [ ] Define duplicate-message handling using `eventId` before writing a consumer.
-- [ ] Define retry limit, terminal failure behavior, and dead-letter handling before enabling retries.
-- [ ] Decide whether an outbox is required after the basic producer/consumer path is proven; do not claim exactly-once delivery.
+- [x] Use `ai.task.requested` schema v1 for an administrator-visible `RAG_REBUILD` task.
+- [x] Use RabbitMQ as the first broker. Kafka, RocketMQ, and Redis Streams remain comparison topics, not project dependencies.
+- [x] Use `PENDING -> PROCESSING -> SUCCESS`, `PROCESSING -> RETRY_WAIT -> PROCESSING`, and terminal `FAILED` transitions.
+- [x] Use a small JSON envelope containing `eventId`, `eventType`, `schemaVersion`, `taskId`, `taskType`, `occurredAt`, `correlationId`, and `traceparent`.
+- [x] Let a Java Worker consume RabbitMQ and call a protected Python internal rebuild endpoint.
+- [x] Handle duplicate delivery with API coalescing, `eventId` Inbox uniqueness, task state/lease, and Python `taskId` idempotency.
+- [x] Use bounded 10-second, 60-second, and 300-second retries, followed by a final DLQ and administrator Redrive.
+- [x] Require Transactional Outbox, Publisher Confirm, manual ACK, and MySQL idempotency; do not claim exactly-once delivery.
+
+### Deferred MQ development backlog
+
+The following scenarios may reuse the reliable task framework after the `RAG_REBUILD` MVP. They are recorded only; they are not part of the fourth-week implementation:
+
+1. Recommendation evaluation reports.
+2. Batch AI-generated product tags.
+3. Product-image compression, thumbnails, and visual attribute extraction.
+4. User-profile, popularity, and recommendation-feature computation from persisted behavior events.
+5. Non-core post-payment side effects such as notifications, ordinary points, reports, and logistics notifications.
+6. Email, SMS, and in-app notification delivery.
+
+Each scenario requires its own fact source, idempotency key, retry taxonomy, failure boundary, design, and implementation plan.
 
 ### Explicitly out of scope
 
@@ -98,7 +111,7 @@ This is preferred over payment events as a first learning slice because a failed
 
 ## Next Planning Boundary
 
-After every decision in **Track 2** is accepted, create a separate plan named `YYYY-MM-DD-rabbitmq-ai-task-mvp.md`. That implementation plan must cover the exact files, Docker setup, task persistence, message contract, producer confirmation, consumer acknowledgement, retry/DLQ behavior, idempotency tests, and manual verification steps.
+After the focused design is reviewed, create `docs/superpowers/plans/2026-07-15-rabbitmq-rag-rebuild-mvp.md`. The implementation plan must cover exact files in both repositories, Docker setup, task persistence, message contract, Publisher Confirm, manual ACK, retry/DLQ, Redrive, Python index safety, idempotency tests, and real-process verification.
 
 ## Interview Summary
 
