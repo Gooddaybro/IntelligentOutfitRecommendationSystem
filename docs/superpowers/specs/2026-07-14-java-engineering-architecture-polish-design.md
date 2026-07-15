@@ -623,12 +623,12 @@ recommendation_id
 - `app.recommendation.funnel` 仅使用 exposure/click/favorite/cart/order/payment 固定标签，不把 recommendationId、用户或商品 ID 写入 Prometheus 标签；
 - 前端已解析同步/SSE recommendationId，并将其传给点击、加购和立即购买入口；推荐曝光由服务端成功写入快照时统一计数，避免前端重复曝光；
 - 已提供 Prometheus 抓取配置和可自动 provisioning 的 `Java 商城核心`、`AI 导购` 两个 Grafana Dashboard；JSON、YAML 和 `docker compose config` 已完成静态校验；
-- H2/Spring 集成测试已验证 18 个 Flyway 迁移，以及 recommendationId 从加购到订单再到支付事件的实际 SQL 继承链路；Docker daemon 当前不可用，因此本轮未执行真实 MySQL/Grafana 容器运行验证。
-- 2026-07-15 最终门禁：后端 `mvnw.cmd verify` 共执行 `265` 个测试，`0` 失败、`0` 错误、`5` 个环境型跳过，Checkstyle `0` 违规；前端 `6` 个测试文件、`20` 个测试全部通过，生产构建成功；Dashboard JSON、YAML、Compose 配置和差异格式检查均通过。
+- H2/Spring 集成测试已验证 recommendationId 从加购到订单再到支付事件的实际 SQL 继承链路；2026-07-15 又使用 Docker MySQL 8.0 实际执行全部 18 个 Flyway 迁移，并通过 MySQL 并发幂等与 Redis Lua 原子计数 Testcontainers 用例。
+- 2026-07-15 Docker 最终门禁：设置 `RUN_MYSQL_TESTS=true` 后，后端 `mvnw.cmd verify` 共执行 `265` 个测试，`0` 失败、`0` 错误、`1` 个环境型跳过，Checkstyle `0` 违规；前端 `6` 个测试文件、`20` 个测试全部通过，生产构建成功；Dashboard JSON、YAML、Compose 配置、Prometheus 实际抓取和 Grafana provisioning 均验证通过。
 
 ### 第三周收口状态（2026-07-15）
 
-第三周设计范围已完成实现：部署探针、Prometheus 核心指标、request ID/traceparent 关联、SSE MDC 传播、熔断状态与自动恢复观察、稳定 recommendationId、推荐转化归因、两个 Dashboard 和 AI 故障 Runbook 均已有代码、配置或文档及自动化证据。真实 MySQL、Prometheus/Grafana 容器和生产告警阈值仍需在 Docker/部署环境可用后做运行验证，不据此宣称生产就绪。
+第三周设计范围已完成实现：部署探针、Prometheus 核心指标、request ID/traceparent 关联、SSE MDC 传播、熔断状态与自动恢复观察、稳定 recommendationId、推荐转化归因、两个 Dashboard 和 AI 故障 Runbook 均已有代码、配置或文档及自动化证据。Docker 运行验证已确认 MySQL 8.0、Redis 7.2、Prometheus 2.54.1 和 Grafana 11.2.2 可启动，Prometheus 可成功抓取真实 Java Actuator 指标，Grafana 数据源健康且两个 Dashboard 自动 provisioning 成功；生产告警阈值仍需在部署环境校准，不据此宣称生产就绪。
 
 ## 5.4 第四周：RabbitMQ 可靠异步垂直切片
 
@@ -1123,7 +1123,7 @@ docs/superpowers/specs/2026-07-14-order-idempotency-design.md
 - 请求摘要冲突返回 HTTP 409；重放查询继续校验用户归属；
 - 过期 Key 采用定时批量清理，并在冲突解析到过期记录时执行一次有界删除重试；
 - 2026-07-15 全量 `mvnw.cmd verify` 共发现 `227` 个测试，`0` 失败、`0` 错误、`5` 个环境型跳过；全量 Checkstyle 为 `0` 违规；
-- 真实 MySQL 并发 Testcontainers 用例已编写，但本机缺少 Docker 环境，仍需在 CI 或 Docker 可用机器完成最终门禁。
+- 2026-07-15 已在本机 Docker Desktop 29.2.1 上实际执行 MySQL 并发 Testcontainers 用例，验证相同幂等键只创建一个订单并只锁定一次库存；仍建议在 CI 中保留该门禁。
 
 ### 15.2 对应工程知识
 

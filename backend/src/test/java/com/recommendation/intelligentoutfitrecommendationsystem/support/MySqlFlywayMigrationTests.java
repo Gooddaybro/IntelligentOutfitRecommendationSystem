@@ -21,10 +21,12 @@ class MySqlFlywayMigrationTests extends BaseMySqlContainerTest {
         Integer salesOrderCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sales_order", Integer.class);
         Integer orderItemCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM order_item", Integer.class);
         Integer paymentCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM payment", Integer.class);
-        Integer orderIdempotencyCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM order_idempotency",
-                Integer.class
-        );
+        Integer orderIdempotencyTableCount = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM INFORMATION_SCHEMA.TABLES
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = 'order_idempotency'
+                """, Integer.class);
         Integer idempotencyUniqueIndexCount = jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)
                 FROM INFORMATION_SCHEMA.STATISTICS
@@ -51,7 +53,7 @@ class MySqlFlywayMigrationTests extends BaseMySqlContainerTest {
         assertThat(salesOrderCount).isPositive();
         assertThat(orderItemCount).isPositive();
         assertThat(paymentCount).isPositive();
-        assertThat(orderIdempotencyCount).isZero();
+        assertThat(orderIdempotencyTableCount).isOne();
         assertThat(idempotencyUniqueIndexCount).isPositive();
         assertThat(closedAtColumnCount).isOne();
         assertThat(closeReasonColumnCount).isOne();

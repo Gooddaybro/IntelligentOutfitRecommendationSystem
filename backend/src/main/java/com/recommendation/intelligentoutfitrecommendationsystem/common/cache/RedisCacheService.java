@@ -118,7 +118,7 @@ public class RedisCacheService {
             Long count = redisTemplate.execute(
                     INCREMENT_WITH_TTL_SCRIPT,
                     List.of(key),
-                    ttl.toMillis()
+                    Long.toString(ttl.toMillis())
             );
             record("increment", count == null ? "error" : "success", startedAt);
             return Optional.ofNullable(count);

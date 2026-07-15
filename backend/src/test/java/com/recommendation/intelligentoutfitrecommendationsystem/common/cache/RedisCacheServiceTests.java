@@ -42,7 +42,7 @@ class RedisCacheServiceTests {
         when(redisTemplate.execute(
                 any(RedisScript.class),
                 eq(List.of("assistant:rate-limit:user:10:1")),
-                eq(60_000L)
+                eq("60000")
         )).thenReturn(1L);
 
         var count = service.incrementWithTtl(
