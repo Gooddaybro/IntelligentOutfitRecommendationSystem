@@ -22,6 +22,10 @@
         LIMIT #{limit}
     </select>
 
+    <select id="findLatestByAggregateId" resultType="com.recommendation.intelligentoutfitrecommendationsystem.aitask.model.OutboxEvent">
+        SELECT * FROM outbox_event WHERE aggregate_id = #{aggregateId} ORDER BY id DESC LIMIT 1
+    </select>
+
     <update id="claimOutbox">
         UPDATE outbox_event
         SET claimed_by = #{claimedBy}, claim_until = #{claimUntil},

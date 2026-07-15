@@ -45,4 +45,9 @@ public interface AiTaskMapper {
             @Param("failureCode") String failureCode,
             @Param("failureSummary") String failureSummary
     );
+
+    int resetFailedForRedrive(
+            @Param("taskId") String taskId,
+            @Param("activeSlot") String activeSlot
+    );
 }

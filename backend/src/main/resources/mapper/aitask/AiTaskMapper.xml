@@ -53,4 +53,12 @@
         WHERE task_id = #{taskId} AND version = #{expectedVersion}
           AND status IN ('PENDING', 'PROCESSING', 'RETRY_WAIT')
     </update>
+
+    <update id="resetFailedForRedrive">
+        UPDATE ai_task
+        SET status = 'PENDING', active_slot = #{activeSlot}, attempt_count = 0,
+            worker_id = NULL, lease_until = NULL, failure_code = NULL, failure_summary = NULL,
+            result_json = NULL, version = version + 1, updated_at = CURRENT_TIMESTAMP(6)
+        WHERE task_id = #{taskId} AND status = 'FAILED' AND active_slot IS NULL
+    </update>
 </mapper>

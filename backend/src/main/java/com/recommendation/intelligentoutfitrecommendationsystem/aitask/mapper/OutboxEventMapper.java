@@ -20,6 +20,8 @@ public interface OutboxEventMapper {
             @Param("limit") int limit
     );
 
+    OutboxEvent findLatestByAggregateId(@Param("aggregateId") String aggregateId);
+
     int claimOutbox(
             @Param("eventId") String eventId,
             @Param("claimedBy") String claimedBy,
