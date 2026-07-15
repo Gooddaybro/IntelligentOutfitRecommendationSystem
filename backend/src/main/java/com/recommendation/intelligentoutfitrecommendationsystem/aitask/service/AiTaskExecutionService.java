@@ -116,6 +116,30 @@ public class AiTaskExecutionService {
         return ExecutionOutcome.SUCCESS;
     }
 
+    /**
+     * 在发布延迟重试前记录 RETRY_WAIT；条件更新失败时让原消息保持未 ACK。
+     */
+    public void recordRetry(AiTaskMessage message, String failureCode, String failureSummary) {
+        AiTask task = requireTask(message.taskId());
+        long version = task.getVersion() == null ? 0L : task.getVersion();
+        if (taskMapper.markRetryWait(task.getTaskId(), version, failureCode, failureSummary) != 1) {
+            throw new IllegalStateException("AI task retry state could not be committed");
+        }
+    }
+
+    /**
+     * 在发布最终 DLQ 前持久化 FAILED 并释放全局活动槽。
+     */
+    public void recordFailure(AiTaskMessage message, String failureCode, String failureSummary) {
+        AiTask task = requireTask(message.taskId());
+        long version = task.getVersion() == null ? 0L : task.getVersion();
+        if (taskMapper.markFailedAndClearActiveSlot(
+                task.getTaskId(), version, failureCode, failureSummary
+        ) != 1) {
+            throw new IllegalStateException("AI task failure state could not be committed");
+        }
+    }
+
     private void validate(AiTaskMessage message) {
         if (message == null
                 || message.eventId() == null
@@ -133,6 +157,14 @@ public class AiTaskExecutionService {
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("RAG rebuild result could not be serialized", exception);
         }
+    }
+
+    private AiTask requireTask(String taskId) {
+        AiTask task = taskMapper.findByTaskId(taskId);
+        if (task == null) {
+            throw new IllegalArgumentException("AI task does not exist");
+        }
+        return task;
     }
 
     private LocalDateTime now() {
