@@ -8,7 +8,7 @@ import java.util.Map;
 /**
  * 前端上报推荐交互事件的请求体。
  *
- * eventId 可由前端生成用于去重；为空时后端生成一次性事件 ID。
+ * eventId 可由前端生成用于去重；recommendationId 存在时，后端会校验它属于当前用户且包含当前最终推荐商品。
  */
 public record BehaviorEventRequest(
         String eventId,
@@ -31,6 +31,21 @@ public record BehaviorEventRequest(
         @Positive
         Integer quantity,
 
-        Map<String, Object> metadata
+        Map<String, Object> metadata,
+        String recommendationId
 ) {
+    public BehaviorEventRequest(
+            String eventId,
+            String eventType,
+            String source,
+            Long spuId,
+            Long skuId,
+            String threadId,
+            String requestId,
+            String orderNo,
+            Integer quantity,
+            Map<String, Object> metadata
+    ) {
+        this(eventId, eventType, source, spuId, skuId, threadId, requestId, orderNo, quantity, metadata, null);
+    }
 }

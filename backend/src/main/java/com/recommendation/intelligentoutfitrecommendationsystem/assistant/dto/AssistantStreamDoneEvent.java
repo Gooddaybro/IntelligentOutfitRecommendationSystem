@@ -16,6 +16,7 @@ import java.util.List;
  * @param candidatesCount 本轮 Java 提供给 Python 的候选商品数量
  * @param intent Python 识别出的用户意图
  * @param resolvedIntent Java 统一解析出的筛选意图
+ * @param recommendationId Java 已持久化的推荐快照 ID，供后续交互和交易归因
  */
 public record AssistantStreamDoneEvent(
         @JsonProperty("thread_id") String threadId,
@@ -24,8 +25,21 @@ public record AssistantStreamDoneEvent(
         @JsonProperty("recommended_items") List<AssistantRecommendationItem> recommendedItems,
         @JsonProperty("candidates_count") int candidatesCount,
         String intent,
-        @JsonProperty("resolved_intent") DemandIntent resolvedIntent
+        @JsonProperty("resolved_intent") DemandIntent resolvedIntent,
+        @JsonProperty("recommendation_id") String recommendationId
 ) {
+    public AssistantStreamDoneEvent(
+            String threadId,
+            String answer,
+            List<Long> recommendedSpuIds,
+            List<AssistantRecommendationItem> recommendedItems,
+            int candidatesCount,
+            String intent,
+            DemandIntent resolvedIntent
+    ) {
+        this(threadId, answer, recommendedSpuIds, recommendedItems, candidatesCount, intent, resolvedIntent, null);
+    }
+
     public AssistantStreamDoneEvent(
             String threadId,
             String answer,
@@ -34,6 +48,6 @@ public record AssistantStreamDoneEvent(
             int candidatesCount,
             String intent
     ) {
-        this(threadId, answer, recommendedSpuIds, recommendedItems, candidatesCount, intent, null);
+        this(threadId, answer, recommendedSpuIds, recommendedItems, candidatesCount, intent, null, null);
     }
 }

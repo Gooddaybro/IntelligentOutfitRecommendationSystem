@@ -4,6 +4,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.Py
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonUserContext;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ExternalServiceException;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
@@ -29,7 +30,8 @@ class ResilientPythonAssistantClientTests {
     void opensAfterConfiguredFailuresAndStopsCallingDelegate() {
         RestPythonAssistantClient delegate = mock(RestPythonAssistantClient.class);
         CircuitBreaker circuitBreaker = newCircuitBreaker(Duration.ofSeconds(30));
-        ResilientPythonAssistantClient client = new ResilientPythonAssistantClient(delegate, circuitBreaker);
+        ApplicationMetrics metrics = mock(ApplicationMetrics.class);
+        ResilientPythonAssistantClient client = new ResilientPythonAssistantClient(delegate, circuitBreaker, metrics);
         PythonChatRequest request = minimalPythonRequest();
         when(delegate.chat(request)).thenThrow(new ExternalServiceException("down"));
 
@@ -38,13 +40,16 @@ class ResilientPythonAssistantClientTests {
         assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreaker.State.OPEN);
         assertThatThrownBy(() -> client.chat(request)).isInstanceOf(CallNotPermittedException.class);
         verify(delegate, times(2)).chat(request);
+        verify(metrics, times(2)).recordAiRequest(eq("sync"), eq("error"), any(Duration.class));
+        verify(metrics).recordAiRequest(eq("sync"), eq("circuit_open"), any(Duration.class));
     }
 
     @Test
     void successfulHalfOpenProbeClosesCircuitWithoutRestart() throws Exception {
         RestPythonAssistantClient delegate = mock(RestPythonAssistantClient.class);
         CircuitBreaker circuitBreaker = newCircuitBreaker(Duration.ofMillis(10));
-        ResilientPythonAssistantClient client = new ResilientPythonAssistantClient(delegate, circuitBreaker);
+        ResilientPythonAssistantClient client = new ResilientPythonAssistantClient(
+                delegate, circuitBreaker, mock(ApplicationMetrics.class));
         PythonChatRequest request = minimalPythonRequest();
         PythonChatResponse success = new PythonChatResponse("req", "ok", "chat", List.of());
         when(delegate.chat(request))
@@ -64,7 +69,8 @@ class ResilientPythonAssistantClientTests {
     void recordsStreamErrorAndRejectsNextStreamWhenCircuitIsOpen() {
         RestPythonAssistantClient delegate = mock(RestPythonAssistantClient.class);
         CircuitBreaker circuitBreaker = newCircuitBreaker(Duration.ofSeconds(30));
-        ResilientPythonAssistantClient client = new ResilientPythonAssistantClient(delegate, circuitBreaker);
+        ApplicationMetrics metrics = mock(ApplicationMetrics.class);
+        ResilientPythonAssistantClient client = new ResilientPythonAssistantClient(delegate, circuitBreaker, metrics);
         PythonAssistantStreamHandler first = mock(PythonAssistantStreamHandler.class);
         PythonAssistantStreamHandler second = mock(PythonAssistantStreamHandler.class);
         doAnswer(invocation -> {
@@ -79,6 +85,7 @@ class ResilientPythonAssistantClientTests {
 
         verify(second).onError(eq("python_circuit_open"), anyString());
         verify(delegate, times(2)).streamChat(any(), any());
+        verify(metrics).recordAiRequest(eq("stream"), eq("circuit_open"), any(Duration.class));
     }
 
     private CircuitBreaker newCircuitBreaker(Duration openDuration) {

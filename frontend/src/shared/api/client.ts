@@ -124,10 +124,10 @@ export const api = {
       body: JSON.stringify(request)
     }),
   cart: () => requestJson<CartItem[]>("/api/cart/items"),
-  addCartItem: (skuId: number, quantity: number) =>
+  addCartItem: (skuId: number, quantity: number, recommendationId?: string) =>
     requestJson<CartItem[]>("/api/cart/items", {
       method: "POST",
-      body: JSON.stringify({ skuId, quantity })
+      body: JSON.stringify({ skuId, quantity, recommendationId })
     }),
   updateCartItem: (skuId: number, quantity: number) =>
     requestJson<CartItem[]>(`/api/cart/items/${skuId}`, {
@@ -143,10 +143,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ source: "CART", skuIds })
     }),
-  buyNow: (skuId: number, quantity: number) =>
+  buyNow: (skuId: number, quantity: number, recommendationId?: string) =>
     requestJson<OrderResponse>("/api/orders/buy-now", {
       method: "POST",
-      body: JSON.stringify({ skuId, quantity })
+      body: JSON.stringify({ skuId, quantity, recommendationId })
     }),
   orders: () => requestJson<OrderResponse[]>("/api/orders"),
   order: (orderNo: string) => requestJson<OrderResponse>(`/api/orders/${orderNo}`),

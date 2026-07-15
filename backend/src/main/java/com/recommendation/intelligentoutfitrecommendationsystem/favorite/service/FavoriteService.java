@@ -27,6 +27,10 @@ public class FavoriteService {
     }
 
     public List<UserFavorite> addFavorite(Long userId, Long productId) {
+        return addFavorite(userId, productId, null);
+    }
+
+    public List<UserFavorite> addFavorite(Long userId, Long productId, String recommendationId) {
         UserFavorite existing = favoriteMapper.selectByUserIdAndProductId(userId, productId);
         if (existing != null) {
             return favoriteMapper.selectByUserId(userId);
@@ -47,7 +51,8 @@ public class FavoriteService {
                 null,
                 null,
                 null,
-                null
+                null,
+                recommendationId
         ));
         return favoriteMapper.selectByUserId(userId);
     }

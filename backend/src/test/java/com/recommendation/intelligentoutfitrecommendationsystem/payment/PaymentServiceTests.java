@@ -4,6 +4,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
 import com.recommendation.intelligentoutfitrecommendationsystem.inventory.service.InventoryApplicationService;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.service.OrderApplicationService;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.service.OrderApplicationService.OrderItemView;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.service.OrderApplicationService.OrderView;
@@ -63,6 +64,9 @@ class PaymentServiceTests {
 
     @Mock
     private PaymentCallbackVerifier paymentCallbackVerifier;
+
+    @Mock
+    private ApplicationMetrics applicationMetrics;
 
     @InjectMocks
     private PaymentService service;
@@ -245,6 +249,7 @@ class PaymentServiceTests {
         ));
         verify(inventoryApplicationService).confirm(2102L, 2);
         verify(orderApplicationService).markPaid(order, callback.paidAt());
+        verify(applicationMetrics).recordPaymentCallback("success");
     }
 
     @Test
@@ -268,6 +273,7 @@ class PaymentServiceTests {
                         && Boolean.TRUE.equals(log.getHandled())
                         && "DUPLICATE_PAYMENT_SUCCESS".equals(log.getEventType())
         ));
+        verify(applicationMetrics).recordPaymentCallback("duplicate");
     }
 
     @Test
@@ -287,6 +293,7 @@ class PaymentServiceTests {
                         && "CALLBACK_REJECTED".equals(log.getEventType())
                         && "invalid signature".equals(log.getFailureReason())
         ));
+        verify(applicationMetrics).recordPaymentCallback("invalid_signature");
     }
 
     @Test

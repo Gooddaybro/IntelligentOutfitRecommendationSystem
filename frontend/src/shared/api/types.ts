@@ -196,6 +196,7 @@ export type AssistantChatResponse = {
   recommendedItems?: RecommendedItem[];
   candidatesCount: number;
   resolvedIntent?: DemandIntent;
+  recommendationId?: string;
 };
 
 export type BehaviorEventType =
@@ -212,6 +213,7 @@ export type BehaviorEventRequest = {
   threadId?: string;
   quantity?: number;
   metadata?: Record<string, unknown>;
+  recommendationId?: string;
 };
 
 export type BehaviorEventResponse = {

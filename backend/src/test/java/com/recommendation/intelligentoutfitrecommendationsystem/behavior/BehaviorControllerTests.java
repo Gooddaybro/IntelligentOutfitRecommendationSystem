@@ -2,15 +2,25 @@ package com.recommendation.intelligentoutfitrecommendationsystem.behavior;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorEventCommand;
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorEventService;
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.RecommendationAttributionService;
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.RecommendationRecordCommand;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -27,6 +37,15 @@ class BehaviorControllerTests {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private RecommendationAttributionService recommendationAttributionService;
+
+    @Autowired
+    private BehaviorEventService behaviorEventService;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -90,6 +109,71 @@ class BehaviorControllerTests {
                 .andExpect(jsonPath("$.data.recentInterestSpuIds[0]").value(1002))
                 .andExpect(jsonPath("$.data.preferredCategories[0]").value("外套"))
                 .andExpect(jsonPath("$.data.preferredStyles[0]").value("commute"));
+    }
+
+    @Test
+    void recommendationAttributionFlowsFromCartToOrderAndPayment() throws Exception {
+        String username = nextUsername();
+        String accessToken = registerAndLogin(username);
+        Long userId = jdbcTemplate.queryForObject(
+                "SELECT id FROM user_account WHERE username = ?", Long.class, username);
+        String recommendationId = recommendationAttributionService.record(new RecommendationRecordCommand(
+                userId,
+                "req-funnel-integration",
+                "thread-funnel-integration",
+                "sync",
+                List.of(new RecommendationRecordCommand.Item(1002L, 2101L, null)),
+                List.of(new RecommendationRecordCommand.Item(1002L, 2101L, null))
+        ));
+
+        mockMvc.perform(post("/api/cart/items")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "skuId": 2101,
+                                  "quantity": 1,
+                                  "recommendationId": "%s"
+                                }
+                                """.formatted(recommendationId)))
+                .andExpect(status().isOk());
+
+        String orderBody = mockMvc.perform(post("/api/orders")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "source": "CART",
+                                  "skuIds": [2101]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String orderNo = objectMapper.readTree(orderBody).path("data").path("orderNo").asText();
+
+        behaviorEventService.recordBusinessEvent(new BehaviorEventCommand(
+                "payment:funnel:" + orderNo,
+                userId,
+                "PAYMENT_SUCCESS",
+                null,
+                1002L,
+                2101L,
+                null,
+                null,
+                orderNo,
+                1,
+                Map.of(),
+                null
+        ));
+
+        assertThat(jdbcTemplate.queryForList(
+                "SELECT recommendation_id FROM behavior_event "
+                        + "WHERE user_id = ? AND event_type IN ('CART_ADD', 'ORDER_CREATED', 'PAYMENT_SUCCESS') "
+                        + "ORDER BY event_time, id",
+                String.class,
+                userId
+        )).contains(recommendationId, recommendationId, recommendationId);
     }
 
     private String recommendationClickBody(String eventId) {

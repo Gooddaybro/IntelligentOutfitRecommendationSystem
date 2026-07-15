@@ -4,6 +4,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorEventService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
 import com.recommendation.intelligentoutfitrecommendationsystem.inventory.service.InventoryApplicationService;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.service.OrderApplicationService;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.service.OrderApplicationService.OrderItemView;
@@ -72,6 +73,7 @@ public class PaymentService {
     private final BehaviorEventService behaviorEventService;
 
     private final PaymentCallbackVerifier paymentCallbackVerifier;
+    private final ApplicationMetrics metrics;
 
     public PaymentService(
             PaymentMapper paymentMapper,
@@ -79,7 +81,8 @@ public class PaymentService {
             InventoryApplicationService inventoryApplicationService,
             PaymentStrategyRegistry paymentStrategyRegistry,
             BehaviorEventService behaviorEventService,
-            PaymentCallbackVerifier paymentCallbackVerifier
+            PaymentCallbackVerifier paymentCallbackVerifier,
+            ApplicationMetrics metrics
     ) {
         this.paymentMapper = paymentMapper;
         this.orderApplicationService = orderApplicationService;
@@ -87,6 +90,7 @@ public class PaymentService {
         this.paymentStrategyRegistry = paymentStrategyRegistry;
         this.behaviorEventService = behaviorEventService;
         this.paymentCallbackVerifier = paymentCallbackVerifier;
+        this.metrics = metrics;
     }
 
     /**
@@ -188,6 +192,7 @@ public class PaymentService {
         String normalizedChannel = normalizeChannel(channel);
         PaymentCallbackVerification verification = paymentCallbackVerifier.verify(normalizedChannel, rawBody, request);
         if (!verification.valid()) {
+            metrics.recordPaymentCallback("invalid_signature");
             paymentMapper.insertCallbackLog(rejectedCallbackLog(
                     normalizedChannel,
                     rawBody,
@@ -200,6 +205,7 @@ public class PaymentService {
         ProviderPaymentCallback callback = verification.callback();
         PaymentCallbackLog log = verifiedCallbackLog(normalizedChannel, rawBody, request, callback);
         if (!SUCCESS_STATUS.equals(normalizeStatus(callback.status()))) {
+            metrics.recordPaymentCallback("rejected");
             log.setEventType("CALLBACK_IGNORED");
             log.setFailureReason("callback status is not success");
             paymentMapper.insertCallbackLog(log);
@@ -209,11 +215,13 @@ public class PaymentService {
         Payment payment = paymentMapper.findByPaymentNoForUpdate(callback.paymentNo());
         String failureReason = validateCallbackPayment(normalizedChannel, callback, payment);
         if (failureReason != null) {
+            metrics.recordPaymentCallback("rejected");
             log.setFailureReason(failureReason);
             paymentMapper.insertCallbackLog(log);
             return;
         }
         if (SUCCESS_STATUS.equals(payment.getStatus())) {
+            metrics.recordPaymentCallback("duplicate");
             log.setEventType(DUPLICATE_PAYMENT_SUCCESS_EVENT);
             log.setHandled(true);
             paymentMapper.insertCallbackLog(log);
@@ -223,6 +231,7 @@ public class PaymentService {
         OrderView order = orderApplicationService.lockOrder(callback.orderNo());
         failureReason = validateCallbackOrder(callback, payment, order);
         if (failureReason != null) {
+            metrics.recordPaymentCallback("rejected");
             log.setFailureReason(failureReason);
             paymentMapper.insertCallbackLog(log);
             return;
@@ -239,6 +248,7 @@ public class PaymentService {
         ));
         log.setHandled(true);
         paymentMapper.insertCallbackLog(log);
+        metrics.recordPaymentCallback("success");
     }
 
     private Payment findExistingSuccessPayment(OrderView order) {

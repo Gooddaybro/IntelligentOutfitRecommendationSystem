@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -37,9 +38,14 @@ public class FavoriteController {
      * @return
      */
     @PostMapping("/{productId}")
-    public ApiResponse<List<UserFavorite>> addFavoriteIrem(Authentication authentication, @PathVariable Long productId) {
+    public ApiResponse<List<UserFavorite>> addFavoriteIrem(
+            Authentication authentication,
+            @PathVariable Long productId,
+            @RequestParam(required = false) String recommendationId
+    ) {
         CurrentUser currentUser = CurrentUser.from(authentication);
-        List<UserFavorite> currentUsers = favoriteService.addFavorite(currentUser.userId(), productId);
+        List<UserFavorite> currentUsers = favoriteService.addFavorite(
+                currentUser.userId(), productId, recommendationId);
         return ApiResponse.ok(currentUsers);
     }
 

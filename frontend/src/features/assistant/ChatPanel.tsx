@@ -37,6 +37,7 @@ export type RecommendationResultMeta = {
   hasAiResult: boolean;
   hasStrongMatch: boolean;
   recommendedItems?: RecommendedItem[];
+  recommendationId?: string;
 };
 
 export const initialChatMessages: ChatMessage[] = [
@@ -175,13 +176,15 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
   async function updateRecommendations(
     spuIds: number[],
     recommendedItems: RecommendedItem[] = [],
-    effectiveRequestFilters: Partial<AssistantChatRequest> = requestFilters
+    effectiveRequestFilters: Partial<AssistantChatRequest> = requestFilters,
+    recommendationId?: string
   ) {
     const candidates = await api.recommendationCandidates(effectiveRequestFilters);
     onRecommendations(orderCandidatesByRecommendations(candidates, spuIds, recommendedItems), {
       hasAiResult: true,
       hasStrongMatch: spuIds.length > 0 || recommendedItems.length > 0,
-      recommendedItems
+      recommendedItems,
+      recommendationId
     });
   }
 
@@ -233,7 +236,8 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
             await updateRecommendations(
               event.spuIds,
               event.recommendedItems,
-              requestFiltersFromResolvedIntent(event.resolvedIntent, effectiveRequestFilters)
+              requestFiltersFromResolvedIntent(event.resolvedIntent, effectiveRequestFilters),
+              event.recommendationId
             );
           }
           if (event.type === "error") {
@@ -265,7 +269,8 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
       await updateRecommendations(
         fallback.recommendedSpuIds,
         fallback.recommendedItems ?? [],
-        requestFiltersFromResolvedIntent(fallback.resolvedIntent, effectiveRequestFilters)
+        requestFiltersFromResolvedIntent(fallback.resolvedIntent, effectiveRequestFilters),
+        fallback.recommendationId
       );
     } finally {
       setIsStreaming(false);

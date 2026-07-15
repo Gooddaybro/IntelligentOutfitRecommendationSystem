@@ -12,6 +12,7 @@ export type AssistantStreamEvent =
       spuIds: number[];
       recommendedItems?: RecommendedItem[];
       resolvedIntent?: DemandIntent;
+      recommendationId?: string;
     }
   | { type: "error"; message: string };
 
@@ -122,6 +123,8 @@ export function parseSseEventBlock(block: string): AssistantStreamEvent | null {
       recommended_spu_ids?: number[];
       resolvedIntent?: DemandIntent;
       resolved_intent?: DemandIntent;
+      recommendationId?: string;
+      recommendation_id?: string;
     };
     const recommendedItems = normalizeRecommendedItems(donePayload);
     const ids = donePayload.recommendedSpuIds ?? donePayload.recommended_spu_ids ?? recommendedItems.map((item) => item.spuId);
@@ -131,7 +134,8 @@ export function parseSseEventBlock(block: string): AssistantStreamEvent | null {
       answer: donePayload.answer,
       spuIds: Array.isArray(ids) ? ids.map(Number) : [],
       recommendedItems,
-      resolvedIntent: donePayload.resolvedIntent ?? donePayload.resolved_intent
+      resolvedIntent: donePayload.resolvedIntent ?? donePayload.resolved_intent,
+      recommendationId: donePayload.recommendationId ?? donePayload.recommendation_id
     };
   }
 

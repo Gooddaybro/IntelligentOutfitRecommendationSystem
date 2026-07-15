@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recommendation.intelligentoutfitrecommendationsystem.behavior.mapper.RecommendationAttributionMapper">
+
+    <insert id="insertRecommendation"
+            parameterType="com.recommendation.intelligentoutfitrecommendationsystem.behavior.model.RecommendationSnapshot">
+        INSERT INTO assistant_recommendation (
+            recommendation_id,
+            user_id,
+            request_id,
+            thread_id,
+            mode,
+            candidate_count,
+            rule_version,
+            created_at
+        ) VALUES (
+            #{recommendationId},
+            #{userId},
+            #{requestId},
+            #{threadId},
+            #{mode},
+            #{candidateCount},
+            #{ruleVersion},
+            #{createdAt}
+        )
+    </insert>
+
+    <!-- 一次批量写入完整候选集，selected/rank 字段标记最终可信选择。 -->
+    <insert id="insertItems">
+        INSERT INTO assistant_recommendation_item (
+            recommendation_id,
+            spu_id,
+            sku_id,
+            selected,
+            rank_position,
+            rank_score
+        ) VALUES
+        <foreach collection="items" item="item" separator=",">
+            (
+                #{recommendationId},
+                #{item.spuId},
+                #{item.skuId},
+                #{item.selected},
+                #{item.rankPosition},
+                #{item.rankScore}
+            )
+        </foreach>
+    </insert>
+
+    <select id="existsOwnedSelectedItem" resultType="int">
+        SELECT COUNT(*)
+        FROM assistant_recommendation ar
+        JOIN assistant_recommendation_item ari
+          ON ari.recommendation_id = ar.recommendation_id
+        WHERE ar.recommendation_id = #{recommendationId}
+          AND ar.user_id = #{userId}
+          AND ari.spu_id = #{spuId}
+          AND (#{skuId} IS NULL OR ari.sku_id = #{skuId})
+          AND ari.selected = TRUE
+    </select>
+
+    <!-- 购物车结算只继承 30 天内同一用户、同一 SKU 最近一次已验证推荐加购。 -->
+    <select id="findLatestCartRecommendation" resultType="string">
+        SELECT recommendation_id
+        FROM behavior_event
+        WHERE user_id = #{userId}
+          AND sku_id = #{skuId}
+          AND event_type IN ('CART_ADD', 'RECOMMENDATION_CART_ADD')
+          AND recommendation_id IS NOT NULL
+          AND event_time &gt;= #{since}
+        ORDER BY event_time DESC, id DESC
+        LIMIT 1
+    </select>
+
+    <select id="findOrderRecommendation" resultType="string">
+        SELECT recommendation_id
+        FROM behavior_event
+        WHERE user_id = #{userId}
+          AND order_no = #{orderNo}
+          AND sku_id = #{skuId}
+          AND event_type = 'ORDER_CREATED'
+          AND recommendation_id IS NOT NULL
+        ORDER BY event_time DESC, id DESC
+        LIMIT 1
+    </select>
+
+</mapper>

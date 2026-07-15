@@ -21,6 +21,7 @@ public class BehaviorEvent {
     private String threadId;
     private String requestId;
     private String orderNo;
+    private String recommendationId;
     private Integer quantity;
     private LocalDateTime eventTime;
     private String metadataJson;

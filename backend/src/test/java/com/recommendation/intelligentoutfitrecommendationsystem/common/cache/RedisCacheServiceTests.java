@@ -1,5 +1,7 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.common.cache;
 
+import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,9 +29,12 @@ class RedisCacheServiceTests {
 
     private RedisCacheService service;
 
+    private SimpleMeterRegistry meterRegistry;
+
     @BeforeEach
     void setUp() {
-        service = new RedisCacheService(redisTemplate);
+        meterRegistry = new SimpleMeterRegistry();
+        service = new RedisCacheService(redisTemplate, new ApplicationMetrics(meterRegistry));
     }
 
     @Test
@@ -47,6 +52,8 @@ class RedisCacheServiceTests {
 
         assertThat(count).contains(1L);
         verify(redisTemplate, never()).expire(any(String.class), any(Duration.class));
+        assertThat(meterRegistry.get("app.redis.commands")
+                .tags("operation", "increment", "outcome", "success").counter().count()).isEqualTo(1);
     }
 
     @Test

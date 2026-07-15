@@ -5,6 +5,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service
 import com.recommendation.intelligentoutfitrecommendationsystem.cart.service.CartService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
 import com.recommendation.intelligentoutfitrecommendationsystem.inventory.service.InventoryApplicationService;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.BuyNowRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.CancelOrderRequest;
@@ -63,6 +64,7 @@ public class OrderService {
     private final OrderIdempotencyCoordinator idempotencyCoordinator;
 
     private final OrderRequestFingerprint requestFingerprint;
+    private final ApplicationMetrics metrics;
 
     public OrderService(
             OrderMapper orderMapper,
@@ -70,7 +72,8 @@ public class OrderService {
             CartService cartService,
             BehaviorEventService behaviorEventService,
             OrderIdempotencyCoordinator idempotencyCoordinator,
-            OrderRequestFingerprint requestFingerprint
+            OrderRequestFingerprint requestFingerprint,
+            ApplicationMetrics metrics
     ) {
         this.orderMapper = orderMapper;
         this.inventoryApplicationService = inventoryApplicationService;
@@ -78,6 +81,7 @@ public class OrderService {
         this.behaviorEventService = behaviorEventService;
         this.idempotencyCoordinator = idempotencyCoordinator;
         this.requestFingerprint = requestFingerprint;
+        this.metrics = metrics;
     }
 
     /**
@@ -92,18 +96,25 @@ public class OrderService {
             String idempotencyKey,
             CreateOrderRequest request
     ) {
-        validateUserId(userId);
-        validateRequest(request);
-        List<Long> skuIds = normalizeSkuIds(request.skuIds());
-        String fingerprint = requestFingerprint.cart(skuIds);
-        return idempotencyCoordinator.execute(
-                userId,
-                OrderOperation.CART_CHECKOUT,
-                idempotencyKey,
-                fingerprint,
-                () -> createOrderFromCart(userId, skuIds),
-                orderId -> loadOrderForReplay(userId, orderId)
-        );
+        try {
+            validateUserId(userId);
+            validateRequest(request);
+            List<Long> skuIds = normalizeSkuIds(request.skuIds());
+            String fingerprint = requestFingerprint.cart(skuIds);
+            IdempotentOrderResult result = idempotencyCoordinator.execute(
+                    userId,
+                    OrderOperation.CART_CHECKOUT,
+                    idempotencyKey,
+                    fingerprint,
+                    () -> createOrderFromCart(userId, skuIds),
+                    orderId -> loadOrderForReplay(userId, orderId)
+            );
+            metrics.recordOrderCreation("cart", result.replayed() ? "replayed" : "created");
+            return result;
+        } catch (RuntimeException exception) {
+            metrics.recordOrderCreation("cart", "failed");
+            throw exception;
+        }
     }
 
     /**
@@ -118,17 +129,24 @@ public class OrderService {
             String idempotencyKey,
             BuyNowRequest request
     ) {
-        validateUserId(userId);
-        validateBuyNowRequest(request);
-        String fingerprint = requestFingerprint.buyNow(request.skuId(), request.quantity());
-        return idempotencyCoordinator.execute(
-                userId,
-                OrderOperation.BUY_NOW,
-                idempotencyKey,
-                fingerprint,
-                () -> createOrderFromSku(userId, request),
-                orderId -> loadOrderForReplay(userId, orderId)
-        );
+        try {
+            validateUserId(userId);
+            validateBuyNowRequest(request);
+            String fingerprint = requestFingerprint.buyNow(request.skuId(), request.quantity());
+            IdempotentOrderResult result = idempotencyCoordinator.execute(
+                    userId,
+                    OrderOperation.BUY_NOW,
+                    idempotencyKey,
+                    fingerprint,
+                    () -> createOrderFromSku(userId, request),
+                    orderId -> loadOrderForReplay(userId, orderId)
+            );
+            metrics.recordOrderCreation("buy_now", result.replayed() ? "replayed" : "created");
+            return result;
+        } catch (RuntimeException exception) {
+            metrics.recordOrderCreation("buy_now", "failed");
+            throw exception;
+        }
     }
 
     private OrderCreationResult createOrderFromCart(Long userId, List<Long> skuIds) {
@@ -136,7 +154,7 @@ public class OrderService {
         if (checkoutItems.size() != skuIds.size()) {
             throw new ResourceNotFoundException("cart item not found");
         }
-        OrderCreationResult creation = createUnpaidOrderFromCheckoutItems(userId, checkoutItems);
+        OrderCreationResult creation = createUnpaidOrderFromCheckoutItems(userId, checkoutItems, null);
         cartService.removePurchasedItems(userId, skuIds);
         return creation;
     }
@@ -147,12 +165,13 @@ public class OrderService {
             throw new ResourceNotFoundException("sku not found: " + request.skuId());
         }
         checkoutItem.setQuantity(request.quantity());
-        return createUnpaidOrderFromCheckoutItems(userId, List.of(checkoutItem));
+        return createUnpaidOrderFromCheckoutItems(userId, List.of(checkoutItem), request.recommendationId());
     }
 
     private OrderCreationResult createUnpaidOrderFromCheckoutItems(
             Long userId,
-            List<OrderCheckoutItem> checkoutItems
+            List<OrderCheckoutItem> checkoutItems,
+            String recommendationId
     ) {
         validateUserId(userId);
         if (checkoutItems == null || checkoutItems.isEmpty()) {
@@ -180,7 +199,7 @@ public class OrderService {
             item.setOrderId(order.getId());
         }
         orderMapper.insertItems(orderItems);
-        recordOrderCreatedEvents(userId, order, orderItems);
+        recordOrderCreatedEvents(userId, order, orderItems, recommendationId);
 
         return new OrderCreationResult(order.getId(), toResponse(order, orderItems));
     }
@@ -354,7 +373,12 @@ public class OrderService {
         return item;
     }
 
-    private void recordOrderCreatedEvents(Long userId, SalesOrder order, List<OrderItem> orderItems) {
+    private void recordOrderCreatedEvents(
+            Long userId,
+            SalesOrder order,
+            List<OrderItem> orderItems,
+            String recommendationId
+    ) {
         for (OrderItem item : orderItems) {
             behaviorEventService.recordBusinessEvent(new BehaviorEventCommand(
                     "order:created:" + order.getOrderNo() + ":" + item.getSkuId(),
@@ -367,7 +391,8 @@ public class OrderService {
                     null,
                     order.getOrderNo(),
                     item.getQuantity(),
-                    null
+                    null,
+                    recommendationId
             ));
         }
     }

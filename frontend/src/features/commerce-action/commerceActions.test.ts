@@ -29,11 +29,13 @@ describe("commerce actions", () => {
   it("preserves recommendation source metadata on commerce actions", () => {
     const action = buildAddToCartAction(candidate, 1, {
       source: "ASSISTANT_RECOMMENDATION",
-      threadId: "thread-1"
+      threadId: "thread-1",
+      recommendationId: "rec_123"
     });
 
     expect(action.source).toBe("ASSISTANT_RECOMMENDATION");
     expect(action.spuId).toBe(1);
     expect(action.threadId).toBe("thread-1");
+    expect(action.recommendationId).toBe("rec_123");
   });
 });

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
@@ -31,9 +32,11 @@ public class RedisCacheService {
 
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
+    private final ApplicationMetrics metrics;
 
-    public RedisCacheService(StringRedisTemplate redisTemplate) {
+    public RedisCacheService(StringRedisTemplate redisTemplate, ApplicationMetrics metrics) {
         this.redisTemplate = redisTemplate;
+        this.metrics = metrics;
         this.objectMapper = new ObjectMapper()
                 .findAndRegisterModules()
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
@@ -41,47 +44,64 @@ public class RedisCacheService {
     }
 
     public <T> Optional<T> getValue(String key, Class<T> valueType) {
+        long startedAt = System.nanoTime();
         try {
             String json = redisTemplate.opsForValue().get(key);
             if (json == null) {
+                record("get", "miss", startedAt);
                 return Optional.empty();
             }
-            return Optional.of(objectMapper.readValue(json, valueType));
+            T value = objectMapper.readValue(json, valueType);
+            record("get", "hit", startedAt);
+            return Optional.of(value);
         } catch (JsonProcessingException | RuntimeException exception) {
+            record("get", "error", startedAt);
             return Optional.empty();
         }
     }
 
     public <T> Optional<List<T>> getList(String key, Class<T> elementType) {
+        long startedAt = System.nanoTime();
         try {
             String json = redisTemplate.opsForValue().get(key);
             if (json == null) {
+                record("get", "miss", startedAt);
                 return Optional.empty();
             }
             var listType = objectMapper.getTypeFactory().constructCollectionType(List.class, elementType);
-            return Optional.of(objectMapper.readValue(json, listType));
+            List<T> value = objectMapper.readValue(json, listType);
+            record("get", "hit", startedAt);
+            return Optional.of(value);
         } catch (JsonProcessingException | RuntimeException exception) {
+            record("get", "error", startedAt);
             return Optional.empty();
         }
     }
 
     public void setValue(String key, Object value, Duration ttl) {
+        long startedAt = System.nanoTime();
         try {
             String json = objectMapper.writeValueAsString(value);
             if (ttl == null || ttl.isZero() || ttl.isNegative()) {
                 redisTemplate.opsForValue().set(key, json);
+                record("set", "success", startedAt);
                 return;
             }
             redisTemplate.opsForValue().set(key, json, ttl);
+            record("set", "success", startedAt);
         } catch (JsonProcessingException | RuntimeException exception) {
+            record("set", "error", startedAt);
             // Redis is an acceleration layer; MySQL remains the source of truth.
         }
     }
 
     public void delete(String key) {
+        long startedAt = System.nanoTime();
         try {
             redisTemplate.delete(key);
+            record("delete", "success", startedAt);
         } catch (RuntimeException exception) {
+            record("delete", "error", startedAt);
             // Redis is an acceleration layer; MySQL remains the source of truth.
         }
     }
@@ -93,15 +113,22 @@ public class RedisCacheService {
         if (ttl == null || ttl.isZero() || ttl.isNegative()) {
             throw new IllegalArgumentException("redis counter ttl must be positive");
         }
+        long startedAt = System.nanoTime();
         try {
             Long count = redisTemplate.execute(
                     INCREMENT_WITH_TTL_SCRIPT,
                     List.of(key),
                     ttl.toMillis()
             );
+            record("increment", count == null ? "error" : "success", startedAt);
             return Optional.ofNullable(count);
         } catch (RuntimeException exception) {
+            record("increment", "error", startedAt);
             return Optional.empty();
         }
+    }
+
+    private void record(String operation, String outcome, long startedAt) {
+        metrics.recordRedisCommand(operation, outcome, Duration.ofNanos(System.nanoTime() - startedAt));
     }
 }

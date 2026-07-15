@@ -8,6 +8,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.Py
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ExternalServiceException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.slf4j.MDC;
 
 import java.io.IOException;
 import java.net.URI;
@@ -27,6 +28,8 @@ import java.util.stream.Stream;
 public class RestPythonAssistantClient implements PythonAssistantClient, PythonAssistantStreamClient {
 
     private static final String INTERNAL_TOKEN_HEADER = "X-Internal-Token";
+    private static final String REQUEST_ID_HEADER = "X-Request-Id";
+    private static final String TRACEPARENT_HEADER = "traceparent";
 
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
@@ -65,7 +68,8 @@ public class RestPythonAssistantClient implements PythonAssistantClient, PythonA
     @Override
     public PythonChatResponse chat(PythonChatRequest request) {
         try {
-            HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(chatUrl))
+            HttpRequest httpRequest = addCorrelationHeaders(
+                    HttpRequest.newBuilder(URI.create(chatUrl)), request)
                     .timeout(readTimeout)
                     .header("Content-Type", "application/json")
                     .header(INTERNAL_TOKEN_HEADER, internalToken)
@@ -89,7 +93,8 @@ public class RestPythonAssistantClient implements PythonAssistantClient, PythonA
     @Override
     public void streamChat(PythonChatRequest request, PythonAssistantStreamHandler handler) {
         try {
-            HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(streamChatUrl))
+            HttpRequest httpRequest = addCorrelationHeaders(
+                    HttpRequest.newBuilder(URI.create(streamChatUrl)), request)
                     .timeout(streamReadTimeout)
                     .header("Content-Type", "application/json")
                     .header("Accept", "text/event-stream")
@@ -141,5 +146,20 @@ public class RestPythonAssistantClient implements PythonAssistantClient, PythonA
         String code = data.path("code").asText("python_stream_error");
         String message = data.path("message").asText("python assistant stream failed");
         handler.onError(code, message);
+    }
+
+    private HttpRequest.Builder addCorrelationHeaders(HttpRequest.Builder builder, PythonChatRequest request) {
+        String requestId = MDC.get("requestId");
+        if (requestId == null || requestId.isBlank()) {
+            requestId = request.requestId();
+        }
+        if (requestId != null && !requestId.isBlank()) {
+            builder.header(REQUEST_ID_HEADER, requestId);
+        }
+        String traceparent = MDC.get("traceparent");
+        if (traceparent != null && !traceparent.isBlank()) {
+            builder.header(TRACEPARENT_HEADER, traceparent);
+        }
+        return builder;
     }
 }

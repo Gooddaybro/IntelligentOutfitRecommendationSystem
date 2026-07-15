@@ -14,11 +14,13 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.servic
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.AssistantRateLimitService;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.AssistantService;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.dto.BehaviorSummaryResponse;
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.RecommendationAttributionService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ExternalServiceException;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.ConversationResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.MessageResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationApplicationService;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserBodyDataResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserPreferencesResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserProfileResponse;
@@ -41,6 +43,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.inOrder;
@@ -66,6 +69,12 @@ class AssistantServiceTests {
 
     @Mock
     private PythonAssistantStreamClient pythonAssistantStreamClient;
+
+    @Mock
+    private ApplicationMetrics applicationMetrics;
+
+    @Mock
+    private RecommendationAttributionService recommendationAttributionService;
 
     private final Executor directExecutor = Runnable::run;
 
@@ -144,15 +153,24 @@ class AssistantServiceTests {
                         "recommendation",
                         List.of(new PythonProductRef(1001L, 2001L, "fits the requested commute style", null))
                 ));
+        when(recommendationAttributionService.record(any())).thenReturn("rec_sync_test");
 
         AssistantChatResponse response = newAssistantService().chat(10L, request);
 
         assertThat(response.threadId()).isEqualTo("th_service_001");
         assertThat(response.answer()).contains("wool blend jacket");
         assertThat(response.recommendedSpuIds()).containsExactly(1001L);
+        assertThat(response.recommendationId()).isEqualTo("rec_sync_test");
         assertThat(response.recommendedItems())
                 .extracting("spuId", "skuId", "reason")
                 .containsExactly(tuple(1001L, 2001L, "fits the requested commute style"));
+        verify(applicationMetrics).recordAiCandidateCount(1);
+        verify(recommendationAttributionService).record(argThat(command ->
+                "sync".equals(command.mode())
+                        && command.candidates().size() == 1
+                        && command.selectedItems().size() == 1
+                        && Long.valueOf(2001L).equals(command.selectedItems().getFirst().skuId())
+        ));
 
         InOrder order = inOrder(conversationService, assistantContextService, pythonAssistantClient);
         verify(assistantRateLimitService).assertAllowed(10L);
@@ -321,6 +339,7 @@ class AssistantServiceTests {
         verify(assistantRateLimitService).assertAllowed(10L);
         verify(conversationService).appendMessage(10L, "th_existing", "user", "recommend a jacket", "req-ai-fallback-test");
         verify(conversationService).appendMessage(10L, "th_existing", "assistant", response.answer(), "req-ai-fallback-test");
+        verify(applicationMetrics).recordAiFallback("sync");
     }
 
     @Test
@@ -378,6 +397,7 @@ class AssistantServiceTests {
         MDC.put("requestId", "req-stream-service-test");
 
         when(assistantContextService.buildContext(10L, "th_stream_existing", request)).thenReturn(context);
+        when(recommendationAttributionService.record(any())).thenReturn("rec_stream_test");
         org.mockito.Mockito.doAnswer(invocation -> {
             handlerRef.set(invocation.getArgument(1));
             return null;
@@ -406,6 +426,9 @@ class AssistantServiceTests {
                 "我身高175体重70kg，适合穿什么码？",
                 "req-stream-service-test"
         );
+        verify(recommendationAttributionService).record(argThat(command ->
+                "stream".equals(command.mode()) && "req-stream-service-test".equals(command.requestId())
+        ));
         order.verify(assistantContextService).buildContext(10L, "th_stream_existing", request);
         order.verify(pythonAssistantStreamClient).streamChat(any(PythonChatRequest.class), any(PythonAssistantStreamHandler.class));
         order.verify(conversationService).appendMessage(
@@ -529,6 +552,8 @@ class AssistantServiceTests {
                 pythonAssistantClient,
                 pythonAssistantStreamClient,
                 new AssistantFallbackService(),
+                applicationMetrics,
+                recommendationAttributionService,
                 directExecutor,
                 120_000L
         );

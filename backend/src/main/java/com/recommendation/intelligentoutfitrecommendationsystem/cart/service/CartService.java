@@ -46,6 +46,16 @@ public class CartService {
      */
     @Transactional
     public List<CartItemView> addItem(Long userId, Long skuId, Integer quantity) {
+        return addItem(userId, skuId, quantity, null);
+    }
+
+    @Transactional
+    public List<CartItemView> addItem(
+            Long userId,
+            Long skuId,
+            Integer quantity,
+            String recommendationId
+    ) {
         validateUserId(userId);
         validateSkuId(skuId);
         validateQuantity(quantity);
@@ -64,7 +74,8 @@ public class CartService {
                 null,
                 null,
                 quantity,
-                null
+                null,
+                recommendationId
         ));
         return items;
     }

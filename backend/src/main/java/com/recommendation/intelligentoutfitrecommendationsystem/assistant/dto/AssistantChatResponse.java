@@ -14,8 +14,20 @@ public record AssistantChatResponse(
         List<Long> recommendedSpuIds,
         List<AssistantRecommendationItem> recommendedItems,
         int candidatesCount,
-        DemandIntent resolvedIntent
+        DemandIntent resolvedIntent,
+        String recommendationId
 ) {
+    public AssistantChatResponse(
+            String threadId,
+            String answer,
+            List<Long> recommendedSpuIds,
+            List<AssistantRecommendationItem> recommendedItems,
+            int candidatesCount,
+            DemandIntent resolvedIntent
+    ) {
+        this(threadId, answer, recommendedSpuIds, recommendedItems, candidatesCount, resolvedIntent, null);
+    }
+
     public AssistantChatResponse(
             String threadId,
             String answer,
@@ -23,6 +35,6 @@ public record AssistantChatResponse(
             List<AssistantRecommendationItem> recommendedItems,
             int candidatesCount
     ) {
-        this(threadId, answer, recommendedSpuIds, recommendedItems, candidatesCount, null);
+        this(threadId, answer, recommendedSpuIds, recommendedItems, candidatesCount, null, null);
     }
 }

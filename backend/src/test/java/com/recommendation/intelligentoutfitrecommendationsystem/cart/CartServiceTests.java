@@ -76,6 +76,20 @@ class CartServiceTests {
     }
 
     @Test
+    void addItemPropagatesRecommendationAttribution() {
+        CartItemView item = cartItemView(2102L, 1);
+        when(cartMapper.existsSkuById(2102L)).thenReturn(1);
+        when(cartMapper.findItemsByUserId(10L)).thenReturn(List.of(item));
+
+        service.addItem(10L, 2102L, 1, "rec_cart_test");
+
+        verify(behaviorEventService).recordBusinessEvent(argThat(command ->
+                "rec_cart_test".equals(command.recommendationId())
+                        && "CART_ADD".equals(command.eventType())
+        ));
+    }
+
+    @Test
     void updateQuantityConvertsMissingOwnerScopedRowToNotFound() {
         when(cartMapper.updateQuantity(10L, 2102L, 2)).thenReturn(0);
 

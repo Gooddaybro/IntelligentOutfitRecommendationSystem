@@ -51,6 +51,19 @@ class FavoriteServiceTests {
     }
 
     @Test
+    void addFavoritePropagatesRecommendationAttribution() {
+        when(favoriteMapper.selectByUserIdAndProductId(10L, 1001L)).thenReturn(null);
+        when(favoriteMapper.selectByUserId(10L)).thenReturn(List.of());
+
+        service.addFavorite(10L, 1001L, "rec_favorite_test");
+
+        verify(behaviorEventService).recordBusinessEvent(argThat(command ->
+                "rec_favorite_test".equals(command.recommendationId())
+                        && "FAVORITE_ADD".equals(command.eventType())
+        ));
+    }
+
+    @Test
     void addFavoriteDoesNotRecordBehaviorWhenFavoriteAlreadyExists() {
         UserFavorite existing = new UserFavorite();
         existing.setUserId(10L);

@@ -6,6 +6,7 @@ export type CommerceActionSource = "ASSISTANT_RECOMMENDATION";
 export type CommerceActionMetadata = {
   source?: CommerceActionSource;
   threadId?: string;
+  recommendationId?: string;
 };
 
 export type PendingCommerceAction = {
@@ -17,6 +18,7 @@ export type PendingCommerceAction = {
   unitPrice: number;
   source?: CommerceActionSource;
   threadId?: string;
+  recommendationId?: string;
 };
 
 export function buildAddToCartAction(

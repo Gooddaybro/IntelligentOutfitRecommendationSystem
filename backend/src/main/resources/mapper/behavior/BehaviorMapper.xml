@@ -18,6 +18,7 @@
             thread_id,
             request_id,
             order_no,
+            recommendation_id,
             quantity,
             event_time,
             metadata_json
@@ -31,6 +32,7 @@
             #{threadId},
             #{requestId},
             #{orderNo},
+            #{recommendationId},
             #{quantity},
             #{eventTime},
             #{metadataJson}

@@ -21,29 +21,23 @@ export function useCommerceAction({ onCartItemsChange, onOrderCreated }: UseComm
     setIsBusy(true);
     try {
       if (pendingAction.kind === "BUY_NOW") {
-        const order = await api.buyNow(pendingAction.skuId, pendingAction.quantity);
+        const order = await api.buyNow(
+          pendingAction.skuId,
+          pendingAction.quantity,
+          pendingAction.recommendationId
+        );
         setStatus(`已生成订单 ${order.orderNo}`);
         setPendingAction(null);
         onOrderCreated();
         return order;
       }
 
-      const items = await api.addCartItem(pendingAction.skuId, pendingAction.quantity);
+      const items = await api.addCartItem(
+        pendingAction.skuId,
+        pendingAction.quantity,
+        pendingAction.recommendationId
+      );
       onCartItemsChange(items);
-      if (pendingAction.source === "ASSISTANT_RECOMMENDATION") {
-        try {
-          await api.recordBehaviorEvent({
-            eventId: `recommendation-cart-add:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`,
-            eventType: "RECOMMENDATION_CART_ADD",
-            spuId: pendingAction.spuId,
-            skuId: pendingAction.skuId,
-            threadId: pendingAction.threadId,
-            quantity: pendingAction.quantity
-          });
-        } catch {
-          // 推荐埋点不能阻断加购主流程。
-        }
-      }
       setStatus("已加入购物车");
       setPendingAction(null);
       return null;

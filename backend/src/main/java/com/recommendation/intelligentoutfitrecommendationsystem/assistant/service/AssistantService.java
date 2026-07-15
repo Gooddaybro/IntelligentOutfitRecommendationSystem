@@ -18,7 +18,10 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.Py
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonProductRef;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonUserContext;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.dto.BehaviorSummaryResponse;
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.RecommendationAttributionService;
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.RecommendationRecordCommand;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ExternalServiceException;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.ConversationResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.MessageResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationApplicationService;
@@ -58,6 +61,8 @@ public class AssistantService {
     private final PythonAssistantClient pythonAssistantClient;
     private final PythonAssistantStreamClient pythonAssistantStreamClient;
     private final AssistantFallbackService assistantFallbackService;
+    private final ApplicationMetrics metrics;
+    private final RecommendationAttributionService recommendationAttributionService;
     private final Executor assistantStreamingExecutor;
     private final long streamTimeoutMs;
 
@@ -68,6 +73,8 @@ public class AssistantService {
             PythonAssistantClient pythonAssistantClient,
             PythonAssistantStreamClient pythonAssistantStreamClient,
             AssistantFallbackService assistantFallbackService,
+            ApplicationMetrics metrics,
+            RecommendationAttributionService recommendationAttributionService,
             @Qualifier("assistantStreamingExecutor") Executor assistantStreamingExecutor,
             @Value("${app.ai.stream-timeout-ms:120000}") long streamTimeoutMs
     ) {
@@ -77,6 +84,8 @@ public class AssistantService {
         this.pythonAssistantClient = pythonAssistantClient;
         this.pythonAssistantStreamClient = pythonAssistantStreamClient;
         this.assistantFallbackService = assistantFallbackService;
+        this.metrics = metrics;
+        this.recommendationAttributionService = recommendationAttributionService;
         this.assistantStreamingExecutor = assistantStreamingExecutor;
         this.streamTimeoutMs = streamTimeoutMs;
     }
@@ -89,6 +98,7 @@ public class AssistantService {
         // 先保存用户消息，即使 Python 调用失败，也能在会话历史和日志中追踪用户原始问题。
         conversationService.appendMessage(userId, threadId, "user", request.message(), requestId);
         AssistantContext context = assistantContextService.buildContext(userId, threadId, request);
+        metrics.recordAiCandidateCount(context.candidates().size());
         PythonChatRequest pythonRequest = toPythonRequest(userId, threadId, request, context);
         PythonChatResponse pythonResponse = callPythonOrFallback(pythonRequest);
 
@@ -96,13 +106,16 @@ public class AssistantService {
         conversationService.appendMessage(userId, threadId, "assistant", answer, requestId);
 
         List<AssistantRecommendationItem> recommendedItems = toRecommendedItems(pythonResponse.productRefs(), context.candidates());
+        String recommendationId = recordRecommendation(
+                userId, requestId, threadId, "sync", context, recommendedItems);
         return new AssistantChatResponse(
                 threadId,
                 answer,
                 toRecommendedSpuIds(recommendedItems),
                 recommendedItems,
                 context.candidates().size(),
-                context.demandIntent()
+                context.demandIntent(),
+                recommendationId
         );
     }
 
@@ -122,6 +135,7 @@ public class AssistantService {
 
         conversationService.appendMessage(userId, threadId, "user", request.message(), requestId);
         AssistantContext context = assistantContextService.buildContext(userId, threadId, request);
+        metrics.recordAiCandidateCount(context.candidates().size());
         PythonChatRequest pythonRequest = toPythonRequest(userId, threadId, request, context);
         SseEmitter emitter = new SseEmitter(streamTimeoutMs);
         AtomicBoolean active = new AtomicBoolean(true);
@@ -153,6 +167,7 @@ public class AssistantService {
             requireAnswer(pythonResponse);
             return pythonResponse;
         } catch (RuntimeException exception) {
+            metrics.recordAiFallback("sync");
             return assistantFallbackService.chatFallbackResponse(pythonRequest);
         }
     }
@@ -296,7 +311,7 @@ public class AssistantService {
             return List.of();
         }
         Set<String> seen = new LinkedHashSet<>();
-        return productRefs.stream()
+        List<AssistantRecommendationItem> recommendedItems = productRefs.stream()
                 .filter(ref -> isKnownCandidateRef(ref, candidates))
                 .filter(ref -> seen.add(ref.spuId() + ":" + ref.skuId()))
                 .map(ref -> new AssistantRecommendationItem(
@@ -306,6 +321,8 @@ public class AssistantService {
                         ref.rankScore()
                 ))
                 .toList();
+        metrics.recordAiDiscardedReferences(productRefs.size() - recommendedItems.size());
+        return recommendedItems;
     }
 
     private List<Long> toRecommendedSpuIds(List<AssistantRecommendationItem> recommendedItems) {
@@ -316,6 +333,26 @@ public class AssistantService {
                 .map(AssistantRecommendationItem::spuId)
                 .distinct()
                 .toList();
+    }
+
+    private String recordRecommendation(
+            Long userId,
+            String requestId,
+            String threadId,
+            String mode,
+            AssistantContext context,
+            List<AssistantRecommendationItem> recommendedItems
+    ) {
+        List<RecommendationRecordCommand.Item> candidates = context.candidates().stream()
+                .map(candidate -> new RecommendationRecordCommand.Item(
+                        candidate.getSpuId(), candidate.getSkuId(), null))
+                .toList();
+        List<RecommendationRecordCommand.Item> selectedItems = recommendedItems.stream()
+                .map(item -> new RecommendationRecordCommand.Item(
+                        item.spuId(), item.skuId(), item.rankScore()))
+                .toList();
+        return recommendationAttributionService.record(new RecommendationRecordCommand(
+                userId, requestId, threadId, mode, candidates, selectedItems));
     }
 
     private String normalizeRecommendationReason(String reason) {
@@ -361,6 +398,7 @@ public class AssistantService {
         try {
             pythonAssistantStreamClient.streamChat(pythonRequest, handler);
         } catch (RuntimeException exception) {
+            metrics.recordAiFallback("stream");
             AssistantStreamErrorEvent error = assistantFallbackService.streamFallbackError();
             handler.onError(error.code(), error.message());
         }
@@ -414,6 +452,8 @@ public class AssistantService {
             }
             conversationService.appendMessage(userId, threadId, "assistant", answer, requestId);
             List<AssistantRecommendationItem> recommendedItems = toRecommendedItems(response.productRefs(), context.candidates());
+            String recommendationId = recordRecommendation(
+                    userId, requestId, threadId, "stream", context, recommendedItems);
             AssistantStreamDoneEvent done = new AssistantStreamDoneEvent(
                     threadId,
                     answer,
@@ -421,7 +461,8 @@ public class AssistantService {
                     recommendedItems,
                     context.candidates().size(),
                     response.intent(),
-                    context.demandIntent()
+                    context.demandIntent(),
+                    recommendationId
             );
             if (sendEvent(emitter, active, "done", done)) {
                 emitter.complete();

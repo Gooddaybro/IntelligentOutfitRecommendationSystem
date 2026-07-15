@@ -5,8 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.dto.BehaviorEventRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.dto.BehaviorEventResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.mapper.BehaviorMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.behavior.mapper.RecommendationAttributionMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.model.BehaviorEvent;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -30,10 +32,18 @@ public class BehaviorEventService {
     private static final int MAX_IDENTIFIER_LENGTH = 64;
 
     private final BehaviorMapper behaviorMapper;
+    private final RecommendationAttributionMapper recommendationAttributionMapper;
+    private final ApplicationMetrics applicationMetrics;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public BehaviorEventService(BehaviorMapper behaviorMapper) {
+    public BehaviorEventService(
+            BehaviorMapper behaviorMapper,
+            RecommendationAttributionMapper recommendationAttributionMapper,
+            ApplicationMetrics applicationMetrics
+    ) {
         this.behaviorMapper = behaviorMapper;
+        this.recommendationAttributionMapper = recommendationAttributionMapper;
+        this.applicationMetrics = applicationMetrics;
     }
 
     @Transactional
@@ -53,7 +63,9 @@ public class BehaviorEventService {
         }
 
         String eventId = normalizeEventId(request.eventId());
-        behaviorMapper.insert(toEvent(
+        String recommendationId = normalizeOptionalIdentifier(request.recommendationId(), "recommendationId");
+        validateOwnedSelectedItem(userId, request.spuId(), request.skuId(), recommendationId);
+        int insertedRows = behaviorMapper.insert(toEvent(
                 eventId,
                 userId,
                 eventType,
@@ -64,8 +76,10 @@ public class BehaviorEventService {
                 request.requestId(),
                 request.orderNo(),
                 request.quantity(),
-                request.metadata()
+                request.metadata(),
+                recommendationId
         ));
+        recordFunnel(eventType, recommendationId, insertedRows);
         return new BehaviorEventResponse(eventId);
     }
 
@@ -80,7 +94,8 @@ public class BehaviorEventService {
                     command.source(),
                     BehaviorEventSource.COMMERCE
             );
-            behaviorMapper.insert(toEvent(
+            String recommendationId = resolveBusinessRecommendation(command, eventType);
+            int insertedRows = behaviorMapper.insert(toEvent(
                     normalizeEventId(command.eventId()),
                     command.userId(),
                     eventType,
@@ -91,8 +106,10 @@ public class BehaviorEventService {
                     command.requestId(),
                     command.orderNo(),
                     command.quantity(),
-                    command.metadata()
+                    command.metadata(),
+                    recommendationId
             ));
+            recordFunnel(eventType, recommendationId, insertedRows);
         } catch (RuntimeException exception) {
             LOGGER.warn("Failed to record behavior event from business flow.", exception);
         }
@@ -109,7 +126,8 @@ public class BehaviorEventService {
             String requestId,
             String orderNo,
             Integer quantity,
-            Map<String, Object> metadata
+            Map<String, Object> metadata,
+            String recommendationId
     ) {
         BehaviorEvent event = new BehaviorEvent();
         event.setEventId(eventId);
@@ -121,6 +139,7 @@ public class BehaviorEventService {
         event.setThreadId(normalizeOptionalIdentifier(threadId, "threadId"));
         event.setRequestId(normalizeOptionalIdentifier(requestId, "requestId"));
         event.setOrderNo(normalizeOptionalIdentifier(orderNo, "orderNo"));
+        event.setRecommendationId(recommendationId);
         event.setQuantity(quantity);
         event.setEventTime(LocalDateTime.now());
         event.setMetadataJson(toMetadataJson(metadata));
@@ -160,6 +179,54 @@ public class BehaviorEventService {
             return objectMapper.writeValueAsString(metadata);
         } catch (JsonProcessingException exception) {
             throw new BadRequestException("metadata must be JSON serializable");
+        }
+    }
+
+    private void validateOwnedSelectedItem(Long userId, Long spuId, Long skuId, String recommendationId) {
+        if (recommendationId == null) {
+            return;
+        }
+        if (spuId == null || recommendationAttributionMapper.existsOwnedSelectedItem(
+                recommendationId, userId, spuId, skuId) == 0) {
+            throw new BadRequestException("recommendation item is not available for current user");
+        }
+    }
+
+    private String resolveBusinessRecommendation(
+            BehaviorEventCommand command,
+            BehaviorEventType eventType
+    ) {
+        String recommendationId = normalizeOptionalIdentifier(command.recommendationId(), "recommendationId");
+        if (recommendationId != null) {
+            validateOwnedSelectedItem(command.userId(), command.spuId(), command.skuId(), recommendationId);
+            return recommendationId;
+        }
+        if (eventType == BehaviorEventType.ORDER_CREATED && command.skuId() != null) {
+            return recommendationAttributionMapper.findLatestCartRecommendation(
+                    command.userId(), command.skuId(), LocalDateTime.now().minusDays(30));
+        }
+        if (eventType == BehaviorEventType.PAYMENT_SUCCESS
+                && command.orderNo() != null && command.skuId() != null) {
+            return recommendationAttributionMapper.findOrderRecommendation(
+                    command.userId(), command.orderNo(), command.skuId());
+        }
+        return null;
+    }
+
+    private void recordFunnel(BehaviorEventType eventType, String recommendationId, int insertedRows) {
+        if (recommendationId == null || insertedRows <= 0) {
+            return;
+        }
+        String stage = switch (eventType) {
+            case RECOMMENDATION_CLICKED -> "click";
+            case FAVORITE_ADD, RECOMMENDATION_FAVORITE_ADD -> "favorite";
+            case CART_ADD, RECOMMENDATION_CART_ADD -> "cart";
+            case ORDER_CREATED -> "order";
+            case PAYMENT_SUCCESS -> "payment";
+            default -> null;
+        };
+        if (stage != null) {
+            applicationMetrics.recordRecommendationFunnel(stage);
         }
     }
 }

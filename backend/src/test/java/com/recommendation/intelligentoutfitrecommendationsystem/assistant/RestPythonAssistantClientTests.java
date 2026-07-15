@@ -11,6 +11,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.Py
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 
 import java.math.BigDecimal;
 import java.net.InetSocketAddress;
@@ -28,6 +29,7 @@ class RestPythonAssistantClientTests {
 
     @AfterEach
     void stopServer() {
+        MDC.clear();
         if (server != null) {
             server.stop(0);
         }
@@ -37,9 +39,13 @@ class RestPythonAssistantClientTests {
     void serializesPythonChatRequestUsingSnakeCaseContract() throws Exception {
         AtomicReference<String> requestBody = new AtomicReference<>();
         AtomicReference<String> internalToken = new AtomicReference<>();
+        AtomicReference<String> requestIdHeader = new AtomicReference<>();
+        AtomicReference<String> traceparentHeader = new AtomicReference<>();
         server = HttpServer.create(new InetSocketAddress(0), 0);
         server.createContext("/chat", exchange -> {
             internalToken.set(exchange.getRequestHeaders().getFirst("X-Internal-Token"));
+            requestIdHeader.set(exchange.getRequestHeaders().getFirst("X-Request-Id"));
+            traceparentHeader.set(exchange.getRequestHeaders().getFirst("traceparent"));
             requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             byte[] body = """
                     {
@@ -124,11 +130,16 @@ class RestPythonAssistantClientTests {
                 ),
                 false
         );
+        MDC.put("requestId", "req-client-test");
+        MDC.put("traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01");
 
         PythonChatResponse response = client.chat(request);
 
         assertThat(response.requestId()).isEqualTo("req-client-test");
         assertThat(internalToken.get()).isEqualTo("test-python-token");
+        assertThat(requestIdHeader.get()).isEqualTo("req-client-test");
+        assertThat(traceparentHeader.get())
+                .isEqualTo("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01");
         assertThat(response.answer()).isEqualTo("ok");
         assertThat(response.intent()).isEqualTo("recommendation");
         assertThat(response.productRefs())
@@ -170,10 +181,14 @@ class RestPythonAssistantClientTests {
         AtomicReference<String> acceptHeader = new AtomicReference<>();
         AtomicReference<String> internalToken = new AtomicReference<>();
         AtomicReference<String> requestBody = new AtomicReference<>();
+        AtomicReference<String> requestIdHeader = new AtomicReference<>();
+        AtomicReference<String> traceparentHeader = new AtomicReference<>();
         server = HttpServer.create(new InetSocketAddress(0), 0);
         server.createContext("/chat/stream", exchange -> {
             acceptHeader.set(exchange.getRequestHeaders().getFirst("Accept"));
             internalToken.set(exchange.getRequestHeaders().getFirst("X-Internal-Token"));
+            requestIdHeader.set(exchange.getRequestHeaders().getFirst("X-Request-Id"));
+            traceparentHeader.set(exchange.getRequestHeaders().getFirst("traceparent"));
             requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             byte[] body = """
                     event: token
@@ -195,11 +210,16 @@ class RestPythonAssistantClientTests {
                 baseUrl, 1000, 5000, 9000, "test-python-token"
         );
         CapturingStreamHandler handler = new CapturingStreamHandler();
+        MDC.put("requestId", "req-stream-test");
+        MDC.put("traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01");
 
         client.streamChat(minimalPythonRequest(), handler);
 
         assertThat(acceptHeader.get()).isEqualTo("text/event-stream");
         assertThat(internalToken.get()).isEqualTo("test-python-token");
+        assertThat(requestIdHeader.get()).isEqualTo("req-stream-test");
+        assertThat(traceparentHeader.get())
+                .isEqualTo("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01");
         assertThat(requestBody.get())
                 .contains("\"request_id\":\"req-stream-test\"")
                 .contains("\"query\":\"hello\"");

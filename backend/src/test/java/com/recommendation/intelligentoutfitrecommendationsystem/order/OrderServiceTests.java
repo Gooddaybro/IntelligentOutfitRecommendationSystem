@@ -4,6 +4,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service
 import com.recommendation.intelligentoutfitrecommendationsystem.cart.service.CartService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.BuyNowRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.inventory.service.InventoryApplicationService;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.CancelOrderRequest;
@@ -66,6 +67,9 @@ class OrderServiceTests {
     @Mock
     private OrderRequestFingerprint requestFingerprint;
 
+    @Mock
+    private ApplicationMetrics applicationMetrics;
+
     @InjectMocks
     private OrderService service;
 
@@ -125,6 +129,7 @@ class OrderServiceTests {
         assertThat(response.orderNo()).startsWith("ORD");
         assertThat(response.status()).isEqualTo("UNPAID");
         assertThat(response.totalAmount()).isEqualByComparingTo("697.00");
+        verify(applicationMetrics).recordOrderCreation("cart", "created");
         verify(idempotencyCoordinator).execute(
                 eq(10L),
                 eq(OrderOperation.CART_CHECKOUT),
@@ -142,11 +147,12 @@ class OrderServiceTests {
         assertThatThrownBy(() -> service.createOrder(10L, IDEMPOTENCY_KEY, request))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessage("order source is not supported: BUY_NOW");
+        verify(applicationMetrics).recordOrderCreation("cart", "failed");
     }
 
     @Test
     void buyNowCreatesUnpaidOrderWithoutTouchingCart() {
-        var request = new BuyNowRequest(2102L, 3);
+        var request = new BuyNowRequest(2102L, 3, "rec_buy_now_test");
         OrderCheckoutItem checkoutItem = checkoutItem(2102L, "299.00", 0);
         when(orderMapper.findCheckoutItemBySkuId(2102L)).thenReturn(checkoutItem);
         doAnswer(invocation -> {
@@ -180,6 +186,10 @@ class OrderServiceTests {
                 any(),
                 any()
         );
+        verify(behaviorEventService).recordBusinessEvent(argThat(command ->
+                "ORDER_CREATED".equals(command.eventType())
+                        && "rec_buy_now_test".equals(command.recommendationId())
+        ));
         assertThat(response.items())
                 .singleElement()
                 .satisfies(item -> {

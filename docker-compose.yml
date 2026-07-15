@@ -21,7 +21,33 @@ services:
     command: redis-server --appendonly yes
     volumes:
       - intelligent_outfit_redis_data:/data
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: intelligent_outfit_prometheus
+    profiles: ["observability"]
+    ports:
+      - "${PROMETHEUS_HOST_PORT:-9090}:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+  grafana:
+    image: grafana/grafana:11.2.2
+    container_name: intelligent_outfit_grafana
+    profiles: ["observability"]
+    ports:
+      - "${GRAFANA_HOST_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    depends_on:
+      - prometheus
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - intelligent_outfit_grafana_data:/var/lib/grafana
 
 volumes:
   intelligent_outfit_mysql_data:
   intelligent_outfit_redis_data:
+  intelligent_outfit_grafana_data:

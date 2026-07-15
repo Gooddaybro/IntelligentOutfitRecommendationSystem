@@ -47,7 +47,8 @@ public class CartController {
             @Valid @RequestBody AddCartItemRequest request
     ) {
         CurrentUser currentUser = CurrentUser.from(authentication);
-        return ApiResponse.ok(cartService.addItem(currentUser.userId(), request.skuId(), request.quantity()));
+        return ApiResponse.ok(cartService.addItem(
+                currentUser.userId(), request.skuId(), request.quantity(), request.recommendationId()));
     }
 
     @PutMapping("/{skuId}")

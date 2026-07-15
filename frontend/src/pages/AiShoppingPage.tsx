@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { ChatPanel } from "../features/assistant/ChatPanel";
 import type { ChatPanelState, RecommendationResultMeta } from "../features/assistant/ChatPanel";
 import { ProductCard } from "../features/catalog/ProductCard";
@@ -34,8 +34,6 @@ export function AiShoppingPage({
   onAction,
   onRefreshCart
 }: AiShoppingPageProps) {
-  const exposureKeysRef = useRef<Set<string>>(new Set());
-
   useEffect(() => {
     async function loadInitialRecommendations() {
       if (recommendationsLoaded) {
@@ -73,7 +71,10 @@ export function AiShoppingPage({
     candidate: RecommendationCandidate,
     metadata?: Record<string, unknown>
   ) {
-    if (!recommendationMeta?.hasAiResult || !chatState.threadId) {
+    if (!recommendationMeta?.hasAiResult
+        || !recommendationMeta.recommendationId
+        || !chatState.threadId
+        || !isAttributedCandidate(candidate)) {
       return;
     }
     void api
@@ -83,28 +84,27 @@ export function AiShoppingPage({
         spuId: candidate.spuId,
         skuId: candidate.skuId,
         threadId: chatState.threadId,
+        recommendationId: recommendationMeta.recommendationId,
         metadata
       })
       .catch(() => undefined);
   }
 
-  useEffect(() => {
-    if (!recommendationMeta?.hasAiResult || !chatState.threadId) {
-      return;
-    }
-    recommendations.forEach((candidate, index) => {
-      const key = `${chatState.threadId}:${candidate.spuId}:${candidate.skuId}:exposed`;
-      if (exposureKeysRef.current.has(key)) {
-        return;
-      }
-      exposureKeysRef.current.add(key);
-      recordRecommendationEvent("RECOMMENDATION_EXPOSED", candidate, { position: index + 1 });
-    });
-  }, [chatState.threadId, recommendationMeta?.hasAiResult, recommendations]);
+  function isAttributedCandidate(candidate: RecommendationCandidate) {
+    return recommendationMeta?.recommendedItems?.some((item) =>
+      item.spuId === candidate.spuId && (item.skuId === undefined || item.skuId === candidate.skuId)
+    ) ?? false;
+  }
 
-  const actionMetadata = recommendationMeta?.hasAiResult
-    ? { source: "ASSISTANT_RECOMMENDATION" as const, threadId: chatState.threadId }
+  function actionMetadataFor(candidate: RecommendationCandidate) {
+    return recommendationMeta?.hasAiResult && isAttributedCandidate(candidate)
+    ? {
+        source: "ASSISTANT_RECOMMENDATION" as const,
+        threadId: chatState.threadId,
+        recommendationId: recommendationMeta.recommendationId
+      }
     : undefined;
+  }
   const recordEvent = (event: { eventType: BehaviorEventType; candidate: RecommendationCandidate; metadata?: Record<string, unknown> }) =>
     recordRecommendationEvent(event.eventType, event.candidate, event.metadata);
 
@@ -138,11 +138,11 @@ export function AiShoppingPage({
         {recommendations.length > 0 && (
           <div className="recommendation-stage__grid">
             <div className="recommendation-stage__featured">
-              <ProductCard candidate={recommendations[0]} variant="featured" onAction={onAction} actionMetadata={actionMetadata} position={1} onBehaviorEvent={recordEvent} />
+              <ProductCard candidate={recommendations[0]} variant="featured" onAction={onAction} actionMetadata={actionMetadataFor(recommendations[0])} position={1} onBehaviorEvent={recordEvent} />
             </div>
             <div className="recommendation-stage__supporting">
               {recommendations.slice(1, 3).map((candidate, index) => (
-                <ProductCard key={`${candidate.spuId}-${candidate.skuId}`} candidate={candidate} variant="supporting" onAction={onAction} actionMetadata={actionMetadata} position={index + 2} onBehaviorEvent={recordEvent} />
+                <ProductCard key={`${candidate.spuId}-${candidate.skuId}`} candidate={candidate} variant="supporting" onAction={onAction} actionMetadata={actionMetadataFor(candidate)} position={index + 2} onBehaviorEvent={recordEvent} />
               ))}
             </div>
           </div>
@@ -150,7 +150,7 @@ export function AiShoppingPage({
         {recommendations.length > 3 && (
           <div className="product-grid recommendation-stage__remaining">
             {recommendations.slice(3).map((candidate, index) => (
-              <ProductCard key={`${candidate.spuId}-${candidate.skuId}`} candidate={candidate} onAction={onAction} actionMetadata={actionMetadata} position={index + 4} onBehaviorEvent={recordEvent} />
+              <ProductCard key={`${candidate.spuId}-${candidate.skuId}`} candidate={candidate} onAction={onAction} actionMetadata={actionMetadataFor(candidate)} position={index + 4} onBehaviorEvent={recordEvent} />
             ))}
           </div>
         )}

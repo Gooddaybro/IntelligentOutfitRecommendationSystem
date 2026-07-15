@@ -16,6 +16,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -45,6 +46,9 @@ class AssistantControllerTests {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -103,6 +107,7 @@ class AssistantControllerTests {
                 .andExpect(jsonPath("$.data.recommendedItems[0].spuId").value(1002))
                 .andExpect(jsonPath("$.data.recommendedItems[0].skuId").value(2101))
                 .andExpect(jsonPath("$.data.recommendedItems[0].reason").value("fits the requested commute style"))
+                .andExpect(jsonPath("$.data.recommendationId").value(org.hamcrest.Matchers.startsWith("rec_")))
                 .andExpect(jsonPath("$.data.resolvedIntent.category").value("外套"))
                 .andExpect(jsonPath("$.data.resolvedIntent.budgetMax").value(800))
                 .andReturn()
@@ -110,6 +115,18 @@ class AssistantControllerTests {
                 .getContentAsString(StandardCharsets.UTF_8);
 
         String threadId = objectMapper.readTree(chatBody).path("data").path("threadId").asText();
+        String recommendationId = objectMapper.readTree(chatBody).path("data").path("recommendationId").asText();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT candidate_count FROM assistant_recommendation WHERE recommendation_id = ?",
+                Integer.class,
+                recommendationId
+        )).isPositive();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM assistant_recommendation_item "
+                        + "WHERE recommendation_id = ? AND selected = TRUE",
+                Integer.class,
+                recommendationId
+        )).isEqualTo(1);
 
         mockMvc.perform(get("/api/conversations/{threadId}/messages", threadId)
                         .header("Authorization", "Bearer " + accessToken))
@@ -157,6 +174,7 @@ class AssistantControllerTests {
                 .contains("\"recommended_spu_ids\":[1002]")
                 .contains("\"recommended_items\"")
                 .contains("\"resolved_intent\"")
+                .contains("\"recommendation_id\":\"rec_")
                 .contains("fits the requested commute style")
                 .doesNotContain("9999");
     }

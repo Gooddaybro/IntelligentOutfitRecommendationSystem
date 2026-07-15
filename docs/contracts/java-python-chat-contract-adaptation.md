@@ -213,6 +213,9 @@ public record PythonChatResponse(
 | 固定默认值 | `debug` | 第一版默认 `false`。 |
 | `PythonChatResponse.productRefs[*].spuId` | `AssistantChatResponse.recommendedSpuIds` | 兼容旧前端和旧测试的 SPU id 列表。 |
 | `PythonChatResponse.productRefs[*]` | `AssistantChatResponse.recommendedItems` | 推荐理由展示字段，包含 `spuId`、`skuId`、`reason`、`rankScore`。必须先经过 Java 候选池过滤。 |
+| Java 推荐快照 ID | `AssistantChatResponse.recommendationId` / SSE done `recommendation_id` | Java 在可信引用过滤后持久化候选和最终选择，再返回稳定归因标识；该字段是 v1 兼容性新增。 |
+
+后续公开行为事件、加购和立即购买请求可以携带该 `recommendationId`。Java 只接受属于当前 JWT 用户且命中最终推荐 SPU/SKU 的归因；该 ID 不参与价格、库存、订单状态或支付状态判断。
 
 ## 6. 历史消息转换建议
 

@@ -1,5 +1,7 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.common.cache;
 
+import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -36,7 +38,7 @@ class RedisCacheServiceIntegrationTests {
         connectionFactory.afterPropertiesSet();
         redisTemplate = new StringRedisTemplate(connectionFactory);
         redisTemplate.afterPropertiesSet();
-        service = new RedisCacheService(redisTemplate);
+        service = new RedisCacheService(redisTemplate, new ApplicationMetrics(new SimpleMeterRegistry()));
     }
 
     @AfterAll

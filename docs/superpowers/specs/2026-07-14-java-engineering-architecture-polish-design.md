@@ -576,6 +576,60 @@ recommendation_id
 - 点击、加购和支付可以归因到一次推荐；
 - 至少完成一个 AI 故障 Runbook。
 
+### 第三周 Phase A 实施状态（2026-07-15）
+
+- 已加入 Spring Boot Actuator 和 Prometheus Registry，只暴露 `health`、`info`、`prometheus`；
+- liveness 只反映进程状态，readiness 包含数据库但不包含 Redis/Python，避免非关键依赖故障让交易实例整体摘流；
+- `/actuator/info` 提供 Maven 构建版本和 `GIT_COMMIT` 部署注入槽位；
+- 外部 `X-Request-Id` 已限制为 1 到 128 个安全字符，非法值由服务端 UUID 替换；
+- 未暴露的 Actuator 路径现在正确返回 HTTP 404，不再被通用异常处理器误报为 HTTP 500；
+- Phase A 全量验证：`backend\\mvnw.cmd verify` 通过，共运行 248 个测试，0 失败、0 错误、5 跳过，Checkstyle 0 违规；
+- AI/Redis/交易自定义指标、traceparent、推荐归因和 Runbook 仍属于后续 Phase，本阶段不宣称第三周完成。
+
+### 第三周 Phase B 实施状态（2026-07-15）
+
+- 已建立单一 `ApplicationMetrics` 低基数指标出口，未知标签统一收敛为 `other`，不引入按业务域拆分的一实现一接口；
+- AI 同步与 SSE 已记录 success/error/circuit_open、耗时、fallback、候选数量和 Java 丢弃引用数量；
+- Redis get/set/delete/increment 已记录 hit/miss/success/error 和命令耗时，缓存异常仍保持原有降级语义；
+- 订单创建已区分 cart/buy_now 的 created/replayed/failed；支付回调已区分 success/invalid_signature/duplicate/rejected；
+- Prometheus 集成测试已证明自定义业务指标可通过 `/actuator/prometheus` 导出；
+- Phase B 全量验证：`backend\\mvnw.cmd verify` 通过，共运行 252 个测试，0 失败、0 错误、5 跳过，Checkstyle 0 违规；
+- traceparent、推荐归因、Dashboard 和 Runbook 仍属于后续 Phase，本阶段不宣称第三周完成。
+
+### 第三周 Phase C 实施状态（2026-07-15）
+
+- HTTP 入口已校验 W3C v00 `traceparent`，缺失或非法时生成新值，并与 request ID 一同进入 MDC 和响应 Header；
+- Java→Python 同步与 SSE 请求均传播 `X-Request-Id` 和 `traceparent`，现有 SSE TaskDecorator 已验证可复制并清理两项 MDC 上下文；
+- 已暴露 `app.ai.circuit.state` 数值 Gauge 和固定状态集合的 `app.ai.circuit.transitions` Counter，可观察 OPEN、HALF_OPEN 和自动恢复；
+- 已新增 AI 导购依赖故障 Runbook，覆盖告警含义、首查项、降级恢复、交易影响和人工介入条件；
+- Phase C 全量验证：`backend\\mvnw.cmd verify` 通过，共运行 256 个测试，0 失败、0 错误、5 跳过，Checkstyle 0 违规；
+- 当前只提供关联上下文，不宣称已有完整 Span/采样/Trace 后端；推荐归因和 Dashboard 仍属于后续 Phase，本阶段不宣称第三周完成。
+
+### 第三周 Phase D 实施状态（2026-07-15）
+
+- V17 已新增 `assistant_recommendation` 与 `assistant_recommendation_item`，父记录保存用户、request/thread、同步/SSE 模式、候选数量和规则版本，子项保存全部候选 SKU 及最终选中、排序位置和排序分；
+- Behavior 模块新增事务性 `RecommendationAttributionService`，Assistant 只通过最小命令提交候选和可信选择，不把 Python DTO 或商品模型泄漏到归因持久层；
+- 同步响应新增 `recommendationId`，SSE done 新增 `recommendation_id`；只有推荐快照父子记录写入成功后才返回该稳定标识；
+- H2/Spring 集成测试已证明 17 个 Flyway 迁移可执行、同步/SSE 响应包含 ID，且父表候选数和最终选中子项已落库；这不是 MySQL 容器验证；
+- 当前基线明确记录为 `java-rule-reranker-v1`；模型、Prompt、RAG 索引版本因跨服务 v1 契约尚未提供而保持空值，不伪造版本；
+- Phase D 全量验证：`backend\\mvnw.cmd verify` 通过，共运行 257 个测试，0 失败、0 错误、5 跳过，Checkstyle 0 违规；
+- 点击、收藏、加购、下单、支付事件与 recommendationId 的归属校验和漏斗 Dashboard 属于下一 Phase，本阶段不宣称第三周完成。
+
+### 第三周 Phase E 实施状态（2026-07-15）
+
+- V18 已为 `behavior_event` 增加 recommendationId 外键与漏斗查询索引；公开交互提供 ID 时严格验证当前用户和最终选中 SPU/SKU，拒绝跨用户或候选池外伪造归因；
+- 加购、收藏和立即购买入口接受可选 recommendationId，但该字段不参与价格、数量、库存、订单或支付事实判断；旧调用保持兼容；
+- 购物车订单从 30 天内最近一次有效推荐加购继承 ID，立即购买直接传递 ID，支付成功从同订单/SKU 的订单事件继承 ID；归因写入保持 best-effort，不反向破坏交易主流程；
+- `app.recommendation.funnel` 仅使用 exposure/click/favorite/cart/order/payment 固定标签，不把 recommendationId、用户或商品 ID 写入 Prometheus 标签；
+- 前端已解析同步/SSE recommendationId，并将其传给点击、加购和立即购买入口；推荐曝光由服务端成功写入快照时统一计数，避免前端重复曝光；
+- 已提供 Prometheus 抓取配置和可自动 provisioning 的 `Java 商城核心`、`AI 导购` 两个 Grafana Dashboard；JSON、YAML 和 `docker compose config` 已完成静态校验；
+- H2/Spring 集成测试已验证 18 个 Flyway 迁移，以及 recommendationId 从加购到订单再到支付事件的实际 SQL 继承链路；Docker daemon 当前不可用，因此本轮未执行真实 MySQL/Grafana 容器运行验证。
+- 2026-07-15 最终门禁：后端 `mvnw.cmd verify` 共执行 `265` 个测试，`0` 失败、`0` 错误、`5` 个环境型跳过，Checkstyle `0` 违规；前端 `6` 个测试文件、`20` 个测试全部通过，生产构建成功；Dashboard JSON、YAML、Compose 配置和差异格式检查均通过。
+
+### 第三周收口状态（2026-07-15）
+
+第三周设计范围已完成实现：部署探针、Prometheus 核心指标、request ID/traceparent 关联、SSE MDC 传播、熔断状态与自动恢复观察、稳定 recommendationId、推荐转化归因、两个 Dashboard 和 AI 故障 Runbook 均已有代码、配置或文档及自动化证据。真实 MySQL、Prometheus/Grafana 容器和生产告警阈值仍需在 Docker/部署环境可用后做运行验证，不据此宣称生产就绪。
+
 ## 5.4 第四周：RabbitMQ 可靠异步垂直切片
 
 ### 目标
