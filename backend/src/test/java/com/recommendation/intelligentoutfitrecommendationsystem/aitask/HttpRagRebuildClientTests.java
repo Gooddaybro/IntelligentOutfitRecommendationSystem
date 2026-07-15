@@ -28,11 +28,13 @@ class HttpRagRebuildClientTests {
         AtomicReference<String> token = new AtomicReference<>();
         AtomicReference<String> requestId = new AtomicReference<>();
         AtomicReference<String> traceparent = new AtomicReference<>();
+        AtomicReference<String> upgrade = new AtomicReference<>();
         server = HttpServer.create(new InetSocketAddress(0), 0);
         server.createContext("/internal/rag/rebuild", exchange -> {
             token.set(exchange.getRequestHeaders().getFirst("X-Internal-Token"));
             requestId.set(exchange.getRequestHeaders().getFirst("X-Request-Id"));
             traceparent.set(exchange.getRequestHeaders().getFirst("traceparent"));
+            upgrade.set(exchange.getRequestHeaders().getFirst("Upgrade"));
             byte[] body = """
                     {"taskId":"task-one","indexVersion":"v1","fileCount":2,
                      "chunkCount":4,"contentDigest":"abc","replayed":false}
@@ -52,5 +54,6 @@ class HttpRagRebuildClientTests {
         assertThat(token).hasValue("internal-secret");
         assertThat(requestId).hasValue("request-one");
         assertThat(traceparent).hasValue("trace-one");
+        assertThat(upgrade).hasNullValue();
     }
 }

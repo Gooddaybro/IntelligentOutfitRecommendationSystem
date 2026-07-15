@@ -37,6 +37,7 @@ public class HttpRagRebuildClient implements RagRebuildClient {
         }
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(connectTimeoutMs))
+                .version(HttpClient.Version.HTTP_1_1)
                 .build();
         this.rebuildUri = URI.create(pythonBaseUrl.replaceAll("/+$", "") + "/internal/rag/rebuild");
         this.readTimeout = Duration.ofMillis(readTimeoutMs);

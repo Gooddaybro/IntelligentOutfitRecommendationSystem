@@ -1137,3 +1137,49 @@ docs/superpowers/specs/2026-07-14-order-idempotency-design.md
 | MySQL 并发 Testcontainers | 方言/锁语义验证，避免只相信 H2 |
 | Redis 不参与交易正确性 | Cache 非 Source of Truth、降级边界 |
 | `eventId + Inbox` 类比 | 为 RabbitMQ at-least-once 消费幂等做准备 |
+
+## 16. 第四周：RabbitMQ 全局 RAG 索引重建 MVP（2026-07-15）
+
+### 16.1 已落地闭环
+
+管理员通过 `POST /api/ai/tasks` 创建 `RAG_REBUILD` 任务。Java 在一个 MySQL 本地事务中写入 `ai_task` 与 `outbox_event`；Web 进程的 Outbox Relay 只有收到 RabbitMQ Publisher Confirm 后才把事件标记为已发布。Worker 使用手动 ACK，先抢占数据库租约，再调用 Python 内部接口 `/internal/rag/rebuild`。Python 在版本目录完成向量与元数据构建、校验后，原子切换 `current.json`；Java 最后在同一事务中写入任务 `SUCCESS` 与 `consumer_inbox`，事务提交后才 ACK。
+
+```mermaid
+flowchart LR
+    ADMIN["管理员 JWT"] --> API["Java AiTaskController"]
+    API --> TX["MySQL 本地事务<br/>ai_task + outbox_event"]
+    TX --> RELAY["Web Outbox Relay<br/>Publisher Confirm"]
+    RELAY --> MQ["RabbitMQ<br/>main / retry / DLQ"]
+    MQ --> WORKER["Worker 手动 ACK<br/>租约 + Inbox 幂等"]
+    WORKER --> PY["Python /internal/rag/rebuild<br/>内部 Token"]
+    PY --> VERSION["versions/<indexVersion><br/>校验 + current.json 原子切换"]
+    VERSION --> DONE["ai_task SUCCESS + consumer_inbox<br/>同事务提交后 ACK"]
+```
+
+权限边界保持为管理员专属：普通用户不能触发全局资源重建，但聊天/RAG 查询仍会透明读取管理员发布的当前索引。RabbitMQ 只承载“重建命令和执行状态”，不承载知识正文、向量、Secret 或用户图片。
+
+### 16.2 可靠性与可观测性
+
+- 数据库唯一活动槽保证全局最多一个进行中的重建任务，并发请求合并为同一任务；
+- Outbox Relay 有界扫描、短租约抢占，并处理 confirm ACK、NACK、returned 与超时；
+- Worker 使用数据库租约、`consumer_inbox` 和 Python `taskId` 重放共同实现 at-least-once 下的幂等；
+- 固定重试阶段为 10 秒、60 秒、300 秒，超过上限或永久错误进入 DLQ；管理员可审计 redrive；
+- 新增任务、发布、消费耗时与重试阶段指标；Prometheus 已抓取 RabbitMQ `15692`，Grafana 已配置面板，Runbook 已记录排障步骤；
+- Python 索引使用内容摘要、版本目录、暂存校验和原子指针切换，失败不会覆盖旧索引；`/health/rag` 暴露安全的 `source_task_id` 与版本信息，不暴露知识正文和向量。
+
+### 16.3 验证证据
+
+- Python：`python -m unittest discover -v` 共 `241` 个测试，全部通过；Ruff 全部通过；Interrogate `34.0%`，高于 `30%` 门禁；
+- Java：在 `RUN_MYSQL_TESTS=true`、`RUN_RABBITMQ_E2E=true` 下执行 `mvnw.cmd verify`，共发现 `287` 个测试，`0` 失败、`0` 错误、`1` 个学习演示测试跳过；Checkstyle `0` 违规；
+- 真实闭环：Testcontainers 使用 `mysql:8.4.8` 与 `rabbitmq:4.1.8-management`，Java Web/Worker 连接真实 Python 进程和确定性测试 embedding，任务 `task_8281cc86ec934bfbbad58bbe815dc5e1` 到达 `SUCCESS`，索引版本为 `20260715T130845500270Z-e52eaf917d13`，共 `51` 个 chunk；同时验证普通用户创建任务返回 `403`、Inbox 落库、RAG 健康检查中的任务与版本一致；
+- RabbitMQ 集成测试实际验证 main/retry/DLQ 拓扑、测试 TTL 回流和最终 DLQ；MySQL 集成测试实际验证 V19 迁移与并发唯一活动槽；
+- 本机 Compose 验证：RabbitMQ、Redis、Prometheus、Grafana 与 MySQL 均启动；因本机已有 `mysqld` 占用 `3307`，Compose MySQL 使用 `MYSQL_HOST_PORT=13307`。RabbitMQ metrics、Prometheus readiness、Grafana health 均返回成功；
+- Publisher 默认关闭时，Java 全量聊天/订单回归测试在没有 RabbitMQ 依赖的测试上下文中通过，证明 MQ 不进入聊天和交易正确性主链路。
+
+### 16.4 已知生产校准项
+
+- 端到端测试使用确定性 fake embedding；生产仍需用真实 Jina 凭据对耗时、限流、费用和超时预算做压测；
+- 10/60/300 秒重试 TTL 已由真实 RabbitMQ 用缩短的测试 TTL 验证路由语义，生产长时间窗口仍需部署后观察；
+- 尚未进行多 Worker 长时间抢占/宕机 soak test，也未在生产规模知识文件上测量磁盘峰值和版本清理策略；
+- 本地 Compose 使用 `mysql:8.0`，E2E 门禁使用固定补丁版 `mysql:8.4.8`；上线前应统一生产与 CI 镜像补丁策略；
+- 真实 Secret、向量文件、`.env` 和构建产物均不进入提交。
