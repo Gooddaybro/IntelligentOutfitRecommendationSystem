@@ -44,4 +44,19 @@ describe("assistant shopping state", () => {
       gender: "female"
     });
   });
+
+  it("does not reintroduce a gender cleared by the backend snapshot", () => {
+    expect(
+      requestFiltersFromResolvedIntent(
+        { targetGender: undefined, category: "外套" },
+        { gender: "male", category: "半裙", season: "winter" }
+      )
+    ).toEqual({
+      category: "外套",
+      style: undefined,
+      budgetMax: undefined,
+      gender: undefined,
+      season: "winter"
+    });
+  });
 });

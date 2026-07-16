@@ -58,10 +58,10 @@ export function requestFiltersFromResolvedIntent(
 
   return {
     ...fallbackFilters,
-    category: resolvedIntent.category ?? fallbackFilters.category,
-    style: resolvedIntent.style?.[0] ?? fallbackFilters.style,
-    budgetMax: resolvedIntent.budgetMax ?? fallbackFilters.budgetMax,
-    gender: gender ?? fallbackFilters.gender
+    category: resolvedIntent.category ?? undefined,
+    style: resolvedIntent.style?.[0],
+    budgetMax: resolvedIntent.budgetMax ?? undefined,
+    gender
   };
 }
 
