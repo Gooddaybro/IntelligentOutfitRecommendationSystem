@@ -115,13 +115,15 @@
 
     <select id="findDemandState"
             resultType="com.recommendation.intelligentoutfitrecommendationsystem.conversation.model.ChatDemandState">
-        SELECT session_id, state_version, effective_intent_json, last_request_id, updated_at
+        SELECT session_id, state_version, effective_intent_json, pending_clarification_json,
+               last_request_id, updated_at
         FROM chat_demand_state
         WHERE session_id = #{sessionId}
     </select>
 
-    <select id="findTransitionIntentJson" resultType="string">
-        SELECT effective_intent_json
+    <select id="findTransitionState"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.conversation.model.ChatDemandState">
+        SELECT session_id, effective_intent_json, pending_clarification_json
         FROM chat_demand_transition
         WHERE session_id = #{sessionId}
           AND request_id = #{requestId}
@@ -130,9 +132,9 @@
     <insert id="insertDemandState"
             parameterType="com.recommendation.intelligentoutfitrecommendationsystem.conversation.model.ChatDemandState">
         INSERT INTO chat_demand_state (
-            session_id, state_version, effective_intent_json, last_request_id
+            session_id, state_version, effective_intent_json, pending_clarification_json, last_request_id
         ) VALUES (
-            #{sessionId}, #{stateVersion}, #{effectiveIntentJson}, #{lastRequestId}
+            #{sessionId}, #{stateVersion}, #{effectiveIntentJson}, #{pendingClarificationJson}, #{lastRequestId}
         )
     </insert>
 
@@ -140,6 +142,7 @@
         UPDATE chat_demand_state
         SET state_version = state_version + 1,
             effective_intent_json = #{effectiveIntentJson},
+            pending_clarification_json = #{pendingClarificationJson},
             last_request_id = #{requestId},
             updated_at = CURRENT_TIMESTAMP(6)
         WHERE session_id = #{sessionId}
@@ -148,9 +151,11 @@
 
     <insert id="insertDemandTransition">
         INSERT INTO chat_demand_transition (
-            session_id, message_id, request_id, action, patch_json, effective_intent_json
+            session_id, message_id, request_id, action, patch_json, effective_intent_json,
+            pending_clarification_json
         ) VALUES (
-            #{sessionId}, #{messageId}, #{requestId}, #{action}, #{patchJson}, #{effectiveIntentJson}
+            #{sessionId}, #{messageId}, #{requestId}, #{action}, #{patchJson}, #{effectiveIntentJson},
+            #{pendingClarificationJson}
         )
     </insert>
 

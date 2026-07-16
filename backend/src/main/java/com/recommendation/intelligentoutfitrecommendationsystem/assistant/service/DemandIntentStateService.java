@@ -4,6 +4,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntent;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntentPatch;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntentStateSnapshot;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PendingClarification;
+import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.ConversationDemandStateSnapshot;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationDemandStateStore;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +43,58 @@ public class DemandIntentStateService {
                 storedJson -> writeJson(merger.merge(readIntent(storedJson), patch))
         );
         return readIntent(effectiveJson);
+    }
+
+    public DemandIntentStateSnapshot read(Long userId, String threadId) {
+        ConversationDemandStateSnapshot stored = stateStore.read(userId, threadId);
+        if (stored == null) {
+            return null;
+        }
+        return new DemandIntentStateSnapshot(
+                readIntent(stored.effectiveIntentJson()), readPending(stored.pendingClarificationJson()));
+    }
+
+    @Transactional
+    public DemandIntentStateSnapshot applyResolution(
+            Long userId,
+            String threadId,
+            String requestId,
+            Long messageId,
+            DemandIntentPatch deterministicPatch,
+            DemandIntentPatch semanticPatch,
+            PendingClarification pending,
+            DemandIntent initialIntent
+    ) {
+        String action = pending == null ? "merge" : "clarify";
+        ConversationDemandStateSnapshot stored = stateStore.transition(
+                userId, threadId, requestId, messageId, action,
+                writeJson(semanticPatch == null ? deterministicPatch : semanticPatch),
+                writeJson(initialIntent),
+                current -> {
+                    DemandIntent intent = readIntent(current.effectiveIntentJson());
+                    if (deterministicPatch != null) {
+                        intent = merger.merge(intent, deterministicPatch);
+                    }
+                    if (semanticPatch != null) {
+                        intent = merger.merge(intent, semanticPatch);
+                    }
+                    return new ConversationDemandStateSnapshot(
+                            writeJson(intent), pending == null ? null : writeJson(pending));
+                }
+        );
+        return new DemandIntentStateSnapshot(
+                readIntent(stored.effectiveIntentJson()), readPending(stored.pendingClarificationJson()));
+    }
+
+    private PendingClarification readPending(String json) {
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(json, PendingClarification.class);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("invalid stored pending clarification", exception);
+        }
     }
 
     private DemandIntent readIntent(String json) {

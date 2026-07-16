@@ -99,6 +99,12 @@ public class AssistantService {
         conversationService.appendMessage(userId, threadId, "user", request.message(), requestId);
         AssistantContext context = assistantContextService.buildContext(userId, threadId, request);
         metrics.recordAiCandidateCount(context.candidates().size());
+        if (hasText(context.clarificationQuestion())) {
+            String answer = context.clarificationQuestion();
+            conversationService.appendMessage(userId, threadId, "assistant", answer, requestId);
+            return new AssistantChatResponse(threadId, answer, List.of(), List.of(),
+                    context.candidates().size(), context.demandIntent(), null);
+        }
         PythonChatRequest pythonRequest = toPythonRequest(userId, threadId, request, context);
         PythonChatResponse pythonResponse = callPythonOrFallback(pythonRequest);
 
@@ -144,6 +150,17 @@ public class AssistantService {
             return emitter;
         }
 
+        if (hasText(context.clarificationQuestion())) {
+            String answer = context.clarificationQuestion();
+            conversationService.appendMessage(userId, threadId, "assistant", answer, requestId);
+            sendEvent(emitter, active, "token", new AssistantStreamTokenEvent(answer));
+            sendEvent(emitter, active, "done", new AssistantStreamDoneEvent(
+                    threadId, answer, List.of(), List.of(), context.candidates().size(),
+                    "demand_clarification", context.demandIntent(), null));
+            emitter.complete();
+            return emitter;
+        }
+
         try {
             assistantStreamingExecutor.execute(() -> streamToPython(
                     pythonRequest,
@@ -170,6 +187,10 @@ public class AssistantService {
             metrics.recordAiFallback("sync");
             return assistantFallbackService.chatFallbackResponse(pythonRequest);
         }
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     private String resolveThreadId(Long userId, AssistantChatRequest request) {

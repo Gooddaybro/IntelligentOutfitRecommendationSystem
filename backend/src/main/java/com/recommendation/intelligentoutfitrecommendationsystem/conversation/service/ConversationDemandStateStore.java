@@ -2,6 +2,7 @@ package com.recommendation.intelligentoutfitrecommendationsystem.conversation.se
 
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.mapper.ConversationMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.ConversationDemandStateSnapshot;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.model.ChatDemandState;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.model.ChatSession;
 import org.springframework.stereotype.Service;
@@ -34,9 +35,9 @@ public class ConversationDemandStateStore {
         if (session == null) {
             throw new ResourceNotFoundException("conversation not found: " + threadId);
         }
-        String replay = conversationMapper.findTransitionIntentJson(session.getId(), requestId);
+        ChatDemandState replay = conversationMapper.findTransitionState(session.getId(), requestId);
         if (replay != null) {
-            return replay;
+            return replay.getEffectiveIntentJson();
         }
 
         ChatDemandState state = conversationMapper.findDemandState(session.getId());
@@ -46,26 +47,87 @@ public class ConversationDemandStateStore {
         if (state == null) {
             insertState(session.getId(), requestId, effectiveJson);
         } else if (conversationMapper.updateDemandState(
-                session.getId(), state.getStateVersion(), effectiveJson, requestId) != 1) {
+                session.getId(), state.getStateVersion(), effectiveJson,
+                state.getPendingClarificationJson(), requestId) != 1) {
             state = conversationMapper.findDemandState(session.getId());
             effectiveJson = mergeStoredIntent.apply(state.getEffectiveIntentJson());
             if (conversationMapper.updateDemandState(
-                    session.getId(), state.getStateVersion(), effectiveJson, requestId) != 1) {
+                    session.getId(), state.getStateVersion(), effectiveJson,
+                    state.getPendingClarificationJson(), requestId) != 1) {
                 throw new IllegalStateException("demand state changed concurrently");
             }
         }
 
         conversationMapper.insertDemandTransition(
-                session.getId(), messageId, requestId, action, patchJson, effectiveJson);
+                session.getId(), messageId, requestId, action, patchJson, effectiveJson,
+                state == null ? null : state.getPendingClarificationJson());
         return effectiveJson;
     }
 
+    public ConversationDemandStateSnapshot read(Long userId, String threadId) {
+        ChatSession session = conversationMapper.findSessionByThreadIdAndUserId(threadId, userId);
+        if (session == null) {
+            throw new ResourceNotFoundException("conversation not found: " + threadId);
+        }
+        ChatDemandState state = conversationMapper.findDemandState(session.getId());
+        return state == null ? null : snapshot(state);
+    }
+
+    @Transactional
+    public ConversationDemandStateSnapshot transition(
+            Long userId,
+            String threadId,
+            String requestId,
+            Long messageId,
+            String action,
+            String patchJson,
+            String initialIntentJson,
+            UnaryOperator<ConversationDemandStateSnapshot> mutation
+    ) {
+        ChatSession session = conversationMapper.findSessionByThreadIdAndUserId(threadId, userId);
+        if (session == null) {
+            throw new ResourceNotFoundException("conversation not found: " + threadId);
+        }
+        ChatDemandState replay = conversationMapper.findTransitionState(session.getId(), requestId);
+        if (replay != null) {
+            return snapshot(replay);
+        }
+        ChatDemandState state = conversationMapper.findDemandState(session.getId());
+        ConversationDemandStateSnapshot base = state == null
+                ? new ConversationDemandStateSnapshot(initialIntentJson, null) : snapshot(state);
+        ConversationDemandStateSnapshot result = mutation.apply(base);
+        if (state == null) {
+            insertState(session.getId(), requestId, result.effectiveIntentJson(), result.pendingClarificationJson());
+        } else if (conversationMapper.updateDemandState(session.getId(), state.getStateVersion(),
+                result.effectiveIntentJson(), result.pendingClarificationJson(), requestId) != 1) {
+            state = conversationMapper.findDemandState(session.getId());
+            result = mutation.apply(snapshot(state));
+            if (conversationMapper.updateDemandState(session.getId(), state.getStateVersion(),
+                    result.effectiveIntentJson(), result.pendingClarificationJson(), requestId) != 1) {
+                throw new IllegalStateException("demand state changed concurrently");
+            }
+        }
+        conversationMapper.insertDemandTransition(session.getId(), messageId, requestId, action,
+                patchJson, result.effectiveIntentJson(), result.pendingClarificationJson());
+        return result;
+    }
+
     private void insertState(Long sessionId, String requestId, String effectiveJson) {
+        insertState(sessionId, requestId, effectiveJson, null);
+    }
+
+    private void insertState(Long sessionId, String requestId, String effectiveJson, String pendingJson) {
         ChatDemandState state = new ChatDemandState();
         state.setSessionId(sessionId);
         state.setStateVersion(0L);
         state.setEffectiveIntentJson(effectiveJson);
+        state.setPendingClarificationJson(pendingJson);
         state.setLastRequestId(requestId);
         conversationMapper.insertDemandState(state);
+    }
+
+    private ConversationDemandStateSnapshot snapshot(ChatDemandState state) {
+        return new ConversationDemandStateSnapshot(
+                state.getEffectiveIntentJson(), state.getPendingClarificationJson());
     }
 }

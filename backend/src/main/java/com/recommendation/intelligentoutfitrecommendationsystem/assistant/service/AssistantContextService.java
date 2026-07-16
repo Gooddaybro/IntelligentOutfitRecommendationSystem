@@ -3,6 +3,14 @@ package com.recommendation.intelligentoutfitrecommendationsystem.assistant.servi
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantContext;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntent;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client.DemandIntentParseClient;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntentPatch;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntentStateSnapshot;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DeterministicDemandParseResult;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.LlmDemandParseRequest;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PendingClarification;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatHistoryItem;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ValidatedDemandParseResult;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorSummaryService;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationApplicationService;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.dto.RecommendationCandidateQuery;
@@ -15,6 +23,8 @@ import org.springframework.stereotype.Service;
 import org.slf4j.MDC;
 
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -30,7 +40,11 @@ public class AssistantContextService {
     private final ConversationApplicationService conversationService;
     private final BehaviorSummaryService behaviorSummaryService;
     private final DemandIntentStateService demandIntentStateService;
+    private final DemandIntentParseClient demandIntentParseClient;
     private final DemandIntentResolver demandIntentResolver = new DemandIntentResolver();
+    private final DemandIntentParseTrigger demandIntentParseTrigger = new DemandIntentParseTrigger();
+    private final LlmDemandIntentValidator llmDemandIntentValidator = new LlmDemandIntentValidator();
+    private final DemandIntentNormalizer demandIntentNormalizer = new DemandIntentNormalizer();
 
     @Autowired
     public AssistantContextService(
@@ -38,13 +52,26 @@ public class AssistantContextService {
             RecommendationCandidateQueryService recommendationCandidateQueryService,
             ConversationApplicationService conversationService,
             BehaviorSummaryService behaviorSummaryService,
-            DemandIntentStateService demandIntentStateService
+            DemandIntentStateService demandIntentStateService,
+            DemandIntentParseClient demandIntentParseClient
     ) {
         this.userProfileService = userProfileService;
         this.recommendationCandidateQueryService = recommendationCandidateQueryService;
         this.conversationService = conversationService;
         this.behaviorSummaryService = behaviorSummaryService;
         this.demandIntentStateService = demandIntentStateService;
+        this.demandIntentParseClient = demandIntentParseClient;
+    }
+
+    public AssistantContextService(
+            UserProfileService userProfileService,
+            RecommendationCandidateQueryService recommendationCandidateQueryService,
+            ConversationApplicationService conversationService,
+            BehaviorSummaryService behaviorSummaryService,
+            DemandIntentStateService demandIntentStateService
+    ) {
+        this(userProfileService, recommendationCandidateQueryService, conversationService,
+                behaviorSummaryService, demandIntentStateService, null);
     }
 
     public AssistantContextService(
@@ -52,7 +79,7 @@ public class AssistantContextService {
             RecommendationCandidateQueryService recommendationCandidateQueryService,
             ConversationApplicationService conversationService
     ) {
-        this(userProfileService, recommendationCandidateQueryService, conversationService, null, null);
+        this(userProfileService, recommendationCandidateQueryService, conversationService, null, null, null);
     }
 
     public AssistantContextService(
@@ -61,20 +88,58 @@ public class AssistantContextService {
             ConversationApplicationService conversationService,
             BehaviorSummaryService behaviorSummaryService
     ) {
-        this(userProfileService, recommendationCandidateQueryService, conversationService, behaviorSummaryService, null);
+        this(userProfileService, recommendationCandidateQueryService, conversationService,
+                behaviorSummaryService, null, null);
     }
 
     public AssistantContext buildContext(Long userId, String threadId, AssistantChatRequest request) {
         UserProfileResponse profile = userProfileService.getProfile(userId);
         UserBodyDataResponse bodyData = userProfileService.getBodyData(userId);
         DemandIntent initialIntent = demandIntentResolver.resolve(request, bodyData, profile);
+        List<com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.MessageResponse> history =
+                conversationService.getMessages(userId, threadId);
         String requestId = MDC.get("requestId");
         if (!hasText(requestId)) {
             requestId = "local-" + UUID.randomUUID();
         }
-        DemandIntent persistedIntent = demandIntentStateService == null ? null : demandIntentStateService.apply(
-                userId, threadId, requestId, null, demandIntentResolver.resolvePatch(request), initialIntent);
-        DemandIntent demandIntent = persistedIntent == null ? initialIntent : persistedIntent;
+        DemandIntent demandIntent = initialIntent;
+        String clarificationQuestion = null;
+        if (demandIntentStateService != null && demandIntentParseClient != null) {
+            DemandIntentStateSnapshot current = demandIntentStateService.read(userId, threadId);
+            PendingClarification pending = current == null ? null : current.pendingClarification();
+            DeterministicDemandParseResult detailed = demandIntentResolver.resolveDetailed(request);
+            DemandIntentPatch semanticPatch = null;
+            PendingClarification nextPending = null;
+            if (pending != null && isConfirmation(request.message())) {
+                semanticPatch = patchFromPending(pending, request.message());
+            } else if (pending == null || !isCancellation(request.message())) {
+                if (demandIntentParseTrigger.shouldParse(detailed, pending != null)) {
+                    var parsed = demandIntentParseClient.parse(new LlmDemandParseRequest(
+                            requestId, threadId, request.message(), detailed.deterministicPatch(),
+                            detailed.lockedSlots(), detailed.matchedFragments(), detailed.unresolvedText(),
+                            recentHistory(history), pending));
+                    if (parsed.isPresent()) {
+                        ValidatedDemandParseResult validated = llmDemandIntentValidator.validate(
+                                parsed.get(), request.message(), Set.copyOf(detailed.lockedSlots()), pending);
+                        semanticPatch = validated.patch();
+                        nextPending = validated.pendingClarification();
+                    } else if (detailed.lockedSlots().isEmpty()) {
+                        clarificationQuestion = "我还不能确定你想筛选哪类穿搭，可以补充对象、品类或场景吗？";
+                    }
+                }
+            }
+            DemandIntentStateSnapshot resolved = demandIntentStateService.applyResolution(
+                    userId, threadId, requestId, null, detailed.deterministicPatch(), semanticPatch,
+                    nextPending, initialIntent);
+            demandIntent = resolved.effectiveIntent();
+            if (resolved.pendingClarification() != null) {
+                clarificationQuestion = resolved.pendingClarification().question();
+            }
+        } else if (demandIntentStateService != null) {
+            DemandIntent persistedIntent = demandIntentStateService.apply(
+                    userId, threadId, requestId, null, demandIntentResolver.resolvePatch(request), initialIntent);
+            demandIntent = persistedIntent == null ? initialIntent : persistedIntent;
+        }
         // Java 只执行 DemandIntent 中的硬过滤；候选池内的排序解释仍由 Python AI 服务完成。
         RecommendationCandidateQuery query = new RecommendationCandidateQuery(
                 demandIntent.category(),
@@ -90,10 +155,56 @@ public class AssistantContextService {
                 bodyData,
                 userProfileService.getPreferences(userId),
                 behaviorSummaryService == null ? null : behaviorSummaryService.getSummary(userId),
-                conversationService.getMessages(userId, threadId),
+                history,
                 recommendationCandidateQueryService.findCandidates(query),
-                demandIntent
+                demandIntent,
+                clarificationQuestion
         );
+    }
+
+    private DemandIntentPatch patchFromPending(PendingClarification pending, String rawQuery) {
+        String gender = "targetGender".equals(pending.slot())
+                ? demandIntentNormalizer.gender(String.valueOf(pending.candidateValue())) : null;
+        String category = "category".equals(pending.slot())
+                ? demandIntentNormalizer.category(String.valueOf(pending.candidateValue())) : null;
+        Integer budget = "budgetMax".equals(pending.slot()) && pending.candidateValue() instanceof Number number
+                ? number.intValue() : null;
+        return new DemandIntentPatch("confirm", rawQuery, gender, false, category,
+                List.of(), List.of(), budget, List.of());
+    }
+
+    private List<PythonChatHistoryItem> recentHistory(
+            List<com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.MessageResponse> messages
+    ) {
+        List<PythonChatHistoryItem> turns = new ArrayList<>();
+        String user = null;
+        for (var message : messages) {
+            if ("user".equalsIgnoreCase(message.role())) {
+                user = message.content();
+            } else if ("assistant".equalsIgnoreCase(message.role()) && user != null) {
+                turns.add(new PythonChatHistoryItem(user, message.content()));
+                user = null;
+            }
+        }
+        int from = Math.max(0, turns.size() - 3);
+        return turns.subList(from, turns.size()).stream()
+                .map(turn -> new PythonChatHistoryItem(limit(turn.userQuery()), limit(turn.assistantAnswer())))
+                .toList();
+    }
+
+    private String limit(String value) {
+        if (value == null || value.length() <= 2000) {
+            return value;
+        }
+        return value.substring(0, 2000);
+    }
+
+    private boolean isConfirmation(String message) {
+        return message != null && Set.of("是", "对", "确认", "可以", "没错").contains(message.trim());
+    }
+
+    private boolean isCancellation(String message) {
+        return message != null && Set.of("算了", "取消", "不用了", "不需要").contains(message.trim());
     }
 
     private String seasonFilter(AssistantChatRequest request, DemandIntent demandIntent) {

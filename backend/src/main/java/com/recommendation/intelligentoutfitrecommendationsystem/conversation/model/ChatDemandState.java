@@ -10,6 +10,7 @@ public class ChatDemandState {
     private Long sessionId;
     private Long stateVersion;
     private String effectiveIntentJson;
+    private String pendingClarificationJson;
     private String lastRequestId;
     private LocalDateTime updatedAt;
 }

@@ -29,7 +29,7 @@ public interface ConversationMapper {
 
     ChatDemandState findDemandState(@Param("sessionId") Long sessionId);
 
-    String findTransitionIntentJson(@Param("sessionId") Long sessionId, @Param("requestId") String requestId);
+    ChatDemandState findTransitionState(@Param("sessionId") Long sessionId, @Param("requestId") String requestId);
 
     void insertDemandState(ChatDemandState state);
 
@@ -37,6 +37,7 @@ public interface ConversationMapper {
             @Param("sessionId") Long sessionId,
             @Param("expectedVersion") Long expectedVersion,
             @Param("effectiveIntentJson") String effectiveIntentJson,
+            @Param("pendingClarificationJson") String pendingClarificationJson,
             @Param("requestId") String requestId
     );
 
@@ -46,6 +47,7 @@ public interface ConversationMapper {
             @Param("requestId") String requestId,
             @Param("action") String action,
             @Param("patchJson") String patchJson,
-            @Param("effectiveIntentJson") String effectiveIntentJson
+            @Param("effectiveIntentJson") String effectiveIntentJson,
+            @Param("pendingClarificationJson") String pendingClarificationJson
     );
 }

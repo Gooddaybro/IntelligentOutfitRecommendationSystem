@@ -5,6 +5,11 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.As
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntent;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.AssistantContextService;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.DemandIntentStateService;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client.DemandIntentParseClient;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntentStateSnapshot;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.LlmDemandParseResponse;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.LlmDemandSlots;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.SlotEvidence;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.dto.BehaviorSummaryResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorSummaryService;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationApplicationService;
@@ -18,6 +23,8 @@ import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -28,6 +35,43 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 
 class AssistantContextServiceTests {
+
+    @Test
+    void semanticParserFillsOnlyValidatedUnresolvedStyle() {
+        UserProfileService profiles = mock(UserProfileService.class);
+        RecommendationCandidateQueryService candidates = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversations = mock(ConversationApplicationService.class);
+        DemandIntentStateService states = mock(DemandIntentStateService.class);
+        DemandIntentParseClient parser = mock(DemandIntentParseClient.class);
+        AssistantContextService service = new AssistantContextService(
+                profiles, candidates, conversations, mock(BehaviorSummaryService.class), states, parser);
+        AssistantChatRequest request = new AssistantChatRequest(
+                "thread-semantic", "给女朋友找成熟硬朗外套", null, null, null, null, null, null, null);
+        LlmDemandParseResponse response = new LlmDemandParseResponse(
+                "1.0", "MERGE", new LlmDemandSlots(null, null, null,
+                List.of("MATURE", "RUGGED"), null, null),
+                Map.of("style", new BigDecimal("0.81")),
+                Map.of("style", List.of(
+                        new SlotEvidence("成熟", "CURRENT_MESSAGE"),
+                        new SlotEvidence("硬朗", "CURRENT_MESSAGE"))),
+                false, null, null);
+        DemandIntent effective = new DemandIntent(
+                DemandIntent.VERSION, DemandIntent.SOURCE_JAVA_RULE, request.message(), "female", "外套",
+                List.of(), List.of("mature", "rugged"), null, List.of(),
+                List.of("targetGender", "category"), List.of("style"),
+                new BigDecimal("0.80"), List.of());
+        when(conversations.getMessages(anyLong(), anyString())).thenReturn(List.of());
+        when(parser.parse(any())).thenReturn(Optional.of(response));
+        when(states.applyResolution(anyLong(), anyString(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(new DemandIntentStateSnapshot(effective, null));
+        when(candidates.findCandidates(any())).thenReturn(List.of());
+
+        AssistantContext context = service.buildContext(10L, "thread-semantic", request);
+
+        assertThat(context.demandIntent().style()).containsExactly("mature", "rugged");
+        assertThat(context.clarificationQuestion()).isNull();
+        verify(parser).parse(any());
+    }
 
     @Test
     void candidateQueryUsesPersistedEffectiveDemandInsteadOfLatestPatchAlone() {
