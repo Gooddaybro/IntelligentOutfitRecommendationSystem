@@ -3,6 +3,7 @@ package com.recommendation.intelligentoutfitrecommendationsystem.assistant.servi
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntent;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntentPatch;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DeterministicDemandParseResult;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserBodyDataResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserProfileResponse;
 
@@ -77,6 +78,71 @@ public class DemandIntentResolver {
                 resolveBudgetMax(request),
                 resolveAttributes(rawQuery)
         );
+    }
+
+    /** Resolve Java-owned facts and expose why the remaining text may need semantic completion. */
+    public DeterministicDemandParseResult resolveDetailed(AssistantChatRequest request) {
+        DemandIntentPatch patch = resolvePatch(request);
+        String raw = patch.rawQuery();
+        List<String> lockedSlots = new ArrayList<>();
+        List<String> matchedFragments = new ArrayList<>();
+        if (patch.targetGender() != null || patch.clearTargetGender()) {
+            lockedSlots.add("targetGender");
+            addLongestMatch(matchedFragments, raw, MALE_SIGNALS);
+            addLongestMatch(matchedFragments, raw, FEMALE_SIGNALS);
+        }
+        if (patch.category() != null) {
+            lockedSlots.add("category");
+            addLongestMatch(matchedFragments, raw,
+                    new String[]{"半身裙", "百褶裙", "直筒裙", "裙子", "外套"});
+        }
+        if (patch.budgetMax() != null) {
+            lockedSlots.add("budgetMax");
+            Matcher matcher = MESSAGE_BUDGET_MAX_PATTERN.matcher(raw);
+            if (matcher.find()) {
+                matchedFragments.add(matcher.group());
+            }
+        }
+        if (!patch.scene().isEmpty()) {
+            lockedSlots.add("scene");
+            addLongestMatch(matchedFragments, raw, COMMUTE_SIGNALS);
+            addLongestMatch(matchedFragments, raw, STUDENT_SIGNALS);
+        }
+        if (!patch.style().isEmpty()) {
+            lockedSlots.add("style");
+        }
+        if (!patch.attributes().isEmpty()) {
+            lockedSlots.add("attributes");
+        }
+
+        String unresolved = raw;
+        for (String fragment : matchedFragments) {
+            unresolved = unresolved.replace(fragment, " ");
+        }
+        unresolved = unresolved.replaceAll("给|帮我|想要|想找|找|推荐|买|看看|穿搭|一件|一款", " ")
+                .replaceAll("[，。！？,.!?\\s]+", " ").trim();
+        boolean shoppingSignal = containsAny(raw,
+                new String[]{"穿搭", "推荐", "买", "找", "衣服", "外套", "裙", "裤", "上衣", "搭配"});
+        return new DeterministicDemandParseResult(
+                patch,
+                List.copyOf(new LinkedHashSet<>(lockedSlots)),
+                List.copyOf(new LinkedHashSet<>(matchedFragments)),
+                unresolved,
+                shoppingSignal
+        );
+    }
+
+    private void addLongestMatch(List<String> matches, String text, String[] signals) {
+        String longest = null;
+        for (String signal : signals) {
+            if (hasText(text) && text.contains(signal)
+                    && (longest == null || signal.length() > longest.length())) {
+                longest = signal;
+            }
+        }
+        if (longest != null) {
+            matches.add(longest);
+        }
     }
 
     private String resolveRequestGender(AssistantChatRequest request) {
