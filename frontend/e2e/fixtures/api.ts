@@ -40,6 +40,14 @@ type Order = {
   }>;
   createdAt: string;
   paidAt?: string | null;
+  address?: {
+    recipientName: string;
+    phone: string;
+    province: string;
+    city: string;
+    district: string;
+    detail: string;
+  };
 };
 
 export const commuteJacketCandidate = {
@@ -113,7 +121,8 @@ function buildOrder(orderNo: string, cartItems: CartItem[], status: "UNPAID" | "
     totalAmount: items.reduce((sum, item) => sum + item.lineAmount, 0),
     items,
     createdAt: "2026-06-19T10:00:00",
-    paidAt: status === "PAID" ? "2026-06-19T10:05:00" : null
+    paidAt: status === "PAID" ? "2026-06-19T10:05:00" : null,
+    address: { recipientName: "林木", phone: "13800000000", province: "浙江省", city: "杭州市", district: "西湖区", detail: "文一路 88 号" }
   };
 }
 
@@ -172,6 +181,23 @@ export async function installApiMocks(page: Page) {
     await fulfillJson(route, [commuteJacketCandidate]);
   });
 
+  await page.route(/\/api\/products\/\d+$/, async (route) => {
+    await fulfillJson(route, {
+      spuId: commuteJacketCandidate.spuId,
+      spuCode: commuteJacketCandidate.spuCode,
+      name: commuteJacketCandidate.name,
+      categoryName: commuteJacketCandidate.categoryName,
+      mainImageUrl: commuteJacketCandidate.mainImageUrl,
+      minPrice: commuteJacketCandidate.minPrice,
+      maxPrice: commuteJacketCandidate.maxPrice,
+      description: "适合春秋通勤的轻薄外套。"
+    });
+  });
+
+  await page.route("**/api/favorites**", async (route) => {
+    await fulfillJson(route, []);
+  });
+
   await page.route("**/api/addresses", async (route) => {
     await fulfillJson(route, [{ id: 1, recipientName: "林木", phone: "13800000000", province: "浙江省", city: "杭州市", district: "西湖区", detail: "文一路 88 号", isDefault: true }]);
   });
@@ -212,6 +238,16 @@ export async function installApiMocks(page: Page) {
     }
 
     await fulfillJson(route, orders);
+  });
+
+  await page.route(/\/api\/orders\/[^/]+$/, async (route) => {
+    const orderNo = decodeURIComponent(new URL(route.request().url()).pathname.split("/").pop() || "");
+    const order = orders.find((item) => item.orderNo === orderNo);
+    if (!order) {
+      await route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ message: "订单不存在" }) });
+      return;
+    }
+    await fulfillJson(route, order);
   });
 
   await page.route("**/api/payments/mock-pay", async (route) => {
