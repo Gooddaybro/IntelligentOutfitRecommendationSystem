@@ -7,12 +7,15 @@ import { CartDrawer } from "../features/cart/CartDrawer";
 import { useCartState } from "../features/cart/useCartState";
 import { ConfirmActionDialog } from "../features/commerce-action/ConfirmActionDialog";
 import { useCommerceAction } from "../features/commerce-action/useCommerceAction";
+import { serializeCheckoutSkuIds } from "../features/checkout/checkoutSelection";
 import { api, IS_MOCK_MODE } from "../shared/api/client";
 import { AdminDashboardPage } from "../pages/AdminDashboardPage";
 import { AiShoppingPage } from "../pages/AiShoppingPage";
 import { CartPage } from "../pages/CartPage";
+import { CheckoutPage } from "../pages/CheckoutPage";
 import { HomePage } from "../pages/HomePage";
 import { OrdersPage } from "../pages/OrdersPage";
+import { PaymentResultPage } from "../pages/PaymentResultPage";
 import { ProductBrowsePage } from "../pages/ProductBrowsePage";
 import { ProductDetailPage } from "../pages/ProductDetailPage";
 import { ProfilePreferencesPage } from "../pages/ProfilePreferencesPage";
@@ -120,7 +123,9 @@ export function App() {
           <Route path="ai" element={aiPage} />
           <Route path="products" element={<ProductBrowsePage onAction={commerce.setPendingAction} />} />
           <Route path="products/:spuId" element={<ProductDetailPage onAction={commerce.setPendingAction} />} />
-          <Route path="cart" element={<CartPage items={cart.items} onItemsChange={cart.setItems} onOrderCreated={() => navigate("/app/orders")} />} />
+          <Route path="cart" element={<CartPage items={cart.items} onItemsChange={cart.setItems} onCheckout={(skuIds) => navigate(`/app/checkout?skuIds=${serializeCheckoutSkuIds(skuIds)}`)} />} />
+          <Route path="checkout" element={<CheckoutPage onOrderCreated={(order) => { void cart.refresh(); navigate(`/app/payments/${order.orderNo}`); }} />} />
+          <Route path="payments/:orderNo" element={<PaymentResultPage />} />
           <Route path="orders" element={<OrdersPage />} />
           <Route path="profile/*" element={<ProfilePreferencesPage />} />
         </Route>

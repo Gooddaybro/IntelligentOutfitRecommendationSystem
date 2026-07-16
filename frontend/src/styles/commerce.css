@@ -90,3 +90,28 @@
 .detail-loading, .detail-error { min-height: 55vh; display: grid; place-items: center; align-content: center; gap: 10px; text-align: center; }
 @media (max-width: 950px) { .product-decision { grid-template-columns: 1fr; } .product-gallery__main { min-height: 520px; } }
 @media (max-width: 560px) { .product-gallery { grid-template-columns: 1fr; } .product-gallery__thumb { display: none; } .product-gallery__main { min-height: 430px; } .purchase-actions { grid-template-columns: 44px 1fr; } .purchase-actions .buy-action { grid-column: 1 / -1; } .purchase-guarantees { align-items: flex-start; flex-direction: column; } .detail-information nav { overflow-x: auto; } }
+
+.cart-row--invalid { opacity: .65; background: #f2ede4; }
+.cart-issue { display: block; margin-top: 5px; color: var(--danger); font-weight: 700; }
+.checkout-grid { display: grid; grid-template-columns: minmax(0, 1fr) 350px; gap: 22px; align-items: start; }
+.checkout-card, .checkout-summary { margin-bottom: 18px; padding: 24px; border: 1px solid #d6cbb9; border-radius: 18px; background: var(--surface); }
+.checkout-card h2, .checkout-summary h2 { display: flex; align-items: center; gap: 9px; margin: 0 0 18px; }
+.address-choice { display: flex; gap: 13px; margin-top: 10px; padding: 16px; border: 1px solid #d8cebd; border-radius: 14px; cursor: pointer; }
+.address-choice.is-active { border-color: var(--sage-600); background: var(--moss-100); }
+.address-choice input { width: auto; }
+.address-choice strong, .address-choice small, .checkout-item small { display: block; }
+.address-choice small, .checkout-item small { margin-top: 5px; color: var(--ink-600); }
+.checkout-item { display: flex; justify-content: space-between; gap: 16px; padding: 14px 0; border-top: 1px solid #e1d8ca; }
+.checkout-summary { position: sticky; top: 96px; }
+.checkout-summary p, .checkout-summary > div { display: flex; justify-content: space-between; gap: 15px; }
+.checkout-summary > div { margin-top: 18px; padding-top: 18px; border-top: 1px solid #d8cebd; font-size: 18px; }
+.checkout-summary > div strong { color: var(--danger); font-size: 25px; }
+.checkout-summary button { width: 100%; margin-top: 18px; }
+.checkout-summary > small { display: flex; gap: 6px; margin-top: 12px; color: var(--ink-600); }
+.payment-result { min-height: 520px; display: grid; place-content: center; justify-items: center; gap: 14px; text-align: center; }
+.payment-result > span { width: 76px; height: 76px; display: grid; place-items: center; border-radius: 50%; color: var(--forest-900); background: var(--moss-100); }
+.payment-result h1 { font: 700 42px Georgia, "Noto Serif SC", serif; }
+.payment-result > div { display: flex; gap: 12px; }
+.payment-result a { padding: 11px 16px; border: 1px solid #cfc4b3; border-radius: 12px; color: var(--forest-900); text-decoration: none; }
+@media (max-width: 900px) { .checkout-grid { grid-template-columns: 1fr; } .checkout-summary { position: static; } }
+
