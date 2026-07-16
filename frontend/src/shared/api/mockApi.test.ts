@@ -17,4 +17,16 @@ describe("前端演示数据接口", () => {
     expect(await mockApi.cart()).toEqual([]);
     expect(await mockApi.addCartItem(sku.skuId, 1)).toEqual([expect.objectContaining({ skuId: sku.skuId, quantity: 1 })]);
   });
+
+  it("根据地址和购物袋生成结算预览并更新订单支付状态", async () => {
+    const [sku] = await mockApi.recommendationCandidates({});
+    await mockApi.addCartItem(sku.skuId, 2);
+    const [address] = await mockApi.addresses();
+    const preview = await mockApi.checkoutPreview([sku.skuId], address.id);
+    expect(preview.payableAmount).toBe(sku.salePrice * 2);
+    const order = await mockApi.createOrder([sku.skuId], address.id);
+    expect(order.address?.id).toBe(address.id);
+    await mockApi.payMock(order.orderNo);
+    expect((await mockApi.order(order.orderNo)).status).toBe("PAID");
+  });
 });

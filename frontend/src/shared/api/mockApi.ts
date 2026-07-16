@@ -1,7 +1,9 @@
 import type {
+  Address,
   AssistantChatRequest,
   AssistantChatResponse,
   CartItem,
+  CheckoutPreview,
   OrderResponse,
   ProductDetail,
   RecommendationCandidate,
@@ -25,6 +27,7 @@ const catalog: RecommendationCandidate[] = [
 
 let cartItems: CartItem[] = [];
 let orders: OrderResponse[] = [];
+let addressBook: Address[] = [{ id: 1, recipientName: "林木", phone: "138****2026", province: "浙江省", city: "杭州市", district: "西湖区", detail: "文一路 88 号", isDefault: true }];
 let profile: UserProfileResponse = { userId: 1, nickname: "林木", avatarUrl: null, gender: null, birthday: null };
 let bodyData: UserBodyDataResponse = { userId: 1 };
 let preferences: UserPreferencesResponse = { userId: 1, preferredStyles: ["自然", "通勤"], preferredColors: ["米白", "鼠尾草绿"], dislikedColors: [], preferredCategories: ["外套"], budgetMin: 200, budgetMax: 800 };
@@ -55,6 +58,7 @@ function toCartItem(sku: RecommendationCandidate, quantity: number): CartItem {
 export function resetMockApi() {
   cartItems = [];
   orders = [];
+  addressBook = [{ id: 1, recipientName: "林木", phone: "138****2026", province: "浙江省", city: "杭州市", district: "西湖区", detail: "文一路 88 号", isDefault: true }];
 }
 
 export const mockApi = {
@@ -85,10 +89,24 @@ export const mockApi = {
   },
   updateCartItem: async (skuId: number, quantity: number) => (cartItems = cartItems.map((item) => item.skuId === skuId ? { ...item, quantity } : item)),
   removeCartItem: async (skuId: number) => (cartItems = cartItems.filter((item) => item.skuId !== skuId)),
-  createOrder: async (skuIds: number[]) => {
+  addresses: async () => [...addressBook],
+  saveAddress: async (address: Omit<Address, "id"> & { id?: number }) => {
+    const saved = { ...address, id: address.id || Date.now() } as Address;
+    addressBook = address.id ? addressBook.map((item) => item.id === address.id ? saved : item) : [...addressBook, saved];
+    return [...addressBook];
+  },
+  removeAddress: async (id: number) => (addressBook = addressBook.filter((item) => item.id !== id)),
+  checkoutPreview: async (skuIds: number[], _addressId?: number): Promise<CheckoutPreview> => {
+    const items = cartItems.filter((item) => skuIds.includes(item.skuId));
+    const invalidReasons = items.flatMap((item) => (item.availableStock ?? 0) < item.quantity ? [`${item.name} 库存不足`] : []);
+    const merchandiseAmount = items.reduce((sum, item) => sum + item.salePrice * item.quantity, 0);
+    return { items, merchandiseAmount, shippingAmount: 0, discountAmount: 0, payableAmount: merchandiseAmount, invalidReasons };
+  },
+  createOrder: async (skuIds: number[], addressId?: number) => {
     const items = cartItems.filter((item) => skuIds.includes(item.skuId)).map((item) => ({ ...item, productName: item.name, lineAmount: item.salePrice * item.quantity }));
-    const order = { orderNo: `DEMO-${Date.now()}`, status: "PENDING_PAYMENT", totalAmount: items.reduce((sum, item) => sum + item.lineAmount, 0), items, createdAt: new Date().toISOString() } satisfies OrderResponse;
+    const order = { orderNo: `DEMO-${Date.now()}`, status: "PENDING_PAYMENT", totalAmount: items.reduce((sum, item) => sum + item.lineAmount, 0), items, createdAt: new Date().toISOString(), address: addressBook.find((item) => item.id === addressId) } satisfies OrderResponse;
     orders = [order, ...orders];
+    cartItems = cartItems.filter((item) => !skuIds.includes(item.skuId));
     return order;
   },
   buyNow: async (skuId: number, quantity: number) => {
@@ -107,5 +125,9 @@ export const mockApi = {
   },
   pay: async (orderNo: string, channel = "MOCK") => ({ paymentNo: `PAY-${orderNo}`, orderNo, amount: orders.find((item) => item.orderNo === orderNo)?.totalAmount || 0, channel, status: "PENDING" }),
   payment: async (paymentNo: string) => ({ paymentNo, orderNo: paymentNo.replace("PAY-", ""), amount: 0, channel: "MOCK", status: "SUCCESS", paidAt: new Date().toISOString() }),
-  payMock: async (orderNo: string) => ({ paymentNo: `PAY-${orderNo}`, orderNo, amount: orders.find((item) => item.orderNo === orderNo)?.totalAmount || 0, channel: "MOCK", status: "SUCCESS", paidAt: new Date().toISOString() })
+  payMock: async (orderNo: string) => {
+    const paidAt = new Date().toISOString();
+    orders = orders.map((item) => item.orderNo === orderNo ? { ...item, status: "PAID", paidAt } : item);
+    return { paymentNo: `PAY-${orderNo}`, orderNo, amount: orders.find((item) => item.orderNo === orderNo)?.totalAmount || 0, channel: "MOCK", status: "SUCCESS", paidAt };
+  }
 };

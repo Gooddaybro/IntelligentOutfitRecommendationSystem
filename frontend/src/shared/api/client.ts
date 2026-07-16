@@ -1,4 +1,5 @@
 import type {
+  Address,
   ApiResponse,
   AssistantChatRequest,
   AssistantChatResponse,
@@ -6,6 +7,7 @@ import type {
   BehaviorEventRequest,
   BehaviorEventResponse,
   CartItem,
+  CheckoutPreview,
   CurrentUserResponse,
   OrderResponse,
   PaymentResponse,
@@ -139,10 +141,14 @@ const httpApi = {
     requestJson<CartItem[]>(`/api/cart/items/${skuId}`, {
       method: "DELETE"
     }),
-  createOrder: (skuIds: number[]) =>
+  addresses: () => requestJson<Address[]>("/api/addresses"),
+  saveAddress: (address: Omit<Address, "id"> & { id?: number }) => requestJson<Address[]>(address.id ? `/api/addresses/${address.id}` : "/api/addresses", { method: address.id ? "PUT" : "POST", body: JSON.stringify(address) }),
+  removeAddress: (id: number) => requestJson<Address[]>(`/api/addresses/${id}`, { method: "DELETE" }),
+  checkoutPreview: (skuIds: number[], addressId?: number) => requestJson<CheckoutPreview>("/api/checkout/preview", { method: "POST", body: JSON.stringify({ skuIds, addressId }) }),
+  createOrder: (skuIds: number[], addressId?: number) =>
     requestJson<OrderResponse>("/api/orders", {
       method: "POST",
-      body: JSON.stringify({ source: "CART", skuIds })
+      body: JSON.stringify({ source: "CART", skuIds, addressId })
     }),
   buyNow: (skuId: number, quantity: number, recommendationId?: string) =>
     requestJson<OrderResponse>("/api/orders/buy-now", {
