@@ -2,6 +2,7 @@ package com.recommendation.intelligentoutfitrecommendationsystem.assistant;
 
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantContext;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntent;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.AssistantContextService;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.dto.BehaviorSummaryResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorSummaryService;
@@ -19,12 +20,42 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 
 class AssistantContextServiceTests {
+
+    @Test
+    void candidateQueryUsesPersistedEffectiveDemandInsteadOfLatestPatchAlone() {
+        UserProfileService userProfileService = mock(UserProfileService.class);
+        RecommendationCandidateQueryService candidateService = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversationService = mock(ConversationApplicationService.class);
+        AssistantContextService service = new AssistantContextService(
+                userProfileService, candidateService, conversationService, mock(BehaviorSummaryService.class));
+        AssistantChatRequest request = new AssistantChatRequest(
+                "thread-switch", "那女性呢？", null, null, null, null, null, null, null);
+        DemandIntent effective = new DemandIntent(
+                DemandIntent.VERSION, DemandIntent.SOURCE_JAVA_RULE, "那女性呢？", "female", "外套",
+                List.of("commute"), List.of("minimal"), 500, List.of(),
+                List.of("targetGender", "category", "budgetMax"), List.of("scene", "style"),
+                new BigDecimal("0.80"), List.of());
+        when(conversationService.applyDemandPatch(anyLong(), anyString(), any(), any(), any(), any()))
+                .thenReturn(effective);
+        when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
+        when(candidateService.findCandidates(any())).thenReturn(List.of());
+
+        AssistantContext context = service.buildContext(10L, "thread-switch", request);
+
+        ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
+        verify(candidateService).findCandidates(captor.capture());
+        assertThat(context.demandIntent()).isEqualTo(effective);
+        assertThat(captor.getValue().getGender()).isEqualTo("female");
+        assertThat(captor.getValue().getCategory()).isEqualTo("外套");
+        assertThat(captor.getValue().getBudgetMax()).isEqualTo(500);
+    }
 
     @Test
     void extractsBudgetMaxFromNaturalLanguageWhenRequestFilterIsMissing() {

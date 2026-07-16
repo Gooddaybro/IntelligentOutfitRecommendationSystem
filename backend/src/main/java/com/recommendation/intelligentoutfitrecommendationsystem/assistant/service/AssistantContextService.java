@@ -12,8 +12,10 @@ import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserPro
 import com.recommendation.intelligentoutfitrecommendationsystem.user.service.UserProfileService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.slf4j.MDC;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 组装 Java 业务上下文给 Python AI 服务。
@@ -53,7 +55,20 @@ public class AssistantContextService {
     public AssistantContext buildContext(Long userId, String threadId, AssistantChatRequest request) {
         UserProfileResponse profile = userProfileService.getProfile(userId);
         UserBodyDataResponse bodyData = userProfileService.getBodyData(userId);
-        DemandIntent demandIntent = demandIntentResolver.resolve(request, bodyData, profile);
+        DemandIntent initialIntent = demandIntentResolver.resolve(request, bodyData, profile);
+        String requestId = MDC.get("requestId");
+        if (!hasText(requestId)) {
+            requestId = "local-" + UUID.randomUUID();
+        }
+        DemandIntent persistedIntent = conversationService.applyDemandPatch(
+                userId,
+                threadId,
+                requestId,
+                null,
+                demandIntentResolver.resolvePatch(request),
+                initialIntent
+        );
+        DemandIntent demandIntent = persistedIntent == null ? initialIntent : persistedIntent;
         // Java 只执行 DemandIntent 中的硬过滤；候选池内的排序解释仍由 Python AI 服务完成。
         RecommendationCandidateQuery query = new RecommendationCandidateQuery(
                 demandIntent.category(),
