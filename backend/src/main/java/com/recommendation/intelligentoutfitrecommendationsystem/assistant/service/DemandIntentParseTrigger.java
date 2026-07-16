@@ -12,10 +12,16 @@ public class DemandIntentParseTrigger {
     );
 
     public boolean shouldParse(DeterministicDemandParseResult result, boolean hasPendingClarification) {
+        if (result == null) {
+            return false;
+        }
+        if (isNonShoppingInterrupt(result.deterministicPatch().rawQuery())) {
+            return false;
+        }
         if (hasPendingClarification) {
             return true;
         }
-        if (result == null || !result.hasShoppingSignal()) {
+        if (!result.hasShoppingSignal()) {
             return false;
         }
         String unresolved = result.unresolvedText().replaceAll("[，。！？,.!?\\s]", "");
@@ -23,6 +29,14 @@ public class DemandIntentParseTrigger {
             return false;
         }
         return hasDeterministicSlots(result) || !unresolved.isBlank();
+    }
+
+    private boolean isNonShoppingInterrupt(String message) {
+        if (message == null) {
+            return false;
+        }
+        return Set.of("订单", "物流", "发货", "退款", "退货", "售后", "库存政策")
+                .stream().anyMatch(message::contains);
     }
 
     private boolean hasDeterministicSlots(DeterministicDemandParseResult result) {
