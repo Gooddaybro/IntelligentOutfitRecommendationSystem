@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { ProductCard } from "./ProductCard";
 
@@ -15,7 +16,7 @@ const candidate = {
 describe("ProductCard", () => {
   it("marks an editorial featured card without changing the add-to-cart action", () => {
     const onAction = vi.fn();
-    render(<ProductCard candidate={candidate} onAction={onAction} variant="featured" />);
+    render(<MemoryRouter><ProductCard candidate={candidate} onAction={onAction} variant="featured" /></MemoryRouter>);
 
     const card = screen.getByTestId("recommendation-card");
     expect(card).toHaveClass("product-card--featured");
@@ -33,12 +34,21 @@ describe("ProductCard", () => {
   it("shows an AI editorial fallback only on supporting cards without recommendation facts", () => {
     const candidateWithoutAiFacts = { ...candidate, rankScore: undefined };
     const { container, rerender } = render(
-      <ProductCard candidate={candidateWithoutAiFacts} onAction={vi.fn()} variant="supporting" />
+      <MemoryRouter><ProductCard candidate={candidateWithoutAiFacts} onAction={vi.fn()} variant="supporting" /></MemoryRouter>
     );
 
     expect(screen.getByText("AI 精选")).toBeVisible();
 
-    rerender(<ProductCard candidate={candidateWithoutAiFacts} onAction={vi.fn()} variant="standard" />);
+    rerender(<MemoryRouter><ProductCard candidate={candidateWithoutAiFacts} onAction={vi.fn()} variant="standard" /></MemoryRouter>);
     expect(container.querySelector(".ai-match-badge")).not.toBeInTheDocument();
+  });
+
+  it("links a recommendation to its product detail", () => {
+    render(<MemoryRouter><ProductCard candidate={candidate} onAction={vi.fn()} /></MemoryRouter>);
+
+    expect(screen.getByRole("link", { name: `查看${candidate.name}详情` })).toHaveAttribute(
+      "href",
+      `/app/products/${candidate.spuId}`
+    );
   });
 });

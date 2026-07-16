@@ -1,0 +1,18 @@
+:root {
+  --forest-950: #193126;
+  --forest-900: #263a2d;
+  --sage-700: #5f7c58;
+  --sage-600: #78936d;
+  --moss-100: #dce8d6;
+  --linen-50: #f6f1e8;
+  --linen-100: #eee6d9;
+  --oak-400: #bda98b;
+  --ink-900: #26342b;
+  --ink-600: #657068;
+  --surface: #fffaf2;
+  --danger: #a74e43;
+  --warning: #a46f2d;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+}

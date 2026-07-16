@@ -1,4 +1,5 @@
 import { ShoppingBag, ShoppingCart } from "lucide-react";
+import { Link } from "react-router-dom";
 import type { BehaviorEventType, RecommendationCandidate } from "../../shared/api/types";
 import {
   buildAddToCartAction,
@@ -47,7 +48,7 @@ export function ProductCard({ candidate, onAction, actionMetadata, position, onB
         })
       }
     >
-      <div className="product-image">
+      <Link className="product-image" to={`/app/products/${candidate.spuId}`} aria-label={`查看${candidate.name}详情`}>
         {variant === "featured" && <span className="featured-card-label">AI 首选</span>}
         {shouldShowMatchBadge && <span className="ai-match-badge">{matchLabel}</span>}
         {candidate.mainImageUrl ? (
@@ -55,7 +56,7 @@ export function ProductCard({ candidate, onAction, actionMetadata, position, onB
         ) : (
           <span>暂无图片</span>
         )}
-      </div>
+      </Link>
       <div className="product-body">
         <div>
           <p className="eyebrow">{candidate.categoryName}</p>
