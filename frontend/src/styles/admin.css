@@ -73,3 +73,57 @@
   .admin-form-handoff { align-items: flex-start; flex-direction: column; }
   .admin-inventory-summary { grid-template-columns: 1fr 1fr; }
 }
+
+
+.admin-order-no { white-space: nowrap; }
+.admin-contact-stack { display: grid; gap: 2px; min-width: 150px; }
+.admin-contact-stack small, .admin-user-cell small { color: var(--ink-600); }
+.admin-user-cell { min-width: 180px; display: grid; grid-template-columns: 42px 1fr; gap: 10px; align-items: center; }
+.admin-user-cell > span { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 50%; color: var(--forest-900); background: var(--moss-100); font-weight: 900; }
+.admin-user-cell > div { min-width: 0; display: grid; gap: 2px; }
+.admin-drawer-backdrop { position: fixed; inset: 0; z-index: 95; display: flex; justify-content: flex-end; background: #14201855; backdrop-filter: blur(2px); }
+.admin-drawer { width: min(520px, 100%); height: 100%; overflow-y: auto; box-sizing: border-box; padding: 28px; background: #fffdf9; box-shadow: -18px 0 50px #13201733; }
+.admin-drawer > header { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; margin-bottom: 22px; }
+.admin-drawer > header p { margin: 0 0 5px; color: var(--sage-700); font-size: 11px; font-weight: 900; letter-spacing: .14em; }
+.admin-drawer > header h2 { margin: 0; font-size: 26px; }
+.admin-drawer > header button { padding: 9px 12px; border: 1px solid #d2cbc0; border-radius: 10px; background: #fff; cursor: pointer; }
+.admin-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0; }
+.admin-detail-grid > div { padding: 14px; border: 1px solid #ded7cc; border-radius: 12px; background: #fff; }
+.admin-detail-grid dt { color: var(--ink-600); font-size: 12px; font-weight: 800; }
+.admin-detail-grid dd { margin: 6px 0 0; color: var(--ink-900); font-weight: 800; overflow-wrap: anywhere; }
+.admin-detail-wide { grid-column: 1 / -1; }
+@media (max-width: 640px) {
+  .admin-drawer { width: 100%; padding: 20px; }
+  .admin-detail-grid { grid-template-columns: 1fr; }
+  .admin-detail-wide { grid-column: auto; }
+}
+
+
+.admin-analytics-kpis { margin-top: 24px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.admin-analytics-kpis article { display: grid; gap: 8px; padding: 18px; border: 1px solid #d8d2c7; border-radius: 16px; background: #fff; }
+.admin-analytics-kpis svg { color: var(--forest-900); }
+.admin-analytics-kpis span { color: var(--ink-600); font-size: 12px; font-weight: 800; }
+.admin-analytics-kpis strong { font-size: 24px; }
+.admin-analytics-grid { margin-top: 16px; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(320px, .9fr); gap: 16px; }
+.admin-analytics-grid > section { min-height: 300px; padding: 20px; border: 1px solid #d8d2c7; border-radius: 16px; background: #fff; }
+.admin-analytics-grid header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.admin-analytics-grid header h2 { display: inline-flex; align-items: center; gap: 7px; margin: 0; font-size: 18px; }
+.admin-analytics-grid header span { color: var(--ink-600); font-size: 12px; }
+.admin-funnel-definition { margin: 12px 0 16px; color: var(--ink-600); line-height: 1.6; }
+.admin-funnel-list, .admin-category-bars { display: grid; gap: 12px; }
+.admin-funnel-list > div, .admin-category-bars > div { display: grid; grid-template-columns: 70px 80px 1fr; gap: 10px; align-items: center; }
+.admin-funnel-list i, .admin-category-bars i { height: 10px; border-radius: 999px; background: linear-gradient(90deg, var(--sage-600), var(--forest-900)); }
+.admin-ranked-list { display: grid; gap: 10px; margin: 16px 0 0; padding: 0; list-style: none; }
+.admin-ranked-list li { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 12px; border-radius: 12px; background: #f5f2ec; }
+.admin-ranked-list b { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 9px; color: var(--forest-900); background: var(--moss-100); }
+.admin-ranked-list span { display: grid; gap: 2px; min-width: 0; }
+.admin-ranked-list small { color: var(--ink-600); }
+.admin-ranked-list strong { white-space: nowrap; }
+@media (max-width: 920px) {
+  .admin-analytics-kpis, .admin-analytics-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .admin-funnel-list > div, .admin-category-bars > div { grid-template-columns: 62px 70px 1fr; }
+  .admin-ranked-list li { grid-template-columns: 28px 1fr; }
+  .admin-ranked-list strong { grid-column: 2; }
+}

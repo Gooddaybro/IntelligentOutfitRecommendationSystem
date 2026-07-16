@@ -50,6 +50,8 @@ type Order = {
   };
 };
 
+type InstallApiMockOptions = { role?: "ROLE_USER" | "ROLE_ADMIN" };
+
 export const commuteJacketCandidate = {
   spuId: 1002,
   skuId: 2102,
@@ -126,9 +128,28 @@ function buildOrder(orderNo: string, cartItems: CartItem[], status: "UNPAID" | "
   };
 }
 
-export async function installApiMocks(page: Page) {
+export async function installApiMocks(page: Page, options: InstallApiMockOptions = {}) {
   let cartItems: CartItem[] = [];
   let orders: Order[] = [];
+  let adminProducts = [
+    { spuId: 3001, spuCode: "ADMIN-COAT-001", name: "\u901a\u52e4\u8f7b\u8584\u5916\u5957", categoryId: 2, categoryName: "\u5916\u5957", mainImageUrl: "/images/products/jacket-commute-main.svg", minPrice: 299, maxPrice: 299, skuCount: 1, totalStock: 7, status: "ON_SALE", createdAt: "2026-07-16T08:00:00Z" },
+    { spuId: 3002, spuCode: "ADMIN-SHIRT-001", name: "\u57fa\u7840\u7eaf\u68c9T\u6064", categoryId: 1, categoryName: "\u4e0a\u88c5", mainImageUrl: "/images/products/basic-cotton-tshirt-main.svg", minPrice: 99, maxPrice: 99, skuCount: 1, totalStock: 12, status: "ON_SALE", createdAt: "2026-07-15T08:00:00Z" }
+  ];
+  let adminInventory = [
+    { skuId: 4001, skuCode: "SKU-ADMIN-001", spuId: 3001, productName: "\u901a\u52e4\u8f7b\u8584\u5916\u5957", color: "\u9ed1\u8272", size: "L", salePrice: 299, availableStock: 3, lowStockThreshold: 5, status: "ACTIVE" },
+    { skuId: 4002, skuCode: "SKU-ADMIN-002", spuId: 3002, productName: "\u57fa\u7840\u7eaf\u68c9T\u6064", color: "\u767d\u8272", size: "M", salePrice: 99, availableStock: 12, lowStockThreshold: 5, status: "ACTIVE" }
+  ];
+  let adminOrders = [
+    { orderNo: "ORD-ADMIN-001", username: "admin_user", status: "PAID", paymentStatus: "PAID", totalAmount: 299, itemCount: 1, createdAt: "2026-07-16T09:00:00Z", availableActions: ["SHIP"], addressSummary: "\u6d59\u6c5f\u7701\u676d\u5dde\u5e02\u897f\u6e56\u533a" },
+    { orderNo: "ORD-ADMIN-002", username: "buyer_user", status: "SHIPPED", paymentStatus: "PAID", totalAmount: 99, itemCount: 1, createdAt: "2026-07-15T09:00:00Z", availableActions: ["AFTER_SALE"], addressSummary: "\u4e0a\u6d77\u5e02\u5f90\u6c47\u533a", shipment: { carrier: "\u987a\u4e30\u901f\u8fd0", trackingNo: "SFOLD001" } }
+  ];
+  let adminUsers = [
+    { userId: 5001, username: "admin_user", nickname: "\u6f14\u793a\u7528\u6237", email: "admin-user@example.com", phone: "13800000000", status: "ACTIVE", registeredAt: "2026-07-01T09:00:00Z", orderCount: 2, paidAmount: 398 },
+    { userId: 5002, username: "buyer_user", nickname: "\u4e70\u5bb6", email: "buyer@example.com", phone: "13900000000", status: "ACTIVE", registeredAt: "2026-07-02T09:00:00Z", orderCount: 1, paidAmount: 99 }
+  ];
+  let adminAuditLogs = [
+    { id: 1, operator: "\u8fd0\u8425\u7ba1\u7406\u5458", action: "CREATE_PRODUCT", targetType: "SPU", targetId: "3001", result: "SUCCESS", summary: "\u521d\u59cb\u5316\u6f14\u793a\u5546\u54c1", createdAt: "2026-07-16T08:00:00Z" }
+  ];
   const capturedBodies: Record<string, unknown[]> = {
     addCart: [],
     createOrder: [],
@@ -149,7 +170,7 @@ export async function installApiMocks(page: Page) {
     await fulfillJson(route, {
       userId: 10001,
       username: "e2e_user",
-      role: "ROLE_USER"
+      role: options.role ?? "ROLE_USER"
     });
   });
 
@@ -269,6 +290,95 @@ export async function installApiMocks(page: Page) {
       transactionId: "TX-E2E-001",
       paidAt: "2026-06-19T10:05:00"
     });
+  });
+
+  await page.route("**/api/admin/overview", async (route) => {
+    const paidOrders = adminOrders.filter((order) => order.paymentStatus === "PAID");
+    await fulfillJson(route, {
+      onSaleProducts: adminProducts.filter((product) => product.status === "ON_SALE").length,
+      skuCount: adminInventory.length,
+      lowStockCount: adminInventory.filter((sku) => sku.availableStock <= sku.lowStockThreshold).length,
+      pendingShipmentOrders: adminOrders.filter((order) => order.status === "PAID" && order.availableActions.includes("SHIP")).length,
+      afterSaleOrders: adminOrders.filter((order) => order.availableActions.includes("AFTER_SALE")).length,
+      orderCount: adminOrders.length,
+      paidAmount: paidOrders.reduce((sum, order) => sum + order.totalAmount, 0),
+      rangeLabel: "\u6700\u8fd1 30 \u5929",
+      trend: [{ label: "07-15", amount: 99 }, { label: "07-16", amount: 299 }],
+      hotProducts: adminProducts.map((product, index) => ({ spuId: product.spuId, name: product.name, sales: 12 - index * 2 }))
+    });
+  });
+
+  await page.route("**/api/admin/products", async (route) => {
+    await fulfillJson(route, adminProducts);
+  });
+
+  await page.route(/\/api\/admin\/products\/\d+\/status$/, async (route) => {
+    const parts = new URL(route.request().url()).pathname.split("/");
+    const spuId = Number(parts[4]);
+    const body = route.request().postDataJSON() as { status: string };
+    adminProducts = adminProducts.map((product) => product.spuId === spuId ? { ...product, status: body.status } : product);
+    const updated = adminProducts.find((product) => product.spuId === spuId);
+    adminAuditLogs = [{ id: Date.now(), operator: "\u8fd0\u8425\u7ba1\u7406\u5458", action: "SET_PRODUCT_STATUS", targetType: "SPU", targetId: String(spuId), result: "SUCCESS", summary: body.status, createdAt: "2026-07-16T10:00:00Z" }, ...adminAuditLogs];
+    await fulfillJson(route, updated);
+  });
+
+  await page.route("**/api/admin/inventory", async (route) => {
+    await fulfillJson(route, adminInventory);
+  });
+
+  await page.route(/\/api\/admin\/inventory\/\d+\/adjustments$/, async (route) => {
+    const parts = new URL(route.request().url()).pathname.split("/");
+    const skuId = Number(parts[4]);
+    const body = route.request().postDataJSON() as { targetStock: number; reason: string };
+    const current = adminInventory.find((sku) => sku.skuId === skuId)!;
+    const updated = { ...current, availableStock: body.targetStock, lastAdjustment: { beforeStock: current.availableStock, afterStock: body.targetStock, reason: body.reason, operator: "\u8fd0\u8425\u7ba1\u7406\u5458", adjustedAt: "2026-07-16T10:00:00Z" } };
+    adminInventory = adminInventory.map((sku) => sku.skuId === skuId ? updated : sku);
+    adminAuditLogs = [{ id: Date.now(), operator: "\u8fd0\u8425\u7ba1\u7406\u5458", action: "ADJUST_STOCK", targetType: "SKU", targetId: String(skuId), result: "SUCCESS", summary: body.reason, createdAt: "2026-07-16T10:00:00Z" }, ...adminAuditLogs];
+    await fulfillJson(route, updated);
+  });
+
+  await page.route("**/api/admin/orders", async (route) => {
+    await fulfillJson(route, adminOrders);
+  });
+
+  await page.route(/\/api\/admin\/orders\/[^/]+\/ship$/, async (route) => {
+    const parts = new URL(route.request().url()).pathname.split("/");
+    const orderNo = decodeURIComponent(parts[4]);
+    const body = route.request().postDataJSON() as { carrier: string; trackingNo: string };
+    const updated = { ...adminOrders.find((order) => order.orderNo === orderNo)!, status: "SHIPPED", availableActions: [], shipment: { carrier: body.carrier, trackingNo: body.trackingNo } };
+    adminOrders = adminOrders.map((order) => order.orderNo === orderNo ? updated : order);
+    adminAuditLogs = [{ id: Date.now(), operator: "\u8fd0\u8425\u7ba1\u7406\u5458", action: "SHIP_ORDER", targetType: "ORDER", targetId: orderNo, result: "SUCCESS", summary: body.trackingNo, createdAt: "2026-07-16T10:00:00Z" }, ...adminAuditLogs];
+    await fulfillJson(route, updated);
+  });
+
+  await page.route("**/api/admin/users", async (route) => {
+    await fulfillJson(route, adminUsers);
+  });
+
+  await page.route(/\/api\/admin\/users\/\d+\/status$/, async (route) => {
+    const parts = new URL(route.request().url()).pathname.split("/");
+    const userId = Number(parts[4]);
+    const body = route.request().postDataJSON() as { status: string };
+    adminUsers = adminUsers.map((user) => user.userId === userId ? { ...user, status: body.status } : user);
+    const updated = adminUsers.find((user) => user.userId === userId);
+    adminAuditLogs = [{ id: Date.now(), operator: "\u8fd0\u8425\u7ba1\u7406\u5458", action: body.status === "DISABLED" ? "DISABLE_USER" : "ENABLE_USER", targetType: "USER", targetId: String(userId), result: "SUCCESS", summary: body.status, createdAt: "2026-07-16T10:00:00Z" }, ...adminAuditLogs];
+    await fulfillJson(route, updated);
+  });
+
+  await page.route("**/api/admin/analytics", async (route) => {
+    await fulfillJson(route, {
+      rangeLabel: "\u6700\u8fd1 30 \u5929",
+      orderCount: adminOrders.length,
+      paidAmount: adminOrders.filter((order) => order.paymentStatus === "PAID").reduce((sum, order) => sum + order.totalAmount, 0),
+      funnel: { exposed: 1000, clicked: 320, cartAdded: 88, purchased: 26, definition: "\u66dd\u5149\u5230\u6210\u4ea4\u7684\u6f14\u793a\u53e3\u5f84" },
+      trend: [{ label: "07-15", orderCount: 1, paidAmount: 99 }, { label: "07-16", orderCount: 1, paidAmount: 299 }],
+      hotProducts: adminProducts.map((product, index) => ({ spuId: product.spuId, name: product.name, sales: 18 - index, paidAmount: product.minPrice * (18 - index) })),
+      categoryTrend: [{ categoryName: "\u5916\u5957", sales: 18 }, { categoryName: "\u4e0a\u88c5", sales: 12 }]
+    });
+  });
+
+  await page.route("**/api/admin/audit-logs", async (route) => {
+    await fulfillJson(route, adminAuditLogs);
   });
 
   return {

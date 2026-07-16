@@ -45,4 +45,29 @@ describe("前端演示数据接口", () => {
     expect(adjusted.availableStock).toBe(sku.availableStock + 5);
     expect(adjusted.lastAdjustment?.reason).toBe("到货入库");
   });
+
+  it("supports shipping an admin demo order", async () => {
+    const orders = await mockApi.adminOrders();
+    const pendingShipment = orders.find((item) => item.status === "PAID" && item.availableActions.includes("SHIP"));
+    expect(pendingShipment).toBeDefined();
+
+    const carrier = "\u987a\u4e30\u901f\u8fd0";
+    const shipped = await mockApi.adminShipOrder(pendingShipment!.orderNo, carrier, "SF123456789");
+
+    expect(shipped.status).toBe("SHIPPED");
+    expect(shipped.availableActions).not.toContain("SHIP");
+    expect(shipped.shipment).toEqual({ carrier, trackingNo: "SF123456789" });
+    expect((await mockApi.adminOrders()).find((item) => item.orderNo === pendingShipment!.orderNo)?.status).toBe("SHIPPED");
+  });
+
+  it("supports changing an admin demo user status", async () => {
+    const users = await mockApi.adminUsers();
+    const activeUser = users.find((item) => item.status === "ACTIVE");
+    expect(activeUser).toBeDefined();
+
+    const disabled = await mockApi.adminSetUserStatus(activeUser!.userId, "DISABLED");
+
+    expect(disabled.status).toBe("DISABLED");
+    expect((await mockApi.adminUsers()).find((item) => item.userId === activeUser!.userId)?.status).toBe("DISABLED");
+  });
 });

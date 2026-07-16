@@ -14,6 +14,10 @@ import { AdminProductsPage } from "../pages/admin/AdminProductsPage";
 import { AdminProductFormPage } from "../pages/admin/AdminProductFormPage";
 import { AdminCategoriesPage } from "../pages/admin/AdminCategoriesPage";
 import { AdminInventoryPage } from "../pages/admin/AdminInventoryPage";
+import { AdminOrdersPage } from "../pages/admin/AdminOrdersPage";
+import { AdminUsersPage } from "../pages/admin/AdminUsersPage";
+import { AdminAnalyticsPage } from "../pages/admin/AdminAnalyticsPage";
+import { AdminAuditLogsPage } from "../pages/admin/AdminAuditLogsPage";
 import { AiShoppingPage } from "../pages/AiShoppingPage";
 import { CartPage } from "../pages/CartPage";
 import { CheckoutPage } from "../pages/CheckoutPage";
@@ -160,6 +164,10 @@ export function App() {
           <Route path="products/:spuId/edit" element={<AdminProductFormPage />} />
           <Route path="categories" element={<AdminCategoriesPage />} />
           <Route path="inventory" element={<AdminInventoryPage />} />
+          <Route path="orders" element={<AdminOrdersPage />} />
+          <Route path="users" element={<AdminUsersPage />} />
+          <Route path="analytics" element={<AdminAnalyticsPage />} />
+          <Route path="audit-logs" element={<AdminAuditLogsPage />} />
           <Route path="*" element={<section className="admin-placeholder"><h1>管理模块正在落位</h1><p>该页面将在前端 F3 阶段接入可演示操作。</p></section>} />
         </Route>
         <Route path="*" element={<Navigate to="/app/home" replace />} />

@@ -14,7 +14,7 @@ import type {
   UserProfileRequest,
   UserProfileResponse
 } from "./types";
-import type { AdminCategory, AdminProduct, AdminProductInput, AdminSku } from "./adminTypes";
+import type { AdminAnalytics, AdminAuditLog, AdminCategory, AdminOrder, AdminProduct, AdminProductInput, AdminSku, AdminUser, AdminUserStatus } from "./adminTypes";
 
 const catalog: RecommendationCandidate[] = [
   { spuId: 1001, skuId: 2001, spuCode: "PUFFER_COMMUTE", skuCode: "PUFFER-IVORY-M", name: "轻量通勤羽绒服", categoryName: "外套", color: "米白", size: "M", fitType: "合身", salePrice: 699, availableStock: 8, mainImageUrl: "/images/products/puffer-winter-light-main.jpg", styleTags: "通勤,简约" },
@@ -70,6 +70,34 @@ function createAdminCategories(): AdminCategory[] {
   return Object.entries(categoryIds).map(([name, id], index) => ({ id, name, parentId: null, level: 1, sortOrder: index + 1, enabled: true, productCount: new Set(catalog.filter((item) => item.categoryName === name).map((item) => item.spuId)).size }));
 }
 
+function cloneOrder(order: AdminOrder): AdminOrder {
+  return { ...order, availableActions: [...order.availableActions], shipment: order.shipment ? { ...order.shipment } : undefined };
+}
+
+function createAdminOrders(): AdminOrder[] {
+  return [
+    { orderNo: "ORD-20260716-001", username: "linmu", status: "PAID", paymentStatus: "PAID", totalAmount: 699, itemCount: 2, createdAt: "2026-07-16T09:00:00Z", availableActions: ["SHIP"], addressSummary: "\u6d59\u6c5f\u7701\u676d\u5dde\u5e02\u897f\u6e56\u533a\u6587\u4e00\u8def 188 \u53f7" },
+    { orderNo: "ORD-20260715-006", username: "qingmu", status: "SHIPPED", paymentStatus: "PAID", totalAmount: 599, itemCount: 1, createdAt: "2026-07-15T14:30:00Z", availableActions: ["AFTER_SALE"], addressSummary: "\u6d59\u6c5f\u7701\u676d\u5dde\u5e02\u4f59\u676d\u533a\u672a\u6765\u79d1\u6280\u57ce", shipment: { carrier: "\u4eac\u4e1c\u7269\u6d41", trackingNo: "JD20260715006" } },
+    { orderNo: "ORD-20260714-003", username: "yemu", status: "UNPAID", paymentStatus: "UNPAID", totalAmount: 329, itemCount: 1, createdAt: "2026-07-14T18:10:00Z", availableActions: ["CANCEL"], addressSummary: "\u4e0a\u6d77\u5e02\u5f90\u6c47\u533a" },
+    { orderNo: "ORD-20260712-002", username: "linmu", status: "COMPLETED", paymentStatus: "PAID", totalAmount: 269, itemCount: 1, createdAt: "2026-07-12T11:20:00Z", availableActions: ["AFTER_SALE"], addressSummary: "\u6d59\u6c5f\u7701\u676d\u5dde\u5e02\u897f\u6e56\u533a\u6587\u4e00\u8def 188 \u53f7", shipment: { carrier: "\u987a\u4e30\u901f\u8fd0", trackingNo: "SF20260712002" } }
+  ];
+}
+
+function createAdminUsers(): AdminUser[] {
+  return [
+    { userId: 10001, username: "linmu", nickname: "\u6797\u6728", email: "linmu@example.com", phone: "13800000000", status: "ACTIVE", registeredAt: "2026-07-01T09:00:00Z", orderCount: 3, paidAmount: 1299 },
+    { userId: 10002, username: "qingmu", nickname: "\u9752\u6728", email: "qingmu@example.com", phone: "13900000000", status: "ACTIVE", registeredAt: "2026-07-08T10:10:00Z", orderCount: 1, paidAmount: 599 },
+    { userId: 10003, username: "yemu", nickname: "\u53f6\u6728", email: "yemu@example.com", phone: "13700000000", status: "DISABLED", registeredAt: "2026-06-28T16:00:00Z", orderCount: 1, paidAmount: 0 }
+  ];
+}
+
+function createAdminAuditLogs(): AdminAuditLog[] {
+  return [
+    { id: 1, operator: "\u7cfb\u7edf", action: "CREATE_PRODUCT", targetType: "SPU", targetId: "1001", result: "SUCCESS", summary: "\u521d\u59cb\u5316\u6f14\u793a\u5546\u54c1\u6570\u636e", createdAt: "2026-07-16T08:00:00Z" },
+    { id: 2, operator: "\u8fd0\u8425\u7ba1\u7406\u5458", action: "ADJUST_STOCK", targetType: "SKU", targetId: "2002", result: "SUCCESS", summary: "\u4f4e\u5e93\u5b58 SKU \u8fdb\u5165\u9884\u8b66\u6c60", createdAt: "2026-07-16T08:30:00Z" }
+  ];
+}
+
 let cartItems: CartItem[] = [];
 let orders: OrderResponse[] = [];
 let addressBook: Address[] = [{ id: 1, recipientName: "林木", phone: "138****2026", province: "浙江省", city: "杭州市", district: "西湖区", detail: "文一路 88 号", isDefault: true }];
@@ -80,6 +108,9 @@ let preferences: UserPreferencesResponse = { userId: 1, preferredStyles: ["自�
 let adminProducts = createAdminProducts();
 let adminInventory = createAdminInventory();
 let adminCategories = createAdminCategories();
+let adminOrderRows = createAdminOrders();
+let adminUserRows = createAdminUsers();
+let adminAuditLogRows = createAdminAuditLogs();
 
 function productDetail(spuId: number): ProductDetail {
   const sku = catalog.find((item) => item.spuId === spuId);
@@ -112,6 +143,9 @@ export function resetMockApi() {
   adminProducts = createAdminProducts();
   adminInventory = createAdminInventory();
   adminCategories = createAdminCategories();
+  adminOrderRows = createAdminOrders();
+  adminUserRows = createAdminUsers();
+  adminAuditLogRows = createAdminAuditLogs();
 }
 
 export const mockApi = {
@@ -198,13 +232,18 @@ export const mockApi = {
     onSaleProducts: adminProducts.filter((item) => item.status === "ON_SALE").length,
     skuCount: adminInventory.length,
     lowStockCount: adminInventory.filter((item) => item.availableStock <= item.lowStockThreshold).length,
-    pendingShipmentOrders: orders.filter((item) => item.status === "PAID").length,
-    afterSaleOrders: 0,
-    orderCount: orders.length,
-    paidAmount: orders.filter((item) => item.status === "PAID").reduce((sum, item) => sum + item.totalAmount, 0),
-    rangeLabel: "最近 30 天",
-    trend: [],
-    hotProducts: []
+    pendingShipmentOrders: adminOrderRows.filter((item) => item.status === "PAID" && item.availableActions.includes("SHIP")).length,
+    afterSaleOrders: adminOrderRows.filter((item) => item.availableActions.includes("AFTER_SALE")).length,
+    orderCount: adminOrderRows.length,
+    paidAmount: adminOrderRows.filter((item) => item.paymentStatus === "PAID").reduce((sum, item) => sum + item.totalAmount, 0),
+    rangeLabel: "\u6700\u8fd1 30 \u5929",
+    trend: [
+      { label: "07-12", amount: 269 },
+      { label: "07-14", amount: 0 },
+      { label: "07-15", amount: 599 },
+      { label: "07-16", amount: 699 }
+    ],
+    hotProducts: adminProducts.slice(0, 3).map((item, index) => ({ spuId: item.spuId, name: item.name, sales: 12 - index * 3 }))
   }),
   adminProducts: async () => adminProducts.map((item) => ({ ...item })),
   adminSaveProduct: async (input: AdminProductInput) => {
@@ -244,5 +283,48 @@ export const mockApi = {
     adminInventory = adminInventory.map((item) => item.skuId === skuId ? { ...item, availableStock: targetStock, lastAdjustment: adjustment } : item);
     adminProducts = adminProducts.map((item) => item.spuId === current.spuId ? { ...item, totalStock: item.totalStock + targetStock - current.availableStock } : item);
     return { ...adminInventory.find((item) => item.skuId === skuId)! };
-  }
+  },
+  adminOrders: async () => adminOrderRows.map(cloneOrder),
+  adminShipOrder: async (orderNo: string, carrier: string, trackingNo: string) => {
+    const trimmedCarrier = carrier.trim();
+    const trimmedTrackingNo = trackingNo.trim();
+    if (!trimmedCarrier || !trimmedTrackingNo) throw new Error("\u8bf7\u586b\u5199\u627f\u8fd0\u5546\u548c\u8fd0\u5355\u53f7");
+    const current = adminOrderRows.find((item) => item.orderNo === orderNo);
+    if (!current) throw new Error("\u8ba2\u5355\u4e0d\u5b58\u5728");
+    if (current.status !== "PAID" || !current.availableActions.includes("SHIP")) throw new Error("\u5f53\u524d\u8ba2\u5355\u4e0d\u53ef\u53d1\u8d27");
+    const updated: AdminOrder = { ...current, status: "SHIPPED", availableActions: current.availableActions.filter((action) => action !== "SHIP"), shipment: { carrier: trimmedCarrier, trackingNo: trimmedTrackingNo } };
+    adminOrderRows = adminOrderRows.map((item) => item.orderNo === orderNo ? updated : item);
+    adminAuditLogRows = [{ id: Date.now(), operator: "\u8fd0\u8425\u7ba1\u7406\u5458", action: "SHIP_ORDER", targetType: "ORDER", targetId: orderNo, result: "SUCCESS", summary: `${trimmedCarrier} ${trimmedTrackingNo}`, createdAt: new Date().toISOString() }, ...adminAuditLogRows];
+    return cloneOrder(updated);
+  },
+  adminUsers: async () => adminUserRows.map((item) => ({ ...item })),
+  adminSetUserStatus: async (userId: number, status: AdminUserStatus) => {
+    const current = adminUserRows.find((item) => item.userId === userId);
+    if (!current) throw new Error("\u7528\u6237\u4e0d\u5b58\u5728");
+    const updated = { ...current, status };
+    adminUserRows = adminUserRows.map((item) => item.userId === userId ? updated : item);
+    adminAuditLogRows = [{ id: Date.now(), operator: "\u8fd0\u8425\u7ba1\u7406\u5458", action: status === "DISABLED" ? "DISABLE_USER" : "ENABLE_USER", targetType: "USER", targetId: String(userId), result: "SUCCESS", summary: `${updated.username} \u72b6\u6001\u53d8\u66f4\u4e3a ${status}`, createdAt: new Date().toISOString() }, ...adminAuditLogRows];
+    return { ...updated };
+  },
+  adminAnalytics: async (): Promise<AdminAnalytics> => ({
+    rangeLabel: "\u6700\u8fd1 30 \u5929",
+    orderCount: adminOrderRows.length,
+    paidAmount: adminOrderRows.filter((item) => item.paymentStatus === "PAID").reduce((sum, item) => sum + item.totalAmount, 0),
+    funnel: { exposed: 1280, clicked: 426, cartAdded: 96, purchased: 28, definition: "\u66dd\u5149\u4e3a\u5546\u54c1\u5361\u7247\u8fdb\u5165\u89c6\u53e3\uff0c\u70b9\u51fb\u4e3a\u8fdb\u5165\u8be6\u60c5\u6216 AI \u63a8\u8350\u5361\u7247\uff0c\u6210\u4ea4\u4e3a\u5df2\u652f\u4ed8\u8ba2\u5355\u3002" },
+    trend: [
+      { label: "07-12", orderCount: 1, paidAmount: 269 },
+      { label: "07-14", orderCount: 1, paidAmount: 0 },
+      { label: "07-15", orderCount: 1, paidAmount: 599 },
+      { label: "07-16", orderCount: 1, paidAmount: 699 }
+    ],
+    hotProducts: adminProducts.slice(0, 4).map((item, index) => ({ spuId: item.spuId, name: item.name, sales: 14 - index * 2, paidAmount: item.minPrice * (14 - index * 2) })),
+    categoryTrend: [
+      { categoryName: "\u5916\u5957", sales: 18 },
+      { categoryName: "\u4e0a\u88c5", sales: 12 },
+      { categoryName: "\u88e4\u88c5", sales: 9 },
+      { categoryName: "\u88d9\u88c5", sales: 6 }
+    ]
+  }),
+  adminAuditLogs: async () => adminAuditLogRows.map((item) => ({ ...item }))
+
 };
