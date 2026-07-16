@@ -1,7 +1,7 @@
 # LLM 结构化需求补丁 MVP 设计
 
 **日期：** 2026-07-16  
-**状态：** 已确认，待实施  
+**状态：** MVP 已实施（2026-07-16）  
 **上游设计：** `2026-07-16-hybrid-demand-intent-refinement-design.md`
 
 ## 1. 目标
@@ -530,3 +530,47 @@ Python 解析服务只负责 Prompt、模型调用、JSON 解码和 Pydantic 初
 - 普通历史不能成为硬条件 evidence；
 - 非法模型响应和依赖故障不会改变当前有效快照；
 - 所有实际进入 SQL 的条件都可追溯到 Java 规则或通过 Java 校验的证据。
+
+
+## 20. 实施结果（2026-07-16）
+
+本设计已按 `docs/superpowers/plans/2026-07-16-llm-demand-intent-patch-mvp.md` 落地，实际调用链如下：
+
+```text
+AssistantContextService
+  -> DemandIntentResolver.resolveDetailed
+  -> DemandIntentParseTrigger
+  -> ResilientDemandIntentParseClient
+  -> POST Python /internal/demand-intent/parse
+  -> DemandIntentParseService（plain JSON + Pydantic extra=forbid）
+  -> LlmDemandIntentValidator（Java 最终裁决）
+  -> DemandIntentStateService.applyResolution
+  -> ConversationDemandStateStore.transition
+  -> chat_demand_state / chat_demand_transition（V21 pending JSON）
+  -> RecommendationCandidateQuery（只读取 effectiveIntent）
+```
+
+### 20.1 已实现边界
+
+- Python 内部接口复用 `X-Internal-Token`，单次调用、模型重试为 0；Java HTTP 总超时 8 秒。
+- Python 输出采用 `schemaVersion=1.0`、稀疏 slots、逐槽位 confidence 和对象 evidence。
+- Java 强制校验 lockedSlots、原文证据、pending 证据、枚举、预算与逐槽位阈值。
+- `PendingClarification` 独立持久化，不会进入 `effectiveIntent` 或 SQL。
+- 支持确认、取消、显式新需求覆盖旧 pending；一次只保留一个 pending。
+- 澄清问题由 Java 同步/流式接口直接返回，不再交给普通 Python chat 改写。
+- Python 解析不可用时返回 Optional empty：确定性补丁继续生效；完全模糊时使用 Java 通用追问。
+- 最近历史最多发送三组完整问答；普通历史只作为软上下文，不能作为 evidence。
+
+### 20.2 验证证据
+
+- Python：`250 passed, 83 subtests passed`。
+- Python Ruff：`All checks passed`。
+- Java（排除两个 Docker/Testcontainers 用例）：`300 tests, 0 failures, 0 errors, 6 skipped`。
+- Java Checkstyle：`0 violations`。
+- 完整 Java 测试仅有 `AiTaskRetryDlqIntegrationTests`、`RabbitAiTaskTopologyTests` 因本机 Docker 不可用失败；与本功能代码无关。
+
+### 20.3 继续保留的待开发项
+
+1. 颜色槽位进入 SQL 硬过滤；
+2. 全量商品 `male/female/unisex` 数据校准；
+3. 历史快照恢复和男女款对比专用流程。
