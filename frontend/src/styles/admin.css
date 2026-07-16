@@ -42,6 +42,23 @@
 .admin-form-handoff a { color: var(--forest-900); font-weight: 800; }
 .admin-form-page form > footer { position: sticky; bottom: 14px; display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 14px 16px; border: 1px solid #d8d2c7; border-radius: 14px; background: #fffdf9e8; backdrop-filter: blur(12px); box-shadow: 0 12px 35px #26382d17; }
 .admin-form-page form > footer > span { color: var(--ink-600); }
+.admin-inventory-summary { margin-top: 24px; display: grid; grid-template-columns: repeat(2, minmax(180px, 240px)); gap: 12px; }
+.admin-inventory-summary article { display: flex; align-items: center; gap: 12px; padding: 15px 17px; border: 1px solid #d8d2c7; border-radius: 14px; color: var(--forest-900); background: #fff; }
+.admin-inventory-summary article > div { display: grid; gap: 2px; }
+.admin-inventory-summary strong { font-size: 22px; }
+.admin-inventory-summary span { color: var(--ink-600); font-size: 12px; }
+.admin-inventory-summary .is-warning { color: #9a4f21; border-color: #e3b48f; background: #fff7ed; }
+.admin-stock-warning { color: #b54e26; }
+.admin-adjustment-summary { display: block; min-width: 150px; color: var(--ink-600); font-size: 12px; line-height: 1.45; }
+.admin-adjustment-form { display: grid; gap: 14px; margin-top: 20px; }
+.admin-adjustment-form label { display: grid; gap: 7px; color: var(--ink-600); font-size: 13px; font-weight: 800; }
+.admin-adjustment-form input, .admin-adjustment-form textarea { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid #d5cec2; border-radius: 10px; color: var(--ink-900); background: #fff; outline: none; resize: vertical; }
+.admin-adjustment-form input:focus, .admin-adjustment-form textarea:focus { border-color: var(--sage-600); box-shadow: 0 0 0 3px #78916f22; }
+.admin-adjustment-form small { color: var(--ink-600); line-height: 1.5; }
+.admin-adjustment-form footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
+.admin-adjustment-form button { padding: 10px 14px; border: 1px solid #d2cbc0; border-radius: 10px; background: #fff; cursor: pointer; }
+.admin-adjustment-form button:disabled { cursor: not-allowed; opacity: .5; }
+.admin-adjustment-form .admin-primary-button { color: #fff; border-color: var(--forest-900); background: var(--forest-900); }
 @media (max-width: 900px) {
   .admin-filter-bar { align-items: stretch; flex-wrap: wrap; }
   .admin-filter-bar .admin-search { min-width: 240px; flex: 1; }
@@ -54,4 +71,5 @@
   .admin-form-grid { grid-template-columns: 1fr; }
   .admin-field-wide { grid-column: auto; }
   .admin-form-handoff { align-items: flex-start; flex-direction: column; }
+  .admin-inventory-summary { grid-template-columns: 1fr 1fr; }
 }
