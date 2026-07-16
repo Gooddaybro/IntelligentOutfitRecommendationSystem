@@ -19,6 +19,7 @@ import type {
   UserProfileRequest,
   UserProfileResponse
 } from "./types";
+import { mockApi } from "./mockApi";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 const TOKEN_STORAGE_KEY = "ior.accessToken";
@@ -66,7 +67,7 @@ export async function requestJson<T>(path: string, init: RequestInit = {}): Prom
   return (payload?.data ?? payload) as T;
 }
 
-export const api = {
+const httpApi = {
   login: (username: string, password: string) =>
     requestJson<AuthTokenResponse>("/api/auth/login", {
       method: "POST",
@@ -162,5 +163,8 @@ export const api = {
       body: JSON.stringify({ orderNo })
     })
 };
+
+export const IS_MOCK_MODE = import.meta.env.VITE_DATA_MODE === "mock";
+export const api = IS_MOCK_MODE ? { ...httpApi, ...mockApi } : httpApi;
 
 export type { ApiResponse };

@@ -18,6 +18,7 @@ type CustomerShellProps = {
   user: CurrentUserResponse;
   cartCount: number;
   onLogout: () => void;
+  isDemoMode?: boolean;
 };
 
 const icons: Record<string, LucideIcon> = {
@@ -42,7 +43,7 @@ function NavItem({ item, cartCount }: { item: (typeof APP_NAV_ITEMS)[number]; ca
   );
 }
 
-export function CustomerShell({ user, cartCount, onLogout }: CustomerShellProps) {
+export function CustomerShell({ user, cartCount, onLogout, isDemoMode = false }: CustomerShellProps) {
   return (
     <div className="shuimu-shell" data-testid="customer-shell">
       <aside className="shuimu-sidebar">
@@ -50,6 +51,7 @@ export function CustomerShell({ user, cartCount, onLogout }: CustomerShellProps)
           <span className="shuimu-brand__mark"><Heart size={19} /></span>
           <span><strong>水木</strong><small>AI 穿搭生活</small></span>
         </NavLink>
+        {isDemoMode && <span className="demo-mode-badge">前端演示数据</span>}
         <nav className="shuimu-nav" aria-label="商城主导航">
           {APP_NAV_ITEMS.map((item, index) => (
             <div key={item.key} className={index === 3 || index === 5 ? "shuimu-nav__group-start" : undefined}>

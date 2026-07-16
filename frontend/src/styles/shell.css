@@ -7,6 +7,7 @@ button, input { font: inherit; }
 .shuimu-brand strong, .shuimu-brand small, .shuimu-sidebar__user strong, .shuimu-sidebar__user small, .admin-brand strong, .admin-brand small { display: block; }
 .shuimu-brand strong { font: 700 22px/1.1 Georgia, "Noto Serif SC", serif; letter-spacing: .08em; }
 .shuimu-brand small, .shuimu-sidebar__user small, .admin-brand small { margin-top: 4px; color: #afc1b3; font-size: 11px; }
+.demo-mode-badge { align-self: flex-start; margin-top: 14px; padding: 5px 9px; border: 1px solid #b8ccb9; border-radius: 999px; color: #dce9da; background: #ffffff0d; font-size: 11px; }
 .shuimu-nav { margin-top: 42px; display: grid; gap: 6px; }
 .shuimu-nav__group-start { margin-top: 18px; padding-top: 18px; border-top: 1px solid #ffffff1c; }
 .shuimu-nav a, .shuimu-mobile-nav a, .admin-sidebar nav a { display: flex; align-items: center; gap: 11px; padding: 11px 12px; border-radius: 12px; color: #cbd7ce; text-decoration: none; }

@@ -7,6 +7,7 @@ import { CartDrawer } from "../features/cart/CartDrawer";
 import { useCartState } from "../features/cart/useCartState";
 import { ConfirmActionDialog } from "../features/commerce-action/ConfirmActionDialog";
 import { useCommerceAction } from "../features/commerce-action/useCommerceAction";
+import { api, IS_MOCK_MODE } from "../shared/api/client";
 import { AdminDashboardPage } from "../pages/AdminDashboardPage";
 import { AiShoppingPage } from "../pages/AiShoppingPage";
 import { CartPage } from "../pages/CartPage";
@@ -35,6 +36,23 @@ export function App() {
     onAuthenticated: cart.refresh,
     onSessionCleared: resetSessionState
   });
+
+  useEffect(() => {
+    if (!auth.user || assistant.recommendationsLoaded || assistant.recommendationsLoading) return;
+    let cancelled = false;
+    assistant.setRecommendationsLoading(true);
+    api.recommendationCandidates({})
+      .then((items) => {
+        if (cancelled) return;
+        assistant.setRecommendations(items);
+        assistant.setRecommendationsLoaded(true);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) assistant.setRecommendationsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [auth.user?.userId, assistant.recommendationsLoaded]);
 
   useEffect(() => {
     if (!auth.user) {
@@ -96,7 +114,7 @@ export function App() {
     <div className={`${isEntered ? "is-entered" : ""}${isEntering ? " is-entering" : ""}`} data-testid="app-shell">
       {commerce.status && <div className="status-line" data-testid="status-line">{commerce.status}</div>}
       <Routes>
-        <Route path="/app" element={<CustomerShell user={auth.user} cartCount={cart.count} onLogout={logout} />}>
+        <Route path="/app" element={<CustomerShell user={auth.user} cartCount={cart.count} onLogout={logout} isDemoMode={IS_MOCK_MODE} />}>
           <Route index element={<Navigate to="home" replace />} />
           <Route path="home" element={<HomePage username={auth.user.username} cartCount={cart.count} recommendations={assistant.recommendations} />} />
           <Route path="ai" element={aiPage} />

@@ -28,4 +28,10 @@ describe("HomePage", () => {
     expect(screen.getByText("购物袋 2 件待决定")).toBeVisible();
     expect(screen.getByRole("link", { name: /浅卡其通勤风衣/ })).toHaveAttribute("href", "/app/products/1001");
   });
+
+  it("同一商品的多个 SKU 在首页只展示一次", () => {
+    const recommendation = { spuId: 1001, spuCode: "COAT_001", name: "轻量通勤羽绒服", categoryName: "外套", salePrice: 699 };
+    render(<MemoryRouter><HomePage username="林木" cartCount={0} recommendations={[{ ...recommendation, skuId: 2001 }, { ...recommendation, skuId: 2002 }]} /></MemoryRouter>);
+    expect(screen.getAllByRole("link", { name: /轻量通勤羽绒服/ })).toHaveLength(1);
+  });
 });

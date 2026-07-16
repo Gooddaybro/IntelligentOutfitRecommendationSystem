@@ -21,4 +21,13 @@ describe("CustomerShell", () => {
     expect(screen.getAllByText(/购物袋/)[0]).toHaveTextContent("2");
     expect(screen.getByText("首页内容")).toBeVisible();
   });
+
+  it("在演示模式明确标记数据来源", () => {
+    render(
+      <MemoryRouter>
+        <Routes><Route element={<CustomerShell user={{ userId: 1, username: "林木" }} cartCount={0} onLogout={vi.fn()} isDemoMode />}><Route index element={<p>内容</p>} /></Route></Routes>
+      </MemoryRouter>
+    );
+    expect(screen.getByText("前端演示数据")).toBeVisible();
+  });
 });

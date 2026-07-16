@@ -12,6 +12,7 @@ type HomePageProps = {
 const categories = ["上装", "外套", "裤装", "裙装", "鞋靴"];
 
 export function HomePage({ username, cartCount, recommendations }: HomePageProps) {
+  const featuredProducts = Array.from(new Map(recommendations.map((item) => [item.spuId, item])).values()).slice(0, 3);
   return (
     <main className="home-page" data-testid="home-page">
       <header className="page-intro">
@@ -43,9 +44,9 @@ export function HomePage({ username, cartCount, recommendations }: HomePageProps
       <div className="home-dashboard">
         <section className="home-section inspiration-panel">
           <div className="section-title"><div><p className="section-kicker">CURATED FOR YOU</p><h2>今日灵感</h2></div><Link className="text-link" to={APP_PATHS.ai}>让 AI 重新推荐</Link></div>
-          {recommendations.length ? (
+          {featuredProducts.length ? (
             <div className="inspiration-grid">
-              {recommendations.slice(0, 3).map((product) => (
+              {featuredProducts.map((product) => (
                 <Link key={`${product.spuId}-${product.skuId}`} to={APP_PATHS.productDetail(product.spuId)} className="inspiration-card" aria-label={`查看${product.name}详情`}>
                   <div>{product.mainImageUrl ? <img src={product.mainImageUrl} alt="" /> : <PackageSearch size={30} />}</div>
                   <p>{product.categoryName}</p><strong>{product.name}</strong><span>¥{product.salePrice}</span>
