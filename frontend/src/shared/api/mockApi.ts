@@ -14,6 +14,7 @@ import type {
   UserProfileRequest,
   UserProfileResponse
 } from "./types";
+import type { AdminProduct, AdminSku } from "./adminTypes";
 
 const catalog: RecommendationCandidate[] = [
   { spuId: 1001, skuId: 2001, spuCode: "PUFFER_COMMUTE", skuCode: "PUFFER-IVORY-M", name: "轻量通勤羽绒服", categoryName: "外套", color: "米白", size: "M", fitType: "合身", salePrice: 699, availableStock: 8, mainImageUrl: "/images/products/puffer-winter-light-main.jpg", styleTags: "通勤,简约" },
@@ -25,6 +26,46 @@ const catalog: RecommendationCandidate[] = [
   { spuId: 1006, skuId: 2051, spuCode: "SKIRT_PLEATED", skuCode: "SKIRT-GRAY-M", name: "通勤百褶半身裙", categoryName: "裙装", color: "烟灰", size: "M", fitType: "A 字", salePrice: 359, availableStock: 9, mainImageUrl: "/images/products/skirt-commute-pleated-main.jpg", styleTags: "通勤,优雅" }
 ];
 
+const categoryIds: Record<string, number> = { "上装": 1, "外套": 2, "裤装": 3, "裙装": 4, "鞋靴": 5 };
+
+function createAdminProducts(): AdminProduct[] {
+  return Array.from(new Map(catalog.map((item) => [item.spuId, item])).values()).map((item, index) => {
+    const skus = catalog.filter((sku) => sku.spuId === item.spuId);
+    const prices = skus.map((sku) => sku.salePrice);
+    return {
+      spuId: item.spuId,
+      spuCode: item.spuCode,
+      name: item.name,
+      categoryId: categoryIds[item.categoryName] || 99,
+      categoryName: item.categoryName,
+      mainImageUrl: item.mainImageUrl,
+      minPrice: Math.min(...prices),
+      maxPrice: Math.max(...prices),
+      skuCount: skus.length,
+      totalStock: skus.reduce((sum, sku) => sum + (sku.availableStock || 0), 0),
+      status: "ON_SALE",
+      createdAt: `2026-07-${String(index + 1).padStart(2, "0")}T09:00:00Z`,
+      description: "水木商城演示商品",
+      styleTags: item.styleTags?.split(",") || []
+    };
+  });
+}
+
+function createAdminInventory(): AdminSku[] {
+  return catalog.map((item) => ({
+    skuId: item.skuId,
+    skuCode: item.skuCode || String(item.skuId),
+    spuId: item.spuId,
+    productName: item.name,
+    color: item.color,
+    size: item.size,
+    salePrice: item.salePrice,
+    availableStock: item.availableStock || 0,
+    lowStockThreshold: 5,
+    status: "ACTIVE"
+  }));
+}
+
 let cartItems: CartItem[] = [];
 let orders: OrderResponse[] = [];
 let addressBook: Address[] = [{ id: 1, recipientName: "林木", phone: "138****2026", province: "浙江省", city: "杭州市", district: "西湖区", detail: "文一路 88 号", isDefault: true }];
@@ -32,6 +73,8 @@ let favoriteSpuIds = new Set<number>([1002]);
 let profile: UserProfileResponse = { userId: 1, nickname: "林木", avatarUrl: null, gender: null, birthday: null };
 let bodyData: UserBodyDataResponse = { userId: 1 };
 let preferences: UserPreferencesResponse = { userId: 1, preferredStyles: ["自然", "通勤"], preferredColors: ["米白", "鼠尾草绿"], dislikedColors: [], preferredCategories: ["外套"], budgetMin: 200, budgetMax: 800 };
+let adminProducts = createAdminProducts();
+let adminInventory = createAdminInventory();
 
 function productDetail(spuId: number): ProductDetail {
   const sku = catalog.find((item) => item.spuId === spuId);
@@ -61,6 +104,8 @@ export function resetMockApi() {
   orders = [];
   addressBook = [{ id: 1, recipientName: "林木", phone: "138****2026", province: "浙江省", city: "杭州市", district: "西湖区", detail: "文一路 88 号", isDefault: true }];
   favoriteSpuIds = new Set([1002]);
+  adminProducts = createAdminProducts();
+  adminInventory = createAdminInventory();
 }
 
 export const mockApi = {
@@ -142,5 +187,35 @@ export const mockApi = {
     const paidAt = new Date().toISOString();
     orders = orders.map((item) => item.orderNo === orderNo ? { ...item, status: "PAID", paidAt } : item);
     return { paymentNo: `PAY-${orderNo}`, orderNo, amount: orders.find((item) => item.orderNo === orderNo)?.totalAmount || 0, channel: "MOCK", status: "SUCCESS", paidAt };
+  },
+  adminOverview: async () => ({
+    onSaleProducts: adminProducts.filter((item) => item.status === "ON_SALE").length,
+    skuCount: adminInventory.length,
+    lowStockCount: adminInventory.filter((item) => item.availableStock <= item.lowStockThreshold).length,
+    pendingShipmentOrders: orders.filter((item) => item.status === "PAID").length,
+    afterSaleOrders: 0,
+    orderCount: orders.length,
+    paidAmount: orders.filter((item) => item.status === "PAID").reduce((sum, item) => sum + item.totalAmount, 0),
+    rangeLabel: "最近 30 天",
+    trend: [],
+    hotProducts: []
+  }),
+  adminProducts: async () => adminProducts.map((item) => ({ ...item })),
+  adminSetProductStatus: async (spuId: number, status: AdminProduct["status"]) => {
+    adminProducts = adminProducts.map((item) => item.spuId === spuId ? { ...item, status } : item);
+    const product = adminProducts.find((item) => item.spuId === spuId);
+    if (!product) throw new Error("商品不存在");
+    return { ...product };
+  },
+  adminInventory: async () => adminInventory.map((item) => ({ ...item })),
+  adminAdjustInventory: async (skuId: number, targetStock: number, reason: string) => {
+    if (!Number.isInteger(targetStock) || targetStock < 0) throw new Error("库存必须是非负整数");
+    if (!reason.trim()) throw new Error("请填写库存调整原因");
+    const current = adminInventory.find((item) => item.skuId === skuId);
+    if (!current) throw new Error("SKU 不存在");
+    const adjustment = { beforeStock: current.availableStock, afterStock: targetStock, reason: reason.trim(), operator: "水木体验官", adjustedAt: new Date().toISOString() };
+    adminInventory = adminInventory.map((item) => item.skuId === skuId ? { ...item, availableStock: targetStock, lastAdjustment: adjustment } : item);
+    adminProducts = adminProducts.map((item) => item.spuId === current.spuId ? { ...item, totalStock: item.totalStock + targetStock - current.availableStock } : item);
+    return { ...adminInventory.find((item) => item.skuId === skuId)! };
   }
 };

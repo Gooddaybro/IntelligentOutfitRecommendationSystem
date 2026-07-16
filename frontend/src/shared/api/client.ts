@@ -22,6 +22,18 @@ import type {
   UserProfileResponse
 } from "./types";
 import { mockApi } from "./mockApi";
+import type {
+  AdminAnalytics,
+  AdminAuditLog,
+  AdminCategory,
+  AdminOrder,
+  AdminOverview,
+  AdminProduct,
+  AdminProductInput,
+  AdminSku,
+  AdminUser,
+  AdminUserStatus
+} from "./adminTypes";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 const TOKEN_STORAGE_KEY = "ior.accessToken";
@@ -172,7 +184,39 @@ const httpApi = {
     requestJson<PaymentResponse>("/api/payments/mock-pay", {
       method: "POST",
       body: JSON.stringify({ orderNo })
-    })
+    }),
+  adminOverview: () => requestJson<AdminOverview>("/api/admin/overview"),
+  adminProducts: () => requestJson<AdminProduct[]>("/api/admin/products"),
+  adminSaveProduct: (input: AdminProductInput) => requestJson<AdminProduct>(input.spuId ? `/api/admin/products/${input.spuId}` : "/api/admin/products", {
+    method: input.spuId ? "PUT" : "POST",
+    body: JSON.stringify(input)
+  }),
+  adminSetProductStatus: (spuId: number, status: AdminProduct["status"]) => requestJson<AdminProduct>(`/api/admin/products/${spuId}/status`, {
+    method: "POST",
+    body: JSON.stringify({ status })
+  }),
+  adminCategories: () => requestJson<AdminCategory[]>("/api/admin/categories"),
+  adminUpdateCategory: (category: AdminCategory) => requestJson<AdminCategory>(`/api/admin/categories/${category.id}`, {
+    method: "PUT",
+    body: JSON.stringify(category)
+  }),
+  adminInventory: () => requestJson<AdminSku[]>("/api/admin/inventory"),
+  adminAdjustInventory: (skuId: number, targetStock: number, reason: string) => requestJson<AdminSku>(`/api/admin/inventory/${skuId}/adjustments`, {
+    method: "POST",
+    body: JSON.stringify({ targetStock, reason })
+  }),
+  adminOrders: () => requestJson<AdminOrder[]>("/api/admin/orders"),
+  adminShipOrder: (orderNo: string, carrier: string, trackingNo: string) => requestJson<AdminOrder>(`/api/admin/orders/${orderNo}/ship`, {
+    method: "POST",
+    body: JSON.stringify({ carrier, trackingNo })
+  }),
+  adminUsers: () => requestJson<AdminUser[]>("/api/admin/users"),
+  adminSetUserStatus: (userId: number, status: AdminUserStatus) => requestJson<AdminUser>(`/api/admin/users/${userId}/status`, {
+    method: "POST",
+    body: JSON.stringify({ status })
+  }),
+  adminAnalytics: () => requestJson<AdminAnalytics>("/api/admin/analytics"),
+  adminAuditLogs: () => requestJson<AdminAuditLog[]>("/api/admin/audit-logs")
 };
 
 export const IS_MOCK_MODE = import.meta.env.VITE_DATA_MODE === "mock";

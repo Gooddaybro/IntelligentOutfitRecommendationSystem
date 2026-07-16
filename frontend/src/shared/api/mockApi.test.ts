@@ -29,4 +29,20 @@ describe("前端演示数据接口", () => {
     await mockApi.payMock(order.orderNo);
     expect((await mockApi.order(order.orderNo)).status).toBe("PAID");
   });
+
+  it("管理端概览、商品状态和库存调整共享同一份演示事实", async () => {
+    const overview = await mockApi.adminOverview();
+    const products = await mockApi.adminProducts();
+    const inventory = await mockApi.adminInventory();
+    expect(overview.onSaleProducts).toBe(products.filter((item) => item.status === "ON_SALE").length);
+    expect(overview.skuCount).toBe(inventory.length);
+
+    await mockApi.adminSetProductStatus(products[0].spuId, "OFF_SHELF");
+    expect((await mockApi.adminProducts()).find((item) => item.spuId === products[0].spuId)?.status).toBe("OFF_SHELF");
+
+    const sku = inventory[0];
+    const adjusted = await mockApi.adminAdjustInventory(sku.skuId, sku.availableStock + 5, "到货入库");
+    expect(adjusted.availableStock).toBe(sku.availableStock + 5);
+    expect(adjusted.lastAdjustment?.reason).toBe("到货入库");
+  });
 });
