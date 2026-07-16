@@ -441,7 +441,7 @@ class AssistantServiceTests {
     }
 
     @Test
-    void streamErrorDoesNotStoreAssistantMessage() {
+    void streamErrorCompletesWithSafeCandidateFallback() {
         AssistantChatRequest request = new AssistantChatRequest(
                 "th_stream_error",
                 "推荐一件通勤外套",
@@ -483,11 +483,11 @@ class AssistantServiceTests {
                 "推荐一件通勤外套",
                 "req-stream-error-test"
         );
-        verify(conversationService, never()).appendMessage(
+        verify(conversationService).appendMessage(
                 eq(10L),
                 eq("th_stream_error"),
                 eq("assistant"),
-                any(),
+                argThat(answer -> answer.contains("仍可继续浏览当前条件筛选出的商品")),
                 eq("req-stream-error-test")
         );
     }
@@ -535,11 +535,11 @@ class AssistantServiceTests {
                 "推荐一件通勤外套",
                 "req-stream-guard-test"
         );
-        verify(conversationService, never()).appendMessage(
+        verify(conversationService).appendMessage(
                 eq(10L),
                 eq("th_stream_guard"),
                 eq("assistant"),
-                any(),
+                argThat(answer -> answer.contains("仍可继续浏览当前条件筛选出的商品")),
                 eq("req-stream-guard-test")
         );
     }

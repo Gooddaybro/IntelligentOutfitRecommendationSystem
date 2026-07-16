@@ -16,14 +16,18 @@ import java.util.List;
 public class AssistantFallbackService {
 
     private static final String SAFE_CHAT_FALLBACK =
-            "AI 导购暂时不可用，我不会编造商品价格、库存或订单信息。"
-                    + "你仍然可以继续浏览商品、加入购物车或下单；也可以稍后再试。";
+            "AI 导购暂时不可用，但仍可继续浏览当前条件筛选出的商品。"
+                    + "你可以补充分类、场景或预算；系统不会放宽已确认的筛选条件。";
     private static final String SAFE_STREAM_FALLBACK = "AI 导购暂时不可用，请稍后再试。";
     private static final String FALLBACK_INTENT = "assistant_fallback";
 
     public PythonChatResponse chatFallbackResponse(PythonChatRequest pythonRequest) {
+        return streamFallbackResponse(pythonRequest.requestId());
+    }
+
+    public PythonChatResponse streamFallbackResponse(String requestId) {
         return new PythonChatResponse(
-                pythonRequest.requestId(),
+                requestId,
                 SAFE_CHAT_FALLBACK,
                 FALLBACK_INTENT,
                 List.of()

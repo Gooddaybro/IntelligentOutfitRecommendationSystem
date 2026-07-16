@@ -398,7 +398,6 @@ public class AssistantService {
         try {
             pythonAssistantStreamClient.streamChat(pythonRequest, handler);
         } catch (RuntimeException exception) {
-            metrics.recordAiFallback("stream");
             AssistantStreamErrorEvent error = assistantFallbackService.streamFallbackError();
             handler.onError(error.code(), error.message());
         }
@@ -474,9 +473,8 @@ public class AssistantService {
             if (!active.get()) {
                 return;
             }
-            AssistantStreamErrorEvent error = assistantFallbackService.streamFallbackError();
-            sendEvent(emitter, active, "error", error);
-            emitter.complete();
+            metrics.recordAiFallback("stream");
+            onDone(assistantFallbackService.streamFallbackResponse(requestId));
         }
     }
 }
