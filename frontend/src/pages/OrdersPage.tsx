@@ -2,6 +2,7 @@ import { CreditCard, RefreshCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../shared/api/client";
 import type { OrderResponse } from "../shared/api/types";
+import { Link } from "react-router-dom";
 
 export function OrdersPage() {
   const [orders, setOrders] = useState<OrderResponse[]>([]);
@@ -53,6 +54,7 @@ export function OrdersPage() {
                 <p>{order.items.map((item) => `${item.productName} x${item.quantity}`).join("，")}</p>
               </div>
               <strong>￥{order.totalAmount}</strong>
+              <Link className="order-detail-link" to={`/app/orders/${order.orderNo}`}>查看详情</Link>
               {order.status === "UNPAID" && (
                 <button
                   className="primary-button"

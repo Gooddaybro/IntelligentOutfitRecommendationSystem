@@ -157,6 +157,8 @@ const httpApi = {
     }),
   orders: () => requestJson<OrderResponse[]>("/api/orders"),
   order: (orderNo: string) => requestJson<OrderResponse>(`/api/orders/${orderNo}`),
+  cancelOrder: (orderNo: string) => requestJson<OrderResponse>(`/api/orders/${orderNo}/cancel`, { method: "POST" }),
+  confirmReceipt: (orderNo: string) => requestJson<OrderResponse>(`/api/orders/${orderNo}/confirm-receipt`, { method: "POST" }),
   pay: (orderNo: string, channel: "MOCK" | "ALIPAY" | "WECHAT" = "MOCK") =>
     requestJson<PaymentResponse>("/api/payments", {
       method: "POST",

@@ -15,6 +15,7 @@ import { CartPage } from "../pages/CartPage";
 import { CheckoutPage } from "../pages/CheckoutPage";
 import { HomePage } from "../pages/HomePage";
 import { OrdersPage } from "../pages/OrdersPage";
+import { OrderDetailPage } from "../pages/OrderDetailPage";
 import { PaymentResultPage } from "../pages/PaymentResultPage";
 import { ProductBrowsePage } from "../pages/ProductBrowsePage";
 import { ProductDetailPage } from "../pages/ProductDetailPage";
@@ -127,6 +128,7 @@ export function App() {
           <Route path="checkout" element={<CheckoutPage onOrderCreated={(order) => { void cart.refresh(); navigate(`/app/payments/${order.orderNo}`); }} />} />
           <Route path="payments/:orderNo" element={<PaymentResultPage />} />
           <Route path="orders" element={<OrdersPage />} />
+          <Route path="orders/:orderNo" element={<OrderDetailPage />} />
           <Route path="profile/*" element={<ProfilePreferencesPage />} />
         </Route>
         <Route
