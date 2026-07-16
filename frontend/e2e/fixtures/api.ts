@@ -172,6 +172,15 @@ export async function installApiMocks(page: Page) {
     await fulfillJson(route, [commuteJacketCandidate]);
   });
 
+  await page.route("**/api/addresses", async (route) => {
+    await fulfillJson(route, [{ id: 1, recipientName: "林木", phone: "13800000000", province: "浙江省", city: "杭州市", district: "西湖区", detail: "文一路 88 号", isDefault: true }]);
+  });
+
+  await page.route("**/api/checkout/preview", async (route) => {
+    const merchandiseAmount = cartItems.reduce((sum, item) => sum + item.salePrice * item.quantity, 0);
+    await fulfillJson(route, { items: cartItems, merchandiseAmount, shippingAmount: 0, discountAmount: 0, payableAmount: merchandiseAmount, invalidReasons: [] });
+  });
+
   await page.route("**/api/behavior/events", async (route) => {
     const body = route.request().postDataJSON() as { eventId?: string };
     capturedBodies.behaviorEvents.push(body);
@@ -203,6 +212,12 @@ export async function installApiMocks(page: Page) {
     }
 
     await fulfillJson(route, orders);
+  });
+
+  await page.route("**/api/payments/mock-pay", async (route) => {
+    const body = route.request().postDataJSON() as { orderNo: string };
+    orders = orders.map((order) => (order.orderNo === body.orderNo ? { ...order, status: "PAID", paidAt: "2026-06-19T10:05:00" } : order));
+    await fulfillJson(route, { paymentNo: "PAY-E2E-001", orderNo: body.orderNo, amount: 299, channel: "MOCK", status: "SUCCESS", transactionId: "TX-E2E-001", paidAt: "2026-06-19T10:05:00" });
   });
 
   await page.route("**/api/payments", async (route) => {

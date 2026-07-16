@@ -59,9 +59,11 @@ test("AI 推荐可以确认加入购物袋并完成下单支付", async ({ page 
   await page.locator(".shuimu-nav").getByRole("link", { name: /购物袋/ }).click();
   await expect(page.getByTestId("cart-row")).toContainText("通勤轻薄外套");
   await page.getByTestId("checkout-submit").click();
-  await expect(page.getByTestId("order-row")).toContainText("ORD-E2E-001");
-  await page.getByTestId("mock-pay-submit").click();
-  await expect(page.getByTestId("order-row")).toContainText("PAID");
+  await expect(page.getByRole("heading", { name: "确认订单" })).toBeVisible();
+  await page.getByRole("button", { name: "提交订单" }).click();
+  await expect(page.getByRole("heading", { name: "订单已创建" })).toBeVisible();
+  await page.getByRole("button", { name: "演示支付" }).click();
+  await expect(page.getByRole("heading", { name: "支付成功" })).toBeVisible();
 });
 
 test("窄屏使用五项底部导航进入 AI 造型师", async ({ page }) => {
