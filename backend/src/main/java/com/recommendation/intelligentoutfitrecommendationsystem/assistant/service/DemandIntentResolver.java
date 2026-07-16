@@ -2,6 +2,7 @@ package com.recommendation.intelligentoutfitrecommendationsystem.assistant.servi
 
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntent;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntentPatch;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserBodyDataResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserProfileResponse;
 
@@ -45,31 +46,47 @@ public class DemandIntentResolver {
             UserBodyDataResponse bodyData,
             UserProfileResponse profile
     ) {
+        DemandIntentPatch patch = resolvePatch(request);
+        String profileGender = resolveProfileGender(bodyData, profile);
+        if (patch.targetGender() == null && !patch.clearTargetGender() && profileGender != null) {
+            patch = new DemandIntentPatch(patch.action(), patch.rawQuery(), profileGender, false,
+                    patch.category(), patch.scene(), patch.style(), patch.budgetMax(), patch.attributes());
+        }
+        return new DemandIntentMerger().merge(null, patch);
+    }
+
+    public DemandIntentPatch resolvePatch(AssistantChatRequest request) {
         String rawQuery = request == null || request.message() == null ? "" : request.message();
-        String targetGender = resolveTargetGender(request, bodyData, profile);
+        boolean compare = containsAny(rawQuery, new String[]{"男款和女款有什么区别", "男女款有什么区别", "男性和女性有什么区别"});
+        boolean reset = containsAny(rawQuery, new String[]{"重新开始", "清空条件", "重置条件"});
+        boolean clearGender = containsAny(rawQuery, new String[]{"男女都可以", "男女都行", "男女都看看", "性别不限"});
+        String targetGender = clearGender || compare ? null : resolveRequestGender(request);
+        String action = compare ? "compare" : reset ? "reset" : clearGender ? "clear"
+                : containsAny(rawQuery, new String[]{"那女性呢", "换成女款", "那男性呢", "换成男款", "还是看看男性", "还是看看男款"})
+                ? "switch" : "initialize";
         String category = resolveCategory(request);
         List<String> scene = resolveScene(rawQuery);
-        List<String> style = resolveStyle(request, rawQuery, scene);
-        Integer budgetMax = resolveBudgetMax(request);
-        List<String> attributes = resolveAttributes(rawQuery);
-        List<String> hardFilters = hardFilters(targetGender, category, budgetMax);
-        List<String> softPreferences = softPreferences(scene, style, attributes);
-
-        return new DemandIntent(
-                DemandIntent.VERSION,
-                DemandIntent.SOURCE_JAVA_RULE,
+        return new DemandIntentPatch(
+                action,
                 rawQuery,
                 targetGender,
+                clearGender,
                 category,
                 scene,
-                style,
-                budgetMax,
-                attributes,
-                hardFilters,
-                softPreferences,
-                confidence(hardFilters, softPreferences),
-                List.of()
+                resolveStyle(request, rawQuery, scene),
+                resolveBudgetMax(request),
+                resolveAttributes(rawQuery)
         );
+    }
+
+    private String resolveRequestGender(AssistantChatRequest request) {
+        String messageGender = genderFromMessage(request == null ? null : request.message());
+        return messageGender != null ? messageGender : normalizeGender(request == null ? null : request.gender());
+    }
+
+    private String resolveProfileGender(UserBodyDataResponse bodyData, UserProfileResponse profile) {
+        String bodyGender = normalizeGender(bodyData == null ? null : bodyData.gender());
+        return bodyGender != null ? bodyGender : normalizeGender(profile == null ? null : profile.gender());
     }
 
     private String resolveTargetGender(
