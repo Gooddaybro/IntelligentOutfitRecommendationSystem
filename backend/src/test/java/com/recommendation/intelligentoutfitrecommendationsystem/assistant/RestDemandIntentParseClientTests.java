@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,7 +46,8 @@ class RestDemandIntentParseClientTests {
         server.start();
         var client = new RestDemandIntentParseClient(
                 "http://127.0.0.1:" + server.getAddress().getPort(), 1000, "secret");
-        var request = new LlmDemandParseRequest("req-1", "thread-1", "女性穿搭",
+        var request = new LlmDemandParseRequest("1.0", "req-1", "thread-1", "女性穿搭",
+                Map.of("targetGender", "FEMALE"),
                 new DemandIntentPatch("merge", "女性穿搭", null, false, null,
                         List.of(), List.of(), null, List.of()),
                 List.of(), List.of(), "女性", List.of(), null);
@@ -54,6 +56,8 @@ class RestDemandIntentParseClientTests {
 
         assertThat(token.get()).isEqualTo("secret");
         assertThat(body.get()).contains("\"currentMessage\":\"女性穿搭\"");
+        assertThat(body.get()).contains("\"schemaVersion\":\"1.0\"");
+        assertThat(body.get()).contains("\"currentDemand\":{\"targetGender\":\"FEMALE\"}");
         assertThat(response.slots().targetGender()).isEqualTo("FEMALE");
     }
 }

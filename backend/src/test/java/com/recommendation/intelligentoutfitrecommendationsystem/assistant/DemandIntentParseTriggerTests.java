@@ -24,6 +24,8 @@ class DemandIntentParseTriggerTests {
         assertThat(trigger.shouldParse(result("然后呢", true), false)).isFalse();
         assertThat(trigger.shouldParse(result("订单什么时候发货", false), false)).isFalse();
         assertThat(trigger.shouldParse(result("订单什么时候发货", false), true)).isFalse();
+        assertThat(trigger.shouldParse(result("价格是多少", false), true)).isFalse();
+        assertThat(trigger.shouldParse(result("还有库存吗", false), true)).isFalse();
     }
 
     private DeterministicDemandParseResult result(String unresolved, boolean shoppingSignal) {

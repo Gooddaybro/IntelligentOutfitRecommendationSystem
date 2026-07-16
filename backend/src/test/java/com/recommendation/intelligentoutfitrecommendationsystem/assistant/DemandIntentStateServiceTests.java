@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.function.UnaryOperator;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -40,5 +41,31 @@ class DemandIntentStateServiceTests {
 
         assertThat(result.effectiveIntent().targetGender()).isNull();
         assertThat(result.pendingClarification()).isEqualTo(pending);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void cancelClarificationKeepsEffectiveSnapshotAndUsesAuditAction() {
+        ConversationDemandStateStore store = mock(ConversationDemandStateStore.class);
+        AtomicReference<String> action = new AtomicReference<>();
+        DemandIntent previous = new com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.DemandIntentMerger()
+                .merge(null, new DemandIntentPatch("merge", "男性外套", "male", false, "外套",
+                        List.of(), List.of(), null, List.of()));
+        when(store.transition(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    action.set(invocation.getArgument(4));
+                    UnaryOperator<ConversationDemandStateSnapshot> mutation = invocation.getArgument(7);
+                    String previousJson = new com.fasterxml.jackson.databind.ObjectMapper()
+                            .writeValueAsString(previous);
+                    return mutation.apply(new ConversationDemandStateSnapshot(previousJson, "{}"));
+                });
+        DemandIntentStateService service = new DemandIntentStateService(store);
+
+        var result = service.applyResolution(1L, "thread", "req-cancel", null,
+                "cancel_clarify", null, null, null, previous);
+
+        assertThat(action.get()).isEqualTo("cancel_clarify");
+        assertThat(result.effectiveIntent()).isEqualTo(previous);
+        assertThat(result.pendingClarification()).isNull();
     }
 }

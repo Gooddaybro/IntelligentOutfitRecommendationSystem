@@ -22,7 +22,7 @@ public class RestDemandIntentParseClient implements DemandIntentParseClient {
 
     private final ObjectMapper objectMapper = new ObjectMapper()
             .findAndRegisterModules()
-            .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+            .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     private final HttpClient httpClient;
     private final String parseUrl;
     private final String internalApiToken;

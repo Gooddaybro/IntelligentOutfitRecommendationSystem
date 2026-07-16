@@ -8,6 +8,20 @@ public record PendingClarification(
         Object candidateValue,
         BigDecimal confidence,
         String question,
-        String rawText
+        String rawText,
+        String sourceRequestId
 ) {
+    public PendingClarification(
+            String slot,
+            Object candidateValue,
+            BigDecimal confidence,
+            String question,
+            String rawText
+    ) {
+        this(slot, candidateValue, confidence, question, rawText, null);
+    }
+
+    public PendingClarification withSourceRequestId(String requestId) {
+        return new PendingClarification(slot, candidateValue, confidence, question, rawText, requestId);
+    }
 }

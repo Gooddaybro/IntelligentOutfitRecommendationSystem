@@ -96,6 +96,14 @@ public class ApplicationMetrics {
         ).increment();
     }
 
+    public void recordDemandParserCircuitTransition(String from, String to) {
+        registry.counter(
+                "app.ai.demand_parser.circuit.transitions",
+                "from", bounded(normalize(from), CIRCUIT_STATES),
+                "to", bounded(normalize(to), CIRCUIT_STATES)
+        ).increment();
+    }
+
     public void recordRecommendationFunnel(String stage) {
         registry.counter("app.recommendation.funnel", "stage", bounded(stage, RECOMMENDATION_STAGES))
                 .increment();

@@ -7,11 +7,14 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.servic
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.DemandIntentStateService;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client.DemandIntentParseClient;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntentStateSnapshot;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.LlmDemandParseRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.LlmDemandParseResponse;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PendingClarification;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.LlmDemandSlots;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.SlotEvidence;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.dto.BehaviorSummaryResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorSummaryService;
+import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.MessageResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationApplicationService;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.dto.RecommendationCandidateQuery;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.service.RecommendationCandidateQueryService;
@@ -22,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -31,6 +35,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 
@@ -62,7 +67,8 @@ class AssistantContextServiceTests {
                 new BigDecimal("0.80"), List.of());
         when(conversations.getMessages(anyLong(), anyString())).thenReturn(List.of());
         when(parser.parse(any())).thenReturn(Optional.of(response));
-        when(states.applyResolution(anyLong(), anyString(), any(), any(), any(), any(), any(), any()))
+        when(states.applyResolution(anyLong(), anyString(), any(), any(), anyString(),
+                any(), any(), any(), any()))
                 .thenReturn(new DemandIntentStateSnapshot(effective, null));
         when(candidates.findCandidates(any())).thenReturn(List.of());
 
@@ -71,6 +77,119 @@ class AssistantContextServiceTests {
         assertThat(context.demandIntent().style()).containsExactly("mature", "rugged");
         assertThat(context.clarificationQuestion()).isNull();
         verify(parser).parse(any());
+        ArgumentCaptor<RecommendationCandidateQuery> query =
+                ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
+        verify(candidates).findCandidates(query.capture());
+        assertThat(query.getValue().getStyle()).isNull();
+    }
+
+    @Test
+    void objectOuterwearCreatesPendingClarificationWithoutChangingGenderSqlFilter() {
+        UserProfileService profiles = mock(UserProfileService.class);
+        RecommendationCandidateQueryService candidates = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversations = mock(ConversationApplicationService.class);
+        DemandIntentStateService states = mock(DemandIntentStateService.class);
+        DemandIntentParseClient parser = mock(DemandIntentParseClient.class);
+        AssistantContextService service = new AssistantContextService(
+                profiles, candidates, conversations, mock(BehaviorSummaryService.class), states, parser);
+        AssistantChatRequest request = new AssistantChatRequest(
+                "thread-object", "给对象买外套", null, null, null, null, null, null, null);
+        LlmDemandParseResponse response = new LlmDemandParseResponse(
+                "1.0", "CLARIFY", new LlmDemandSlots(null, null, null, null, null, null),
+                Map.of(), Map.of(), true, "targetGender", "FEMALE", "确认要筛选女士商品吗？");
+        PendingClarification pending = new PendingClarification(
+                "targetGender", "FEMALE", null, "确认要筛选女士商品吗？", request.message(), "req-object");
+        DemandIntent effective = new DemandIntent(
+                DemandIntent.VERSION, DemandIntent.SOURCE_JAVA_RULE, request.message(), null, "外套",
+                List.of(), List.of(), null, List.of(), List.of("category"), List.of(),
+                new BigDecimal("0.80"), List.of());
+        when(conversations.getMessages(anyLong(), anyString())).thenReturn(List.of());
+        when(parser.parse(any())).thenReturn(Optional.of(response));
+        when(states.applyResolution(anyLong(), anyString(), any(), any(), anyString(),
+                any(), any(), any(), any()))
+                .thenReturn(new DemandIntentStateSnapshot(effective, pending));
+        when(candidates.findCandidates(any())).thenReturn(List.of());
+
+        AssistantContext context = service.buildContext(10L, "thread-object", request);
+
+        assertThat(context.clarificationQuestion()).isEqualTo("确认要筛选女士商品吗？");
+        ArgumentCaptor<RecommendationCandidateQuery> query =
+                ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
+        verify(candidates).findCandidates(query.capture());
+        assertThat(query.getValue().getGender()).isNull();
+        assertThat(query.getValue().getCategory()).isEqualTo("外套");
+        verify(states).applyResolution(anyLong(), anyString(), any(), any(),
+                org.mockito.ArgumentMatchers.eq("clarify"), any(), any(), any(), any());
+    }
+
+    @Test
+    void explicitFemaleAnswerReplacesObjectPendingWithFormalFemaleDemand() {
+        UserProfileService profiles = mock(UserProfileService.class);
+        RecommendationCandidateQueryService candidates = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversations = mock(ConversationApplicationService.class);
+        DemandIntentStateService states = mock(DemandIntentStateService.class);
+        DemandIntentParseClient parser = mock(DemandIntentParseClient.class);
+        AssistantContextService service = new AssistantContextService(
+                profiles, candidates, conversations, mock(BehaviorSummaryService.class), states, parser);
+        PendingClarification pending = new PendingClarification(
+                "targetGender", "FEMALE", null, "确认要筛选女士商品吗？", "给对象买外套", "req-object");
+        DemandIntent effective = new DemandIntent(
+                DemandIntent.VERSION, DemandIntent.SOURCE_JAVA_RULE, "女朋友", "female", "外套",
+                List.of(), List.of(), null, List.of(), List.of("targetGender", "category"), List.of(),
+                new BigDecimal("0.80"), List.of());
+        when(states.read(10L, "thread-object"))
+                .thenReturn(new DemandIntentStateSnapshot(emptyIntent("给对象买外套"), pending));
+        when(conversations.getMessages(anyLong(), anyString())).thenReturn(List.of());
+        when(states.applyResolution(anyLong(), anyString(), any(), any(), anyString(),
+                any(), any(), any(), any()))
+                .thenReturn(new DemandIntentStateSnapshot(effective, null));
+        when(candidates.findCandidates(any())).thenReturn(List.of());
+
+        AssistantContext context = service.buildContext(10L, "thread-object",
+                new AssistantChatRequest("thread-object", "女朋友", null, null, null, null, null, null, null));
+
+        assertThat(context.demandIntent().targetGender()).isEqualTo("female");
+        assertThat(context.clarificationQuestion()).isNull();
+        verify(parser, never()).parse(any());
+        verify(states).applyResolution(anyLong(), anyString(), any(), any(),
+                org.mockito.ArgumentMatchers.eq("merge"), any(), any(), any(), any());
+        ArgumentCaptor<RecommendationCandidateQuery> query =
+                ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
+        verify(candidates).findCandidates(query.capture());
+        assertThat(query.getValue().getGender()).isEqualTo("female");
+    }
+
+    @Test
+    void deterministicMaleDemandSurvivesParserMissForMovieHeroStyle() {
+        UserProfileService profiles = mock(UserProfileService.class);
+        RecommendationCandidateQueryService candidates = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversations = mock(ConversationApplicationService.class);
+        DemandIntentStateService states = mock(DemandIntentStateService.class);
+        DemandIntentParseClient parser = mock(DemandIntentParseClient.class);
+        AssistantContextService service = new AssistantContextService(
+                profiles, candidates, conversations, mock(BehaviorSummaryService.class), states, parser);
+        AssistantChatRequest request = new AssistantChatRequest(
+                "thread-movie", "男性穿搭，像电影主角那种", null, null, null, null, null, null, null);
+        DemandIntent effective = new DemandIntent(
+                DemandIntent.VERSION, DemandIntent.SOURCE_JAVA_RULE, request.message(), "male", null,
+                List.of(), List.of(), null, List.of(), List.of("targetGender"), List.of(),
+                new BigDecimal("0.80"), List.of());
+        when(conversations.getMessages(anyLong(), anyString())).thenReturn(List.of());
+        when(parser.parse(any())).thenReturn(Optional.empty());
+        when(states.applyResolution(anyLong(), anyString(), any(), any(), anyString(),
+                any(), any(), any(), any()))
+                .thenReturn(new DemandIntentStateSnapshot(effective, null));
+        when(candidates.findCandidates(any())).thenReturn(List.of());
+
+        AssistantContext context = service.buildContext(10L, "thread-movie", request);
+
+        assertThat(context.demandIntent().targetGender()).isEqualTo("male");
+        assertThat(context.clarificationQuestion()).isNull();
+        ArgumentCaptor<RecommendationCandidateQuery> query =
+                ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
+        verify(candidates).findCandidates(query.capture());
+        assertThat(query.getValue().getGender()).isEqualTo("male");
+        assertThat(query.getValue().getStyle()).isNull();
     }
 
     @Test
@@ -521,4 +640,71 @@ class AssistantContextServiceTests {
 
         assertThat(context.behaviorSummary()).isEqualTo(summary);
     }
+    @Test
+    void priceQuestionCancelsPendingWithoutCallingParserOrChangingEffectiveDemand() {
+        UserProfileService profiles = mock(UserProfileService.class);
+        RecommendationCandidateQueryService candidates = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversations = mock(ConversationApplicationService.class);
+        DemandIntentStateService states = mock(DemandIntentStateService.class);
+        DemandIntentParseClient parser = mock(DemandIntentParseClient.class);
+        AssistantContextService service = new AssistantContextService(
+                profiles, candidates, conversations, mock(BehaviorSummaryService.class), states, parser);
+        DemandIntent effective = emptyIntent("\u7537\u6027");
+        PendingClarification pending = new PendingClarification(
+                "targetGender", "MALE", new BigDecimal("0.70"), "\u4f60\u662f\u60f3\u7b5b\u9009\u7537\u88c5\u5417\uff1f", "\u7537\u6027", "req-old");
+        when(states.read(10L, "thread-pending"))
+                .thenReturn(new DemandIntentStateSnapshot(effective, pending));
+        when(states.applyResolution(anyLong(), anyString(), any(), any(), anyString(),
+                any(), any(), any(), any()))
+                .thenReturn(new DemandIntentStateSnapshot(effective, null));
+        when(conversations.getMessages(anyLong(), anyString())).thenReturn(List.of());
+        when(candidates.findCandidates(any())).thenReturn(List.of());
+
+        AssistantContext result = service.buildContext(10L, "thread-pending",
+                new AssistantChatRequest("thread-pending", "\u4ef7\u683c\u662f\u591a\u5c11", null, null, null, null, null, null, null));
+
+        assertThat(result.demandIntent()).isEqualTo(effective);
+        verify(parser, never()).parse(any());
+        verify(states).applyResolution(anyLong(), anyString(), any(), any(),
+                org.mockito.ArgumentMatchers.eq("cancel_clarify"), any(), any(), any(), any());
+    }
+
+    @Test
+    void parserHistoryKeepsThreeCompleteTurnsAndAtMostFourThousandCharacters() {
+        UserProfileService profiles = mock(UserProfileService.class);
+        RecommendationCandidateQueryService candidates = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversations = mock(ConversationApplicationService.class);
+        DemandIntentStateService states = mock(DemandIntentStateService.class);
+        DemandIntentParseClient parser = mock(DemandIntentParseClient.class);
+        AssistantContextService service = new AssistantContextService(
+                profiles, candidates, conversations, mock(BehaviorSummaryService.class), states, parser);
+        List<MessageResponse> history = new java.util.ArrayList<>();
+        for (int index = 0; index < 5; index++) {
+            history.add(new MessageResponse("user", "u".repeat(900), "done", "u" + index, LocalDateTime.now()));
+            history.add(new MessageResponse("assistant", "a".repeat(900), "done", "a" + index, LocalDateTime.now()));
+        }
+        when(conversations.getMessages(anyLong(), anyString())).thenReturn(history);
+        when(parser.parse(any())).thenReturn(Optional.empty());
+        DemandIntent effective = emptyIntent("\u7537\u6027");
+        when(states.applyResolution(anyLong(), anyString(), any(), any(), anyString(),
+                any(), any(), any(), any())).thenReturn(new DemandIntentStateSnapshot(effective, null));
+        when(candidates.findCandidates(any())).thenReturn(List.of());
+
+        service.buildContext(10L, "thread-history",
+                new AssistantChatRequest("thread-history", "给女朋友找成熟硬朗外套", null, null, null, null, null, null, null));
+
+        ArgumentCaptor<LlmDemandParseRequest> request = ArgumentCaptor.forClass(LlmDemandParseRequest.class);
+        verify(parser).parse(request.capture());
+        assertThat(request.getValue().recentHistory()).hasSize(3);
+        int characters = request.getValue().recentHistory().stream()
+                .mapToInt(turn -> turn.userQuery().length() + turn.assistantAnswer().length()).sum();
+        assertThat(characters).isLessThanOrEqualTo(4000);
+    }
+
+    private DemandIntent emptyIntent(String rawQuery) {
+        return new DemandIntent(DemandIntent.VERSION, DemandIntent.SOURCE_JAVA_RULE, rawQuery,
+                null, null, List.of(), List.of(), null, List.of(), List.of(), List.of(),
+                BigDecimal.ONE, List.of());
+    }
+
 }

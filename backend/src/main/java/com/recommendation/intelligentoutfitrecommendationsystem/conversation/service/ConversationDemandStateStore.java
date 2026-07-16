@@ -49,13 +49,11 @@ public class ConversationDemandStateStore {
         } else if (conversationMapper.updateDemandState(
                 session.getId(), state.getStateVersion(), effectiveJson,
                 state.getPendingClarificationJson(), requestId) != 1) {
-            state = conversationMapper.findDemandState(session.getId());
-            effectiveJson = mergeStoredIntent.apply(state.getEffectiveIntentJson());
-            if (conversationMapper.updateDemandState(
-                    session.getId(), state.getStateVersion(), effectiveJson,
-                    state.getPendingClarificationJson(), requestId) != 1) {
-                throw new IllegalStateException("demand state changed concurrently");
+            replay = conversationMapper.findTransitionState(session.getId(), requestId);
+            if (replay != null) {
+                return replay.getEffectiveIntentJson();
             }
+            throw new IllegalStateException("demand state changed concurrently");
         }
 
         conversationMapper.insertDemandTransition(
@@ -100,12 +98,11 @@ public class ConversationDemandStateStore {
             insertState(session.getId(), requestId, result.effectiveIntentJson(), result.pendingClarificationJson());
         } else if (conversationMapper.updateDemandState(session.getId(), state.getStateVersion(),
                 result.effectiveIntentJson(), result.pendingClarificationJson(), requestId) != 1) {
-            state = conversationMapper.findDemandState(session.getId());
-            result = mutation.apply(snapshot(state));
-            if (conversationMapper.updateDemandState(session.getId(), state.getStateVersion(),
-                    result.effectiveIntentJson(), result.pendingClarificationJson(), requestId) != 1) {
-                throw new IllegalStateException("demand state changed concurrently");
+            replay = conversationMapper.findTransitionState(session.getId(), requestId);
+            if (replay != null) {
+                return snapshot(replay);
             }
+            throw new IllegalStateException("demand state changed concurrently");
         }
         conversationMapper.insertDemandTransition(session.getId(), messageId, requestId, action,
                 patchJson, result.effectiveIntentJson(), result.pendingClarificationJson());

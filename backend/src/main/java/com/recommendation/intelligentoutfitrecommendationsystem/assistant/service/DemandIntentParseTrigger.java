@@ -35,7 +35,7 @@ public class DemandIntentParseTrigger {
         if (message == null) {
             return false;
         }
-        return Set.of("订单", "物流", "发货", "退款", "退货", "售后", "库存政策")
+        return Set.of("订单", "物流", "发货", "退款", "退货", "售后", "库存", "价格", "多少钱")
                 .stream().anyMatch(message::contains);
     }
 

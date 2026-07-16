@@ -3,12 +3,16 @@ package com.recommendation.intelligentoutfitrecommendationsystem.assistant;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.LlmDemandParseRequest;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.LlmDemandParseResponse;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.LlmDemandSlots;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatHistoryItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonProductCandidate;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonProductRef;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonUserContext;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.SlotEvidence;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -51,6 +55,43 @@ class SharedJavaPythonContractTests {
                 .isEqualTo(contractFields(contract, "product_ref"));
     }
 
+    @Test
+    void demandIntentParserDtosKeepDocumentedFieldNames() {
+        assertThat(recordComponentNames(LlmDemandParseRequest.class)).isEqualTo(Set.of(
+                "schemaVersion",
+                "requestId",
+                "sessionId",
+                "currentMessage",
+                "currentDemand",
+                "deterministicPatch",
+                "lockedSlots",
+                "matchedFragments",
+                "unresolvedText",
+                "recentHistory",
+                "pendingClarification"
+        ));
+        assertThat(recordComponentNames(LlmDemandParseResponse.class)).isEqualTo(Set.of(
+                "schemaVersion",
+                "action",
+                "slots",
+                "slotConfidence",
+                "evidence",
+                "needsClarification",
+                "clarificationSlot",
+                "clarificationCandidateValue",
+                "clarificationQuestion"
+        ));
+        assertThat(recordComponentNames(LlmDemandSlots.class)).isEqualTo(Set.of(
+                "targetGender",
+                "category",
+                "scene",
+                "style",
+                "budgetMax",
+                "attributes"
+        ));
+        assertThat(recordComponentNames(SlotEvidence.class)).isEqualTo(Set.of("text", "source"));
+    }
+
     private JsonNode readSharedContract() throws IOException {
         Path contractPath = resolveSharedContractPath();
         assertThat(Files.exists(contractPath))
@@ -82,6 +123,12 @@ class SharedJavaPythonContractTests {
                 .map(RecordComponent::getAccessor)
                 .map(accessor -> accessor.getAnnotation(JsonProperty.class))
                 .map(JsonProperty::value)
+                .collect(Collectors.toCollection(TreeSet::new));
+    }
+
+    private Set<String> recordComponentNames(Class<? extends Record> recordClass) {
+        return Arrays.stream(recordClass.getRecordComponents())
+                .map(RecordComponent::getName)
                 .collect(Collectors.toCollection(TreeSet::new));
     }
 

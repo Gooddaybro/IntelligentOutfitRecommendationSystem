@@ -66,11 +66,34 @@ public class DemandIntentStateService {
             DemandIntent initialIntent
     ) {
         String action = pending == null ? "merge" : "clarify";
+        return applyResolution(userId, threadId, requestId, messageId, action,
+                deterministicPatch, semanticPatch, pending, initialIntent);
+    }
+
+    /** Atomically apply one explicit demand-state transition and preserve its audit action. */
+    @Transactional
+    public DemandIntentStateSnapshot applyResolution(
+            Long userId,
+            String threadId,
+            String requestId,
+            Long messageId,
+            String action,
+            DemandIntentPatch deterministicPatch,
+            DemandIntentPatch semanticPatch,
+            PendingClarification pending,
+            DemandIntent initialIntent
+    ) {
+        if (!java.util.Set.of("merge", "clarify", "confirm", "cancel_clarify").contains(action)) {
+            throw new IllegalArgumentException("unsupported demand transition action");
+        }
         ConversationDemandStateSnapshot stored = stateStore.transition(
                 userId, threadId, requestId, messageId, action,
                 writeJson(semanticPatch == null ? deterministicPatch : semanticPatch),
                 writeJson(initialIntent),
                 current -> {
+                    if ("cancel_clarify".equals(action)) {
+                        return new ConversationDemandStateSnapshot(current.effectiveIntentJson(), null);
+                    }
                     DemandIntent intent = readIntent(current.effectiveIntentJson());
                     if (deterministicPatch != null) {
                         intent = merger.merge(intent, deterministicPatch);

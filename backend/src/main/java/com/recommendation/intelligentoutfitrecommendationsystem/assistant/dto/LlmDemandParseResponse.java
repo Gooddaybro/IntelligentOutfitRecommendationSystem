@@ -13,6 +13,20 @@ public record LlmDemandParseResponse(
         Map<String, List<SlotEvidence>> evidence,
         boolean needsClarification,
         String clarificationSlot,
+        Object clarificationCandidateValue,
         String clarificationQuestion
 ) {
+    public LlmDemandParseResponse(
+            String schemaVersion,
+            String action,
+            LlmDemandSlots slots,
+            Map<String, BigDecimal> slotConfidence,
+            Map<String, List<SlotEvidence>> evidence,
+            boolean needsClarification,
+            String clarificationSlot,
+            String clarificationQuestion
+    ) {
+        this(schemaVersion, action, slots, slotConfidence, evidence, needsClarification,
+                clarificationSlot, null, clarificationQuestion);
+    }
 }

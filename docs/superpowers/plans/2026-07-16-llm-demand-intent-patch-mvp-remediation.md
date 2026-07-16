@@ -1,6 +1,6 @@
-# LLM Demand Intent Patch MVP Remediation Plan
+﻿# LLM Demand Intent Patch MVP Remediation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 修复 MVP 审查发现的跨服务契约、Java 安全边界、Pending 生命周期、并发幂等与测试缺口，使实现真正满足 `2026-07-16-llm-demand-intent-patch-mvp-design.md`。
 
@@ -42,10 +42,10 @@
 - Test: `AI Clothing Shopping Assistant System/tests/test_demand_intent_parse_service.py`
 - Test: `AI Clothing Shopping Assistant System/tests/test_demand_intent_parse_api.py`
 
-- [ ] RED：合法空 slots 的 CLARIFY 当前失败；非法枚举、空数组当前通过；DependencyError 当前返回 500。
-- [ ] GREEN：增加受限枚举、`clarificationCandidateValue` 和 MERGE/CLARIFY 分支校验。
-- [ ] GREEN：把上游依赖错误归一为 `DemandIntentParseError`，API 返回 503。
-- [ ] VERIFY：定向 pytest 与 Ruff 通过。
+- [x] RED：合法空 slots 的 CLARIFY 当前失败；非法枚举、空数组当前通过；DependencyError 当前返回 500。
+- [x] GREEN：增加受限枚举、`clarificationCandidateValue` 和 MERGE/CLARIFY 分支校验。
+- [x] GREEN：把上游依赖错误归一为 `DemandIntentParseError`，API 返回 503。
+- [x] VERIFY：定向 pytest 与 Ruff 通过。
 
 ### Task 2：收紧 Java 最终安全边界
 
@@ -58,10 +58,10 @@
 - Test: `backend/src/test/java/.../assistant/LlmDemandIntentValidatorTests.java`
 - Test: `backend/src/test/java/.../assistant/SharedJavaPythonContractTests.java`
 
-- [ ] RED：未知 action、非法 CLARIFY、soft 非法枚举、pending 候选值冲突当前未被拒绝。
-- [ ] GREEN：按设计顺序执行 schema/action/字段关系/枚举/evidence/lock/confidence/range 校验。
-- [ ] GREEN：Java 请求加入 `schemaVersion/currentDemand`，响应加入 `clarificationCandidateValue`。
-- [ ] VERIFY：Java/Python 共享契约测试通过。
+- [x] RED：未知 action、非法 CLARIFY、soft 非法枚举、pending 候选值冲突当前未被拒绝。
+- [x] GREEN：按设计顺序执行 schema/action/字段关系/枚举/evidence/lock/confidence/range 校验。
+- [x] GREEN：Java 请求加入 `schemaVersion/currentDemand`，响应加入 `clarificationCandidateValue`。
+- [x] VERIFY：Java/Python 共享契约测试通过。
 
 ### Task 3：修复 Pending 生命周期和历史上下文
 
@@ -72,10 +72,10 @@
 - Test: `backend/src/test/java/.../assistant/AssistantContextServiceTests.java`
 - Test: `backend/src/test/java/.../assistant/DemandIntentStateServiceTests.java`
 
-- [ ] RED：确认/取消审计 action、取消快照不变、价格/库存中断、三轮 4000 字限制测试失败。
-- [ ] GREEN：状态服务接收显式 transition action；取消使用 identity mutation。
-- [ ] GREEN：pending 增加 `sourceRequestId`，确认值由统一 normalizer 转为正式 patch。
-- [ ] GREEN：历史按总长度 4000 从最旧内容裁剪，并发送 currentDemand。
+- [x] RED：确认/取消审计 action、取消快照不变、价格/库存中断、三轮 4000 字限制测试失败。
+- [x] GREEN：状态服务接收显式 transition action；取消使用 identity mutation。
+- [x] GREEN：pending 增加 `sourceRequestId`，确认值由统一 normalizer 转为正式 patch。
+- [x] GREEN：历史按总长度 4000 从最旧内容裁剪，并发送 currentDemand。
 
 ### Task 4：修复 SQL 软硬边界、熔断和并发幂等
 
@@ -87,18 +87,18 @@
 - Test: `backend/src/test/java/.../assistant/AssistantResilienceConfigTests.java`
 - Create: `backend/src/test/java/.../conversation/ConversationDemandStateStoreTests.java`
 
-- [ ] RED：LLM style 进入 candidate SQL、熔断未开启、并发旧请求覆盖新状态。
-- [ ] GREEN：只有显式前端 style 控件可作为旧 SQL style 参数；语义 style 保留为软偏好。
-- [ ] GREEN：解析客户端使用独立 circuit breaker 配置和指标名称。
-- [ ] GREEN：重复 requestId 在竞争后重新读取 transition；并发版本冲突不盲目重放旧请求。
+- [x] RED：LLM style 进入 candidate SQL、熔断未开启、并发旧请求覆盖新状态。
+- [x] GREEN：只有显式前端 style 控件可作为旧 SQL style 参数；语义 style 保留为软偏好。
+- [x] GREEN：解析客户端使用独立 circuit breaker 配置和指标名称。
+- [x] GREEN：重复 requestId 在竞争后重新读取 transition；并发版本冲突不盲目重放旧请求。
 
 ### Task 5：回归、E2E 与文档验收
 
-- [ ] Python 全量 pytest、Ruff 通过。
-- [ ] Java 非 Docker 全量测试、Checkstyle、模块架构测试通过。
-- [ ] Docker 可用时运行 RabbitMQ/Testcontainers；不可用时只记录基础设施限制。
-- [ ] 增加三条设计文档 E2E 场景测试。
-- [ ] 将原设计状态更新为“已修复并验收”，逐项勾选本文件。
+- [x] Python 全量 pytest、Ruff 通过。
+- [x] Java 非 Docker 全量测试、Checkstyle、模块架构测试通过。
+- [x] Docker 可用时运行 RabbitMQ/Testcontainers；不可用时只记录基础设施限制。
+- [x] 增加三条设计文档 E2E 场景测试。
+- [x] 将原设计状态更新为“已修复并验收”，逐项勾选本文件。
 
 ## 3. 明确不在本次修复范围
 
@@ -107,3 +107,12 @@
 - 历史快照恢复和男女款对比专用流程。
 
 上述三项继续保留在后续开发清单，不得借本次修复扩大范围。
+
+## 4. 验收记录（2026-07-16）
+
+- Python 定向：`uv run --isolated --no-env-file --with-requirements requirements.txt --with-requirements requirements-dev.txt --with pytest -m pytest tests/test_demand_intent_parse_service.py tests/test_demand_intent_parse_api.py`，13 passed。
+- Python 全量：`PYTHON_DOTENV_DISABLED=1 uv run --isolated --no-env-file --with-requirements requirements.txt --with-requirements requirements-dev.txt --with pytest -m pytest`，255 passed。说明：本地 `.env` 配置了 `APP_INTERNAL_API_TOKEN`，全量单测需禁用 dotenv，避免测试客户端因缺少内部 token 全部 401。
+- Python Ruff：`uv run --isolated --no-env-file --with-requirements requirements.txt --with-requirements requirements-dev.txt --with pytest -m ruff check .`，All checks passed。
+- Java 定向修复套件：`./mvnw.cmd clean -Dtest=AssistantContextServiceTests,DemandIntentParseTriggerTests,DemandIntentStateServiceTests,LlmDemandIntentValidatorTests,RestDemandIntentParseClientTests,ResilientDemandIntentParseClientTests,ConversationDemandStateStoreTests,AssistantResilienceConfigTests,SharedJavaPythonContractTests test`，38 tests passed。
+- Java 全量非 Docker：`./mvnw.cmd -Dtest=*,!AiTaskRetryDlqIntegrationTests,!RabbitAiTaskTopologyTests verify`，314 tests passed, 6 skipped, Checkstyle 0 violations。
+- Java 全量含 Docker：`./mvnw.cmd test`，316 tests run，2 errors 均为本机 Docker/Testcontainers 不可用：`AiTaskRetryDlqIntegrationTests`、`RabbitAiTaskTopologyTests`。

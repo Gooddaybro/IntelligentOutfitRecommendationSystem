@@ -1,7 +1,7 @@
 # LLM 结构化需求补丁 MVP 设计
 
 **日期：** 2026-07-16  
-**状态：** 核心框架已完成，审查修复中（2026-07-16）  
+**状态：** 已修复并验收（2026-07-16）
 **上游设计：** `2026-07-16-hybrid-demand-intent-refinement-design.md`
 
 ## 1. 目标
@@ -563,9 +563,9 @@ AssistantContextService
 
 ### 20.2 验证证据
 
-- Python：`250 passed, 83 subtests passed`。
+- Python：`255 passed`。
 - Python Ruff：`All checks passed`。
-- Java（排除两个 Docker/Testcontainers 用例）：`300 tests, 0 failures, 0 errors, 6 skipped`。
+- Java（排除两个 Docker/Testcontainers 用例）：`314 tests, 0 failures, 0 errors, 6 skipped`。
 - Java Checkstyle：`0 violations`。
 - 完整 Java 测试仅有 `AiTaskRetryDlqIntegrationTests`、`RabbitAiTaskTopologyTests` 因本机 Docker 不可用失败；与本功能代码无关。
 

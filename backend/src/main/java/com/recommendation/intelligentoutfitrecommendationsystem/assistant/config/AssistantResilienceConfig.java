@@ -54,6 +54,33 @@ public class AssistantResilienceConfig {
         return circuitBreaker;
     }
 
+    /** Independent breaker so parser failures cannot open the main assistant circuit (or vice versa). */
+    @Bean
+    public CircuitBreaker demandIntentParserCircuitBreaker(
+            @Value("${app.ai.demand-parser.circuit-breaker.sliding-window-size:4}") int slidingWindowSize,
+            @Value("${app.ai.demand-parser.circuit-breaker.minimum-number-of-calls:4}") int minimumNumberOfCalls,
+            @Value("${app.ai.demand-parser.circuit-breaker.failure-rate-threshold:50}") float failureRateThreshold,
+            @Value("${app.ai.demand-parser.circuit-breaker.wait-duration-ms:10000}") long waitDurationMs
+    ) {
+        CircuitBreakerConfig config = CircuitBreakerConfig.custom()
+                .slidingWindowType(CircuitBreakerConfig.SlidingWindowType.COUNT_BASED)
+                .slidingWindowSize(slidingWindowSize)
+                .minimumNumberOfCalls(minimumNumberOfCalls)
+                .failureRateThreshold(failureRateThreshold)
+                .waitDurationInOpenState(Duration.ofMillis(waitDurationMs))
+                .permittedNumberOfCallsInHalfOpenState(1)
+                .build();
+        CircuitBreaker circuitBreaker = CircuitBreaker.of("demand-intent-parser", config);
+        Gauge.builder("app.ai.demand_parser.circuit.state", circuitBreaker, breaker -> stateValue(breaker.getState()))
+                .description("Demand intent parser circuit state: closed=0, open=1, half-open=2")
+                .register(meterRegistry);
+        circuitBreaker.getEventPublisher().onStateTransition(event -> applicationMetrics.recordDemandParserCircuitTransition(
+                event.getStateTransition().getFromState().name(),
+                event.getStateTransition().getToState().name()
+        ));
+        return circuitBreaker;
+    }
+
     private static double stateValue(CircuitBreaker.State state) {
         return switch (state) {
             case CLOSED -> 0;
