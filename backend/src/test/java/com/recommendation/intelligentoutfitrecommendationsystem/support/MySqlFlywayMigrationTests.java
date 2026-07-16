@@ -52,6 +52,12 @@ class MySqlFlywayMigrationTests extends BaseMySqlContainerTest {
                 WHERE TABLE_SCHEMA = DATABASE()
                   AND TABLE_NAME IN ('ai_task', 'outbox_event', 'consumer_inbox', 'ai_task_redrive_audit')
                 """, Integer.class);
+        Integer demandStateTableCount = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM INFORMATION_SCHEMA.TABLES
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME IN ('chat_demand_state', 'chat_demand_transition')
+                """, Integer.class);
 
         assertThat(chatSessionCount).isPositive();
         assertThat(chatMessageCount).isPositive();
@@ -64,5 +70,6 @@ class MySqlFlywayMigrationTests extends BaseMySqlContainerTest {
         assertThat(closedAtColumnCount).isOne();
         assertThat(closeReasonColumnCount).isOne();
         assertThat(aiReliabilityTableCount).isEqualTo(4);
+        assertThat(demandStateTableCount).isEqualTo(2);
     }
 }

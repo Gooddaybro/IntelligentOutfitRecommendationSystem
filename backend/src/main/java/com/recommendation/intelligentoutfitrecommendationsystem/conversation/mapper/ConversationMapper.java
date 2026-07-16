@@ -1,6 +1,7 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.conversation.mapper;
 
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.model.ChatMessage;
+import com.recommendation.intelligentoutfitrecommendationsystem.conversation.model.ChatDemandState;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.model.ChatSession;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -25,4 +26,26 @@ public interface ConversationMapper {
     List<ChatMessage> findMessagesBySessionId(@Param("sessionId") Long sessionId);
 
     void touchSessionLastMessageAt(@Param("sessionId") Long sessionId);
+
+    ChatDemandState findDemandState(@Param("sessionId") Long sessionId);
+
+    String findTransitionIntentJson(@Param("sessionId") Long sessionId, @Param("requestId") String requestId);
+
+    void insertDemandState(ChatDemandState state);
+
+    int updateDemandState(
+            @Param("sessionId") Long sessionId,
+            @Param("expectedVersion") Long expectedVersion,
+            @Param("effectiveIntentJson") String effectiveIntentJson,
+            @Param("requestId") String requestId
+    );
+
+    void insertDemandTransition(
+            @Param("sessionId") Long sessionId,
+            @Param("messageId") Long messageId,
+            @Param("requestId") String requestId,
+            @Param("action") String action,
+            @Param("patchJson") String patchJson,
+            @Param("effectiveIntentJson") String effectiveIntentJson
+    );
 }
