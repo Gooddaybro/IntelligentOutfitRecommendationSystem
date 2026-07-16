@@ -236,8 +236,9 @@ class AssistantControllerTests {
 
         assertThat(streamBody)
                 .contains("event:meta")
-                .contains("event:error")
+                .contains("event:done")
                 .contains("AI 导购暂时不可用")
+                .contains("resolved_intent")
                 .doesNotContain("provider secret")
                 .doesNotContain("/tmp/python-internal")
                 .doesNotContain("raw_secret");

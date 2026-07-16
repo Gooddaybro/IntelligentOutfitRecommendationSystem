@@ -4,6 +4,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.As
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantContext;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntent;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.AssistantContextService;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.DemandIntentStateService;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.dto.BehaviorSummaryResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorSummaryService;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationApplicationService;
@@ -33,8 +34,9 @@ class AssistantContextServiceTests {
         UserProfileService userProfileService = mock(UserProfileService.class);
         RecommendationCandidateQueryService candidateService = mock(RecommendationCandidateQueryService.class);
         ConversationApplicationService conversationService = mock(ConversationApplicationService.class);
+        DemandIntentStateService demandIntentStateService = mock(DemandIntentStateService.class);
         AssistantContextService service = new AssistantContextService(
-                userProfileService, candidateService, conversationService, mock(BehaviorSummaryService.class));
+                userProfileService, candidateService, conversationService, mock(BehaviorSummaryService.class), demandIntentStateService);
         AssistantChatRequest request = new AssistantChatRequest(
                 "thread-switch", "那女性呢？", null, null, null, null, null, null, null);
         DemandIntent effective = new DemandIntent(
@@ -42,7 +44,7 @@ class AssistantContextServiceTests {
                 List.of("commute"), List.of("minimal"), 500, List.of(),
                 List.of("targetGender", "category", "budgetMax"), List.of("scene", "style"),
                 new BigDecimal("0.80"), List.of());
-        when(conversationService.applyDemandPatch(anyLong(), anyString(), any(), any(), any(), any()))
+        when(demandIntentStateService.apply(anyLong(), anyString(), any(), any(), any(), any()))
                 .thenReturn(effective);
         when(conversationService.getMessages(anyLong(), anyString())).thenReturn(List.of());
         when(candidateService.findCandidates(any())).thenReturn(List.of());

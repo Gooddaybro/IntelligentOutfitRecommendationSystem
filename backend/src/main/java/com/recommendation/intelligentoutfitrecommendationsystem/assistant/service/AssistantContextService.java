@@ -29,6 +29,7 @@ public class AssistantContextService {
     private final RecommendationCandidateQueryService recommendationCandidateQueryService;
     private final ConversationApplicationService conversationService;
     private final BehaviorSummaryService behaviorSummaryService;
+    private final DemandIntentStateService demandIntentStateService;
     private final DemandIntentResolver demandIntentResolver = new DemandIntentResolver();
 
     @Autowired
@@ -36,12 +37,14 @@ public class AssistantContextService {
             UserProfileService userProfileService,
             RecommendationCandidateQueryService recommendationCandidateQueryService,
             ConversationApplicationService conversationService,
-            BehaviorSummaryService behaviorSummaryService
+            BehaviorSummaryService behaviorSummaryService,
+            DemandIntentStateService demandIntentStateService
     ) {
         this.userProfileService = userProfileService;
         this.recommendationCandidateQueryService = recommendationCandidateQueryService;
         this.conversationService = conversationService;
         this.behaviorSummaryService = behaviorSummaryService;
+        this.demandIntentStateService = demandIntentStateService;
     }
 
     public AssistantContextService(
@@ -49,7 +52,16 @@ public class AssistantContextService {
             RecommendationCandidateQueryService recommendationCandidateQueryService,
             ConversationApplicationService conversationService
     ) {
-        this(userProfileService, recommendationCandidateQueryService, conversationService, null);
+        this(userProfileService, recommendationCandidateQueryService, conversationService, null, null);
+    }
+
+    public AssistantContextService(
+            UserProfileService userProfileService,
+            RecommendationCandidateQueryService recommendationCandidateQueryService,
+            ConversationApplicationService conversationService,
+            BehaviorSummaryService behaviorSummaryService
+    ) {
+        this(userProfileService, recommendationCandidateQueryService, conversationService, behaviorSummaryService, null);
     }
 
     public AssistantContext buildContext(Long userId, String threadId, AssistantChatRequest request) {
@@ -60,14 +72,8 @@ public class AssistantContextService {
         if (!hasText(requestId)) {
             requestId = "local-" + UUID.randomUUID();
         }
-        DemandIntent persistedIntent = conversationService.applyDemandPatch(
-                userId,
-                threadId,
-                requestId,
-                null,
-                demandIntentResolver.resolvePatch(request),
-                initialIntent
-        );
+        DemandIntent persistedIntent = demandIntentStateService == null ? null : demandIntentStateService.apply(
+                userId, threadId, requestId, null, demandIntentResolver.resolvePatch(request), initialIntent);
         DemandIntent demandIntent = persistedIntent == null ? initialIntent : persistedIntent;
         // Java 只执行 DemandIntent 中的硬过滤；候选池内的排序解释仍由 Python AI 服务完成。
         RecommendationCandidateQuery query = new RecommendationCandidateQuery(

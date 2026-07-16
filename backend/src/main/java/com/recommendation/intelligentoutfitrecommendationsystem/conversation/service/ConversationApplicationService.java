@@ -1,10 +1,5 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.conversation.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntent;
-import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntentPatch;
-import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.DemandIntentMerger;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.ConversationResponse;
@@ -12,7 +7,6 @@ import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.mapper.ConversationMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.model.ChatMessage;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.model.ChatSession;
-import com.recommendation.intelligentoutfitrecommendationsystem.conversation.model.ChatDemandState;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,8 +25,6 @@ public class ConversationApplicationService {
     private static final String SUCCEEDED_STATUS = "succeeded";
 
     private final ConversationMapper conversationMapper;
-    private final ObjectMapper objectMapper = new ObjectMapper();
-    private final DemandIntentMerger demandIntentMerger = new DemandIntentMerger();
 
     public ConversationApplicationService(ConversationMapper conversationMapper) {
         this.conversationMapper = conversationMapper;
@@ -93,44 +85,6 @@ public class ConversationApplicationService {
         return toMessageResponse(message);
     }
 
-    @Transactional
-    public DemandIntent applyDemandPatch(
-            Long userId,
-            String threadId,
-            String requestId,
-            Long messageId,
-            DemandIntentPatch patch,
-            DemandIntent initialIntent
-    ) {
-        ChatSession session = requireConversation(userId, threadId);
-        String replayJson = conversationMapper.findTransitionIntentJson(session.getId(), requestId);
-        if (replayJson != null) {
-            return readIntent(replayJson);
-        }
-
-        ChatDemandState state = conversationMapper.findDemandState(session.getId());
-        DemandIntent effective = state == null
-                ? initialIntent
-                : demandIntentMerger.merge(readIntent(state.getEffectiveIntentJson()), patch);
-        String effectiveJson = writeJson(effective);
-
-        if (state == null) {
-            ChatDemandState inserted = new ChatDemandState();
-            inserted.setSessionId(session.getId());
-            inserted.setStateVersion(0L);
-            inserted.setEffectiveIntentJson(effectiveJson);
-            inserted.setLastRequestId(requestId);
-            conversationMapper.insertDemandState(inserted);
-        } else if (conversationMapper.updateDemandState(
-                session.getId(), state.getStateVersion(), effectiveJson, requestId) != 1) {
-            throw new IllegalStateException("demand state changed concurrently");
-        }
-
-        String action = state == null && "initialize".equals(patch.action()) ? "initialize" : patch.action();
-        conversationMapper.insertDemandTransition(
-                session.getId(), messageId, requestId, action, writeJson(patch), effectiveJson);
-        return effective;
-    }
 
     /**
      * 验证当前用户拥有指定会话，不向模块外暴露持久化模型。
@@ -177,21 +131,6 @@ public class ConversationApplicationService {
         );
     }
 
-    private DemandIntent readIntent(String json) {
-        try {
-            return objectMapper.readValue(json, DemandIntent.class);
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("invalid stored demand intent", exception);
-        }
-    }
-
-    private String writeJson(Object value) {
-        try {
-            return objectMapper.writeValueAsString(value);
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("failed to serialize demand state", exception);
-        }
-    }
 
     private String newThreadId() {
         return "th_" + UUID.randomUUID().toString().replace("-", "");

@@ -2,6 +2,7 @@ package com.recommendation.intelligentoutfitrecommendationsystem.conversation;
 
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntent;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.DemandIntentResolver;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.DemandIntentStateService;
 import com.recommendation.intelligentoutfitrecommendationsystem.auth.mapper.UserAuthMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.auth.model.UserAccount;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.ConversationResponse;
@@ -28,6 +29,8 @@ class ConversationDemandStateTests {
     @Autowired
     private ConversationApplicationService conversationService;
     @Autowired
+    private DemandIntentStateService demandIntentStateService;
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @Test
@@ -41,9 +44,9 @@ class ConversationDemandStateTests {
         DemandIntent initial = new com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.DemandIntentMerger()
                 .merge(null, patch);
 
-        DemandIntent first = conversationService.applyDemandPatch(
+        DemandIntent first = demandIntentStateService.apply(
                 userId, conversation.threadId(), message.requestId(), message.id(), patch, initial);
-        DemandIntent replay = conversationService.applyDemandPatch(
+        DemandIntent replay = demandIntentStateService.apply(
                 userId, conversation.threadId(), message.requestId(), message.id(), patch, initial);
 
         assertThat(first.targetGender()).isEqualTo("male");
