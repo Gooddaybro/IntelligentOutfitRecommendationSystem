@@ -21,47 +21,20 @@ services:
     command: redis-server --appendonly yes
     volumes:
       - intelligent_outfit_redis_data:/data
-  rabbitmq:
-    image: rabbitmq:4.1.8-management
-    container_name: intelligent_outfit_rabbitmq
+  langgraph-postgres:
+    image: postgres:16
+    container_name: intelligent_outfit_langgraph_postgres
     ports:
-      - "${RABBITMQ_AMQP_HOST_PORT:-5672}:5672"
-      - "${RABBITMQ_MANAGEMENT_HOST_PORT:-15672}:15672"
-      - "${RABBITMQ_PROMETHEUS_HOST_PORT:-15692}:15692"
+      - "${LANGGRAPH_POSTGRES_HOST_PORT:-5433}:5432"
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-app}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-app-dev-password}
+      POSTGRES_DB: ${LANGGRAPH_POSTGRES_DATABASE:-langgraph}
+      POSTGRES_USER: ${LANGGRAPH_POSTGRES_USERNAME:-langgraph}
+      POSTGRES_PASSWORD: ${LANGGRAPH_POSTGRES_PASSWORD:-change-me-locally}
+      TZ: Asia/Shanghai
     volumes:
-      - ./observability/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
-      - intelligent_outfit_rabbitmq_data:/var/lib/rabbitmq
-  prometheus:
-    image: prom/prometheus:v2.54.1
-    container_name: intelligent_outfit_prometheus
-    profiles: ["observability"]
-    ports:
-      - "${PROMETHEUS_HOST_PORT:-9090}:9090"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    volumes:
-      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-  grafana:
-    image: grafana/grafana:11.2.2
-    container_name: intelligent_outfit_grafana
-    profiles: ["observability"]
-    ports:
-      - "${GRAFANA_HOST_PORT:-3000}:3000"
-    environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
-    depends_on:
-      - prometheus
-    volumes:
-      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
-      - intelligent_outfit_grafana_data:/var/lib/grafana
+      - langgraph_postgres_data:/var/lib/postgresql/data
 
 volumes:
   intelligent_outfit_mysql_data:
   intelligent_outfit_redis_data:
-  intelligent_outfit_rabbitmq_data:
-  intelligent_outfit_grafana_data:
+  langgraph_postgres_data:
