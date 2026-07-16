@@ -21,7 +21,8 @@ import java.util.stream.Stream;
 /**
  * Python AI 服务的 HTTP 客户端。
  *
- * 同步 `/chat` 和流式 `/chat/stream` 共用同一套 Python 请求序列化配置，确保跨服务字段命名一致。
+ * 同步 `/chat` 和流式 `/chat/stream` 共用同一套 Python 请求序列化配置和 internal token，确保
+ * Java 保持用户、会话与商业事实边界后再访问 Python。
  */
 @Component
 public class RestPythonAssistantClient implements PythonAssistantClient, PythonAssistantStreamClient {
@@ -31,11 +32,13 @@ public class RestPythonAssistantClient implements PythonAssistantClient, PythonA
     private final String chatUrl;
     private final String streamChatUrl;
     private final Duration readTimeout;
+    private final String internalApiToken;
 
     public RestPythonAssistantClient(
             @Value("${app.ai.python-base-url}") String pythonBaseUrl,
             @Value("${app.ai.connect-timeout-ms}") long connectTimeoutMs,
-            @Value("${app.ai.read-timeout-ms}") long readTimeoutMs
+            @Value("${app.ai.read-timeout-ms}") long readTimeoutMs,
+            @Value("${app.internal-api.token}") String internalApiToken
     ) {
         // Python 请求包含 LocalDateTime 聊天历史，必须注册 JavaTime 模块并使用 ISO 字符串格式保持跨服务契约稳定。
         this.objectMapper = new ObjectMapper()
@@ -49,6 +52,7 @@ public class RestPythonAssistantClient implements PythonAssistantClient, PythonA
         this.chatUrl = pythonBaseUrl.replaceAll("/+$", "") + "/chat";
         this.streamChatUrl = pythonBaseUrl.replaceAll("/+$", "") + "/chat/stream";
         this.readTimeout = Duration.ofMillis(readTimeoutMs);
+        this.internalApiToken = internalApiToken;
     }
 
     @Override
@@ -57,6 +61,7 @@ public class RestPythonAssistantClient implements PythonAssistantClient, PythonA
             HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(chatUrl))
                     .timeout(readTimeout)
                     .header("Content-Type", "application/json")
+                    .header("X-Internal-Token", internalApiToken)
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(request)))
                     .build();
             HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
@@ -81,6 +86,7 @@ public class RestPythonAssistantClient implements PythonAssistantClient, PythonA
                     .timeout(readTimeout)
                     .header("Content-Type", "application/json")
                     .header("Accept", "text/event-stream")
+                    .header("X-Internal-Token", internalApiToken)
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(request)))
                     .build();
             HttpResponse<Stream<String>> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofLines());

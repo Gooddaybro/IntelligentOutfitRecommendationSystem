@@ -21,7 +21,20 @@ services:
     command: redis-server --appendonly yes
     volumes:
       - intelligent_outfit_redis_data:/data
+  langgraph-postgres:
+    image: postgres:16
+    container_name: intelligent_outfit_langgraph_postgres
+    ports:
+      - "${LANGGRAPH_POSTGRES_HOST_PORT:-5433}:5432"
+    environment:
+      POSTGRES_DB: ${LANGGRAPH_POSTGRES_DATABASE:-langgraph}
+      POSTGRES_USER: ${LANGGRAPH_POSTGRES_USERNAME:-langgraph}
+      POSTGRES_PASSWORD: ${LANGGRAPH_POSTGRES_PASSWORD:-change-me-locally}
+      TZ: Asia/Shanghai
+    volumes:
+      - langgraph_postgres_data:/var/lib/postgresql/data
 
 volumes:
   intelligent_outfit_mysql_data:
   intelligent_outfit_redis_data:
+  langgraph_postgres_data:
