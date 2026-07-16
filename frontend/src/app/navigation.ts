@@ -8,6 +8,10 @@ export const APP_PATHS = {
   profile: "/app/profile"
 } as const;
 
+export function isCustomerPath(pathname: string): boolean {
+  return pathname === "/app" || pathname.startsWith("/app/");
+}
+
 export const APP_NAV_ITEMS = [
   { key: "home", label: "今日", to: APP_PATHS.home },
   { key: "ai", label: "AI 造型师", to: APP_PATHS.ai },

@@ -27,6 +27,7 @@ import { FavoritesPage } from "../pages/FavoritesPage";
 import { AccountSecurityPage } from "../pages/AccountSecurityPage";
 import { AdminShell } from "./AdminShell";
 import { CustomerShell } from "./CustomerShell";
+import { isCustomerPath } from "./navigation";
 
 export function App() {
   const [isEntered, setIsEntered] = useState(false);
@@ -155,13 +156,15 @@ export function App() {
         <Route path="*" element={<Navigate to="/app/home" replace />} />
       </Routes>
 
-      <CartDrawer items={cart.items} onOpenCart={() => navigate("/app/cart")} />
-      <ConfirmActionDialog
-        action={commerce.pendingAction}
-        isBusy={commerce.isBusy}
-        onCancel={() => commerce.setPendingAction(null)}
-        onConfirm={commerce.confirm}
-      />
+      {isCustomerPath(location.pathname) && <>
+        <CartDrawer items={cart.items} onOpenCart={() => navigate("/app/cart")} />
+        <ConfirmActionDialog
+          action={commerce.pendingAction}
+          isBusy={commerce.isBusy}
+          onCancel={() => commerce.setPendingAction(null)}
+          onConfirm={commerce.confirm}
+        />
+      </>}
     </div>
   );
 }
