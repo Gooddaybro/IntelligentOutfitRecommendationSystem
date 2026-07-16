@@ -10,6 +10,9 @@ import { useCommerceAction } from "../features/commerce-action/useCommerceAction
 import { serializeCheckoutSkuIds } from "../features/checkout/checkoutSelection";
 import { api, IS_MOCK_MODE } from "../shared/api/client";
 import { AdminDashboardPage } from "../pages/AdminDashboardPage";
+import { AdminProductsPage } from "../pages/admin/AdminProductsPage";
+import { AdminProductFormPage } from "../pages/admin/AdminProductFormPage";
+import { AdminCategoriesPage } from "../pages/admin/AdminCategoriesPage";
 import { AiShoppingPage } from "../pages/AiShoppingPage";
 import { CartPage } from "../pages/CartPage";
 import { CheckoutPage } from "../pages/CheckoutPage";
@@ -151,6 +154,10 @@ export function App() {
             : <Navigate to="/app/home" replace />}
         >
           <Route index element={<AdminDashboardPage />} />
+          <Route path="products" element={<AdminProductsPage />} />
+          <Route path="products/new" element={<AdminProductFormPage />} />
+          <Route path="products/:spuId/edit" element={<AdminProductFormPage />} />
+          <Route path="categories" element={<AdminCategoriesPage />} />
           <Route path="*" element={<section className="admin-placeholder"><h1>管理模块正在落位</h1><p>该页面将在前端 F3 阶段接入可演示操作。</p></section>} />
         </Route>
         <Route path="*" element={<Navigate to="/app/home" replace />} />

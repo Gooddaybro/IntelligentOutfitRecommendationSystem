@@ -14,7 +14,7 @@ import type {
   UserProfileRequest,
   UserProfileResponse
 } from "./types";
-import type { AdminProduct, AdminSku } from "./adminTypes";
+import type { AdminCategory, AdminProduct, AdminProductInput, AdminSku } from "./adminTypes";
 
 const catalog: RecommendationCandidate[] = [
   { spuId: 1001, skuId: 2001, spuCode: "PUFFER_COMMUTE", skuCode: "PUFFER-IVORY-M", name: "轻量通勤羽绒服", categoryName: "外套", color: "米白", size: "M", fitType: "合身", salePrice: 699, availableStock: 8, mainImageUrl: "/images/products/puffer-winter-light-main.jpg", styleTags: "通勤,简约" },
@@ -66,6 +66,10 @@ function createAdminInventory(): AdminSku[] {
   }));
 }
 
+function createAdminCategories(): AdminCategory[] {
+  return Object.entries(categoryIds).map(([name, id], index) => ({ id, name, parentId: null, level: 1, sortOrder: index + 1, enabled: true, productCount: new Set(catalog.filter((item) => item.categoryName === name).map((item) => item.spuId)).size }));
+}
+
 let cartItems: CartItem[] = [];
 let orders: OrderResponse[] = [];
 let addressBook: Address[] = [{ id: 1, recipientName: "林木", phone: "138****2026", province: "浙江省", city: "杭州市", district: "西湖区", detail: "文一路 88 号", isDefault: true }];
@@ -75,6 +79,7 @@ let bodyData: UserBodyDataResponse = { userId: 1 };
 let preferences: UserPreferencesResponse = { userId: 1, preferredStyles: ["自然", "通勤"], preferredColors: ["米白", "鼠尾草绿"], dislikedColors: [], preferredCategories: ["外套"], budgetMin: 200, budgetMax: 800 };
 let adminProducts = createAdminProducts();
 let adminInventory = createAdminInventory();
+let adminCategories = createAdminCategories();
 
 function productDetail(spuId: number): ProductDetail {
   const sku = catalog.find((item) => item.spuId === spuId);
@@ -106,6 +111,7 @@ export function resetMockApi() {
   favoriteSpuIds = new Set([1002]);
   adminProducts = createAdminProducts();
   adminInventory = createAdminInventory();
+  adminCategories = createAdminCategories();
 }
 
 export const mockApi = {
@@ -201,11 +207,32 @@ export const mockApi = {
     hotProducts: []
   }),
   adminProducts: async () => adminProducts.map((item) => ({ ...item })),
+  adminSaveProduct: async (input: AdminProductInput) => {
+    if (input.spuId) {
+      const existing = adminProducts.find((item) => item.spuId === input.spuId);
+      if (!existing) throw new Error("商品不存在");
+      const saved = { ...existing, ...input, spuId: existing.spuId };
+      adminProducts = adminProducts.map((item) => item.spuId === saved.spuId ? saved : item);
+      return { ...saved };
+    }
+    const spuId = Math.max(0, ...adminProducts.map((item) => item.spuId)) + 1;
+    const saved: AdminProduct = { ...input, spuId, skuCount: 0, totalStock: 0, createdAt: new Date().toISOString() };
+    adminProducts = [saved, ...adminProducts];
+    return { ...saved };
+  },
   adminSetProductStatus: async (spuId: number, status: AdminProduct["status"]) => {
     adminProducts = adminProducts.map((item) => item.spuId === spuId ? { ...item, status } : item);
     const product = adminProducts.find((item) => item.spuId === spuId);
     if (!product) throw new Error("商品不存在");
     return { ...product };
+  },
+  adminCategories: async () => adminCategories.map((item) => ({ ...item })),
+  adminUpdateCategory: async (category: AdminCategory) => {
+    if (category.parentId === category.id) throw new Error("分类不能以自身作为父分类");
+    adminCategories = adminCategories.map((item) => item.id === category.id ? { ...category } : item);
+    const updated = adminCategories.find((item) => item.id === category.id);
+    if (!updated) throw new Error("分类不存在");
+    return { ...updated };
   },
   adminInventory: async () => adminInventory.map((item) => ({ ...item })),
   adminAdjustInventory: async (skuId: number, targetStock: number, reason: string) => {
