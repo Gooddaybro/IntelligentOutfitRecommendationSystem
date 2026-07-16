@@ -16,6 +16,8 @@ export function ProductDetailPage({ onAction }: ProductDetailPageProps) {
   const [selection, setSelection] = useState<SkuSelection>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteBusy, setFavoriteBusy] = useState(false);
 
   useEffect(() => {
     const id = Number(spuId);
@@ -25,7 +27,23 @@ export function ProductDetailPage({ onAction }: ProductDetailPageProps) {
       .then(([detail, candidates]) => { setProduct(detail); setSkus(candidates.filter((item) => item.spuId === id)); })
       .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "商品详情加载失败"))
       .finally(() => setLoading(false));
+    api.favorites()
+      .then((favorites) => setIsFavorite(favorites.some((item) => item.spuId === id)))
+      .catch(() => setIsFavorite(false));
   }, [spuId]);
+
+  async function toggleFavorite() {
+    const id = Number(spuId);
+    if (!Number.isFinite(id) || favoriteBusy) return;
+    setFavoriteBusy(true);
+    try {
+      if (isFavorite) await api.removeFavorite(id);
+      else await api.addFavorite(id);
+      setIsFavorite((current) => !current);
+    } finally {
+      setFavoriteBusy(false);
+    }
+  }
 
   const colors = useMemo(() => Array.from(new Set(skus.map((sku) => sku.color).filter(Boolean))) as string[], [skus]);
   const sizes = useMemo(() => Array.from(new Set(skus.map((sku) => sku.size).filter(Boolean))) as string[], [skus]);
@@ -56,7 +74,7 @@ export function ProductDetailPage({ onAction }: ProductDetailPageProps) {
           <div className={`stock-note${purchasable ? " is-ready" : ""}`}><PackageCheck size={18} />{selectedSku ? (purchasable ? `当前组合有货${selectedSku.availableStock === undefined ? "" : `，可售 ${selectedSku.availableStock} 件`}` : "当前组合暂时无货") : (skus.length ? "选择颜色和尺码后查看库存" : "当前商品暂不可购买")}</div>
 
           <div className="purchase-actions">
-            <button type="button" aria-label="收藏商品" className="favorite-action"><Heart size={19} /></button>
+            <button type="button" aria-label={isFavorite ? "已收藏" : "收藏商品"} aria-pressed={isFavorite} className={`favorite-action${isFavorite ? " is-active" : ""}`} disabled={favoriteBusy} onClick={() => void toggleFavorite()}><Heart size={19} fill={isFavorite ? "currentColor" : "none"} /></button>
             <button type="button" disabled={!purchasable} onClick={() => selectedSku && onAction(buildAddToCartAction(selectedSku, 1))}><ShoppingCart size={18} />加入购物袋</button>
             <button type="button" className="buy-action" disabled={!purchasable} onClick={() => selectedSku && onAction(buildBuyNowAction(selectedSku, 1))}><ShoppingBag size={18} />立即购买</button>
           </div>

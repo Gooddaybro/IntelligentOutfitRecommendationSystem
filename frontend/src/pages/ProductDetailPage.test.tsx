@@ -28,4 +28,16 @@ describe("ProductDetailPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "加入购物袋" }));
     expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ kind: "ADD_TO_CART", skuId: 2001 }));
   });
+
+  it("收藏按钮写入收藏并反馈状态", async () => {
+    vi.spyOn(api, "productDetail").mockResolvedValue({ spuId: 1001, spuCode: "PUFFER", name: "轻量通勤羽绒服", categoryName: "外套", minPrice: 699, maxPrice: 699 });
+    vi.spyOn(api, "recommendationCandidates").mockResolvedValue([]);
+    vi.spyOn(api, "favorites").mockResolvedValue([]);
+    const add = vi.spyOn(api, "addFavorite").mockResolvedValue([]);
+    render(<MemoryRouter initialEntries={["/app/products/1001"]}><Routes><Route path="/app/products/:spuId" element={<ProductDetailPage onAction={vi.fn()} />} /></Routes></MemoryRouter>);
+    const button = await screen.findByRole("button", { name: "收藏商品" });
+    fireEvent.click(button);
+    await screen.findByRole("button", { name: "已收藏" });
+    expect(add).toHaveBeenCalledWith(1001);
+  });
 });
