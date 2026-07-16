@@ -141,6 +141,26 @@ export type CartItem = {
   availableStock?: number;
 };
 
+export type Address = {
+  id: number;
+  recipientName: string;
+  phone: string;
+  province: string;
+  city: string;
+  district: string;
+  detail: string;
+  isDefault?: boolean;
+};
+
+export type CheckoutPreview = {
+  items: CartItem[];
+  merchandiseAmount: number;
+  shippingAmount: number;
+  discountAmount: number;
+  payableAmount: number;
+  invalidReasons: string[];
+};
+
 export type OrderItemResponse = {
   skuId: number;
   spuId: number;
@@ -165,6 +185,8 @@ export type OrderResponse = {
   paidAt?: string | null;
   closedAt?: string | null;
   closeReason?: string | null;
+  address?: Address;
+  shipment?: { carrier: string; trackingNo: string; latestEvent: string };
 };
 
 export type PaymentResponse = {
