@@ -20,6 +20,11 @@ import { PaymentResultPage } from "../pages/PaymentResultPage";
 import { ProductBrowsePage } from "../pages/ProductBrowsePage";
 import { ProductDetailPage } from "../pages/ProductDetailPage";
 import { ProfilePreferencesPage } from "../pages/ProfilePreferencesPage";
+import { ProfileCenterPage } from "../pages/ProfileCenterPage";
+import { ProfileAccountPage } from "../pages/ProfileAccountPage";
+import { AddressBookPage } from "../pages/AddressBookPage";
+import { FavoritesPage } from "../pages/FavoritesPage";
+import { AccountSecurityPage } from "../pages/AccountSecurityPage";
 import { AdminShell } from "./AdminShell";
 import { CustomerShell } from "./CustomerShell";
 
@@ -129,7 +134,14 @@ export function App() {
           <Route path="payments/:orderNo" element={<PaymentResultPage />} />
           <Route path="orders" element={<OrdersPage />} />
           <Route path="orders/:orderNo" element={<OrderDetailPage />} />
-          <Route path="profile/*" element={<ProfilePreferencesPage />} />
+          <Route path="profile" element={<ProfileCenterPage />}>
+            <Route index element={<Navigate to="account" replace />} />
+            <Route path="account" element={<ProfileAccountPage />} />
+            <Route path="wardrobe" element={<ProfilePreferencesPage />} />
+            <Route path="favorites" element={<FavoritesPage />} />
+            <Route path="addresses" element={<AddressBookPage />} />
+            <Route path="security" element={<AccountSecurityPage />} />
+          </Route>
         </Route>
         <Route
           path="/admin"

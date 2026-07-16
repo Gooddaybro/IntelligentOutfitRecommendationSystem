@@ -28,6 +28,7 @@ const catalog: RecommendationCandidate[] = [
 let cartItems: CartItem[] = [];
 let orders: OrderResponse[] = [];
 let addressBook: Address[] = [{ id: 1, recipientName: "林木", phone: "138****2026", province: "浙江省", city: "杭州市", district: "西湖区", detail: "文一路 88 号", isDefault: true }];
+let favoriteSpuIds = new Set<number>([1002]);
 let profile: UserProfileResponse = { userId: 1, nickname: "林木", avatarUrl: null, gender: null, birthday: null };
 let bodyData: UserBodyDataResponse = { userId: 1 };
 let preferences: UserPreferencesResponse = { userId: 1, preferredStyles: ["自然", "通勤"], preferredColors: ["米白", "鼠尾草绿"], dislikedColors: [], preferredCategories: ["外套"], budgetMin: 200, budgetMax: 800 };
@@ -59,6 +60,7 @@ export function resetMockApi() {
   cartItems = [];
   orders = [];
   addressBook = [{ id: 1, recipientName: "林木", phone: "138****2026", province: "浙江省", city: "杭州市", district: "西湖区", detail: "文一路 88 号", isDefault: true }];
+  favoriteSpuIds = new Set([1002]);
 }
 
 export const mockApi = {
@@ -96,6 +98,9 @@ export const mockApi = {
     return [...addressBook];
   },
   removeAddress: async (id: number) => (addressBook = addressBook.filter((item) => item.id !== id)),
+  favorites: async () => Array.from(new Map(catalog.filter((item) => favoriteSpuIds.has(item.spuId)).map((item) => [item.spuId, item])).values()),
+  addFavorite: async (spuId: number) => { favoriteSpuIds.add(spuId); return Array.from(new Map(catalog.filter((item) => favoriteSpuIds.has(item.spuId)).map((item) => [item.spuId, item])).values()); },
+  removeFavorite: async (spuId: number) => { favoriteSpuIds.delete(spuId); return Array.from(new Map(catalog.filter((item) => favoriteSpuIds.has(item.spuId)).map((item) => [item.spuId, item])).values()); },
   checkoutPreview: async (skuIds: number[], _addressId?: number): Promise<CheckoutPreview> => {
     const items = cartItems.filter((item) => skuIds.includes(item.skuId));
     const invalidReasons = items.flatMap((item) => (item.availableStock ?? 0) < item.quantity ? [`${item.name} 库存不足`] : []);
