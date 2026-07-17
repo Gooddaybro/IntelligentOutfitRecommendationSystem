@@ -1,5 +1,5 @@
 import { getAccessToken } from "./client";
-import type { AssistantChatRequest, DemandIntent, RecommendedItem } from "./types";
+import type { AssistantChatRequest, DemandIntent, RecommendationStatus, RecommendedItem } from "./types";
 
 export type AssistantStreamEvent =
   | { type: "thread"; threadId: string }
@@ -13,6 +13,7 @@ export type AssistantStreamEvent =
       recommendedItems?: RecommendedItem[];
       resolvedIntent?: DemandIntent;
       recommendationId?: string;
+      recommendationStatus?: RecommendationStatus;
     }
   | { type: "error"; message: string };
 
@@ -39,6 +40,10 @@ function normalizeRecommendedItems(payload: unknown): RecommendedItem[] {
       reason?: string;
       rankScore?: number | string;
       rank_score?: number | string;
+      matchedDimensions?: RecommendedItem["matchedDimensions"];
+      matched_dimensions?: Array<{ dimension: string; requested_value: string; candidate_value: string; evidence_source: string }>;
+      outfitRole?: RecommendedItem["outfitRole"];
+      outfit_role?: RecommendedItem["outfitRole"];
     };
     const spuId = raw.spuId ?? raw.spu_id;
     const skuId = raw.skuId ?? raw.sku_id;
@@ -60,6 +65,13 @@ function normalizeRecommendedItems(payload: unknown): RecommendedItem[] {
     if (rankScore !== undefined && rankScore !== null) {
       normalizedItem.rankScore = Number(rankScore);
     }
+    normalizedItem.outfitRole = raw.outfitRole ?? raw.outfit_role;
+    normalizedItem.matchedDimensions = raw.matchedDimensions ?? raw.matched_dimensions?.map((item) => ({
+      dimension: item.dimension,
+      requestedValue: item.requested_value,
+      candidateValue: item.candidate_value,
+      evidenceSource: item.evidence_source
+    }));
     normalized.push(normalizedItem);
   });
 
@@ -125,6 +137,8 @@ export function parseSseEventBlock(block: string): AssistantStreamEvent | null {
       resolved_intent?: DemandIntent;
       recommendationId?: string;
       recommendation_id?: string;
+      recommendationStatus?: RecommendationStatus;
+      recommendation_status?: RecommendationStatus;
     };
     const recommendedItems = normalizeRecommendedItems(donePayload);
     const ids = donePayload.recommendedSpuIds ?? donePayload.recommended_spu_ids ?? recommendedItems.map((item) => item.spuId);
@@ -135,7 +149,8 @@ export function parseSseEventBlock(block: string): AssistantStreamEvent | null {
       spuIds: Array.isArray(ids) ? ids.map(Number) : [],
       recommendedItems,
       resolvedIntent: donePayload.resolvedIntent ?? donePayload.resolved_intent,
-      recommendationId: donePayload.recommendationId ?? donePayload.recommendation_id
+      recommendationId: donePayload.recommendationId ?? donePayload.recommendation_id,
+      recommendationStatus: donePayload.recommendationStatus ?? donePayload.recommendation_status
     };
   }
 

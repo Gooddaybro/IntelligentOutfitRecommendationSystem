@@ -3,7 +3,6 @@ import {
   assistantShoppingReducer,
   initialAssistantShoppingState
 } from "./assistantState";
-import { requestFiltersFromResolvedIntent } from "./ChatPanel";
 
 describe("assistant shopping state", () => {
   it("updates chat fields through reducer transitions", () => {
@@ -29,34 +28,18 @@ describe("assistant shopping state", () => {
     expect(assistantShoppingReducer(withRecommendations, { type: "reset" })).toEqual(initialAssistantShoppingState);
   });
 
-  it("builds recommendation filters from backend resolved intent", () => {
-    expect(
-      requestFiltersFromResolvedIntent({
-        targetGender: "female",
-        category: "半裙",
-        style: ["commute", "minimal"],
-        budgetMax: 500
-      })
-    ).toMatchObject({
-      category: "半裙",
-      style: "commute",
-      budgetMax: 500,
-      gender: "female"
+  it("ignores a completion event from an older request", () => {
+    const loading = assistantShoppingReducer(initialAssistantShoppingState, {
+      type: "recommendationStarted",
+      requestId: "req-new"
     });
-  });
+    const stale = assistantShoppingReducer(loading, {
+      type: "recommendationCompleted",
+      requestId: "req-old",
+      status: "STRONG_MATCH"
+    });
 
-  it("does not reintroduce a gender cleared by the backend snapshot", () => {
-    expect(
-      requestFiltersFromResolvedIntent(
-        { targetGender: undefined, category: "外套" },
-        { gender: "male", category: "半裙", season: "winter" }
-      )
-    ).toEqual({
-      category: "外套",
-      style: undefined,
-      budgetMax: undefined,
-      gender: undefined,
-      season: "winter"
-    });
+    expect(stale.recommendationRequestId).toBe("req-new");
+    expect(stale.recommendationStatus).toBe("LOADING");
   });
 });

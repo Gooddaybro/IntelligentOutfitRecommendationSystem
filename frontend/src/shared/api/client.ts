@@ -6,6 +6,7 @@ import type {
   AuthTokenResponse,
   BehaviorEventRequest,
   BehaviorEventResponse,
+  BodyMeasurementsPatchRequest,
   CartItem,
   CheckoutPreview,
   CurrentUserResponse,
@@ -105,6 +106,11 @@ const httpApi = {
       method: "PUT",
       body: JSON.stringify(request)
     }),
+  updateBodyMeasurements: (request: BodyMeasurementsPatchRequest) =>
+    requestJson<UserBodyDataResponse>("/api/me/body-data/measurements", {
+      method: "PATCH",
+      body: JSON.stringify(request)
+    }),
   preferences: () => requestJson<UserPreferencesResponse>("/api/me/preferences"),
   updatePreferences: (request: UserPreferencesRequest) =>
     requestJson<UserPreferencesResponse>("/api/me/preferences", {
@@ -127,6 +133,8 @@ const httpApi = {
     });
     return requestJson<RecommendationCandidate[]>(`/api/products/recommendation-candidates?${query.toString()}`);
   },
+  recommendationSnapshot: (recommendationId: string) =>
+    requestJson<RecommendationCandidate[]>(`/api/assistant/recommendations/${encodeURIComponent(recommendationId)}/candidates`),
   productDetail: (spuId: number) => requestJson<ProductDetail>(`/api/products/${spuId}`),
   chat: (request: AssistantChatRequest) =>
     requestJson<AssistantChatResponse>("/api/assistant/chat", {
