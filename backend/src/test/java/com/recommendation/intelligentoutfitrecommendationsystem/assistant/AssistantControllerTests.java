@@ -130,6 +130,18 @@ class AssistantControllerTests {
                 recommendationId
         )).isEqualTo(1);
 
+        mockMvc.perform(get("/api/assistant/recommendations/{recommendationId}/candidates", recommendationId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].spuId").value(1002))
+                .andExpect(jsonPath("$.data[0].skuId").value(2101))
+                .andExpect(jsonPath("$.data[0].availableStock").value(org.hamcrest.Matchers.greaterThan(0)));
+
+        String otherAccessToken = registerAndLogin(nextUsername());
+        mockMvc.perform(get("/api/assistant/recommendations/{recommendationId}/candidates", recommendationId)
+                        .header("Authorization", "Bearer " + otherAccessToken))
+                .andExpect(status().isNotFound());
+
         mockMvc.perform(get("/api/conversations/{threadId}/messages", threadId)
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())

@@ -148,13 +148,13 @@ RecommendationDecision decide(DemandIntent intent,
 - Test: `backend/src/test/java/.../behavior/RecommendationAttributionServiceTests.java`
 - Test: `backend/src/test/java/.../assistant/AssistantControllerTests.java`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 验证 `candidate_position`、用户所有权、已选排序优先、弱候选仍可读取、其他用户返回 404/403、实时下架商品不可购买。
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
-- [ ] **Step 3: 实现接口**
+- [x] **Step 3: 实现接口**
 
 ```http
 GET /api/assistant/recommendations/{recommendationId}/candidates
@@ -162,9 +162,9 @@ GET /api/assistant/recommendations/{recommendationId}/candidates
 
 接口只按快照 SKU 恢复商品，不重新构造筛选条件。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
-- [ ] **Step 5: 中文提交**
+- [x] **Step 5: 中文提交**
 
 ```text
 后端：提供推荐候选快照读取接口
