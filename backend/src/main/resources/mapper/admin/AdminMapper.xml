@@ -30,7 +30,7 @@
     <select id="countAfterSaleOrders" resultType="long">
         SELECT COUNT(*)
         FROM after_sale_request
-        WHERE status IN ('PENDING', 'APPROVED')
+        WHERE status IN ('REQUESTED', 'PENDING', 'APPROVED')
     </select>
 
     <select id="countOrders" resultType="long">
@@ -41,7 +41,7 @@
     <select id="sumPaidAmount" resultType="java.math.BigDecimal">
         SELECT COALESCE(SUM(total_amount), 0)
         FROM sales_order
-        WHERE status IN ('PAID', 'COMPLETED')
+        WHERE status IN ('PAID', 'SHIPPED', 'COMPLETED')
     </select>
 
     <sql id="adminProductColumns">
