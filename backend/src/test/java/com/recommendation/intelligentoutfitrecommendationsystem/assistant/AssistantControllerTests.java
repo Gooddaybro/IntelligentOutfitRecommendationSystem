@@ -6,6 +6,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client.PythonAssistantStreamClient;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonProductRef;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.MatchedDimension;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ExternalServiceException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -107,6 +108,7 @@ class AssistantControllerTests {
                 .andExpect(jsonPath("$.data.recommendedItems[0].spuId").value(1002))
                 .andExpect(jsonPath("$.data.recommendedItems[0].skuId").value(2101))
                 .andExpect(jsonPath("$.data.recommendedItems[0].reason").value("fits the requested commute style"))
+                .andExpect(jsonPath("$.data.recommendationStatus").value("STRONG_MATCH"))
                 .andExpect(jsonPath("$.data.recommendationId").value(org.hamcrest.Matchers.startsWith("rec_")))
                 .andExpect(jsonPath("$.data.resolvedIntent.category").value("外套"))
                 .andExpect(jsonPath("$.data.resolvedIntent.budgetMax").value(800))
@@ -174,6 +176,7 @@ class AssistantControllerTests {
                 .contains("\"recommended_spu_ids\":[1002]")
                 .contains("\"recommended_items\"")
                 .contains("\"resolved_intent\"")
+                .contains("\"recommendation_status\":\"STRONG_MATCH\"")
                 .contains("\"recommendation_id\":\"rec_")
                 .contains("fits the requested commute style")
                 .doesNotContain("9999");
@@ -291,8 +294,8 @@ class AssistantControllerTests {
                         "A structured jacket is a good match.",
                         "recommendation",
                         List.of(
-                                new PythonProductRef(9999L, 8888L, "hallucinated product must be ignored", null),
-                                new PythonProductRef(1002L, 2101L, "fits the requested commute style", null)
+                                ref(9999L, 8888L, "hallucinated product must be ignored"),
+                                ref(1002L, 2101L, "fits the requested commute style")
                         )
                 );
             };
@@ -313,11 +316,19 @@ class AssistantControllerTests {
                         "A structured jacket is a good match.",
                         "recommendation",
                         List.of(
-                                new PythonProductRef(9999L, 8888L, "hallucinated product must be ignored", null),
-                                new PythonProductRef(1002L, 2101L, "fits the requested commute style", null)
+                                ref(9999L, 8888L, "hallucinated product must be ignored"),
+                                ref(1002L, 2101L, "fits the requested commute style")
                         )
                 ));
             };
+        }
+
+        private static PythonProductRef ref(Long spuId, Long skuId, String reason) {
+            return new PythonProductRef(
+                    spuId, skuId, reason, null,
+                    List.of(new MatchedDimension(
+                            "style", "commute", "commute", "PRODUCT_STYLE_TAG"))
+            );
         }
     }
 }

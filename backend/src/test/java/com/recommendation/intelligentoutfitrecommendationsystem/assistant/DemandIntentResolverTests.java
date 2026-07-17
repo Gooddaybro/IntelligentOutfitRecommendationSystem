@@ -75,6 +75,17 @@ class DemandIntentResolverTests {
         assertThat(sizeOnly.requestedCapabilities()).containsExactly("SIZE_GUIDANCE");
     }
 
+    @Test
+    void keepsAnExplicitFilterSeasonInTheUnifiedDemand() {
+        AssistantChatRequest request = new AssistantChatRequest(
+                null, "recommend a jacket", null, null, "autumn", null, null, null, null
+        );
+
+        DemandIntentPatch patch = resolver.resolvePatch(request);
+
+        assertThat(patch.season()).isEqualTo("autumn");
+    }
+
     private AssistantChatRequest request(String message) {
         return new AssistantChatRequest(null, message, null, null, null, null, null, null, null);
     }

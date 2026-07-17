@@ -16,6 +16,7 @@ import java.util.List;
  * @param candidatesCount 本轮 Java 提供给 Python 的候选商品数量
  * @param intent Python 识别出的用户意图
  * @param resolvedIntent Java 统一解析出的筛选意图
+ * @param recommendationStatus Java 核验后的最终推荐状态
  * @param recommendationId Java 已持久化的推荐快照 ID，供后续交互和交易归因
  */
 public record AssistantStreamDoneEvent(
@@ -26,6 +27,7 @@ public record AssistantStreamDoneEvent(
         @JsonProperty("candidates_count") int candidatesCount,
         String intent,
         @JsonProperty("resolved_intent") DemandIntent resolvedIntent,
+        @JsonProperty("recommendation_status") String recommendationStatus,
         @JsonProperty("recommendation_id") String recommendationId
 ) {
     public AssistantStreamDoneEvent(
@@ -35,9 +37,11 @@ public record AssistantStreamDoneEvent(
             List<AssistantRecommendationItem> recommendedItems,
             int candidatesCount,
             String intent,
-            DemandIntent resolvedIntent
+            DemandIntent resolvedIntent,
+            String recommendationStatus
     ) {
-        this(threadId, answer, recommendedSpuIds, recommendedItems, candidatesCount, intent, resolvedIntent, null);
+        this(threadId, answer, recommendedSpuIds, recommendedItems, candidatesCount, intent,
+                resolvedIntent, recommendationStatus, null);
     }
 
     public AssistantStreamDoneEvent(
@@ -48,6 +52,7 @@ public record AssistantStreamDoneEvent(
             int candidatesCount,
             String intent
     ) {
-        this(threadId, answer, recommendedSpuIds, recommendedItems, candidatesCount, intent, null, null);
+        this(threadId, answer, recommendedSpuIds, recommendedItems, candidatesCount, intent, null,
+                recommendedItems == null || recommendedItems.isEmpty() ? "WEAK_FALLBACK" : "STRONG_MATCH", null);
     }
 }

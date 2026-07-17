@@ -97,7 +97,7 @@ public class DemandIntentResolver {
                 targetGender,
                 clearGender,
                 category,
-                resolveSeason(rawQuery),
+                resolveRequestSeason(request, rawQuery),
                 scene,
                 resolveStyle(request, rawQuery, scene),
                 resolveFitPreferences(rawQuery),
@@ -379,6 +379,24 @@ public class DemandIntentResolver {
             return "winter";
         }
         return null;
+    }
+
+    private String resolveRequestSeason(AssistantChatRequest request, String message) {
+        String explicit = normalizeSeason(request == null ? null : request.season());
+        return explicit == null ? resolveSeason(message) : explicit;
+    }
+
+    private String normalizeSeason(String season) {
+        if (!hasText(season)) {
+            return null;
+        }
+        return switch (season.trim().toLowerCase(Locale.ROOT)) {
+            case "spring", "春", "春季", "春天" -> "spring";
+            case "summer", "夏", "夏季", "夏天" -> "summer";
+            case "autumn", "fall", "秋", "秋季", "秋天" -> "autumn";
+            case "winter", "冬", "冬季", "冬天" -> "winter";
+            default -> null;
+        };
     }
 
     private List<String> resolveFitPreferences(String message) {

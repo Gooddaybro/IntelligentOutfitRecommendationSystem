@@ -15,8 +15,8 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.Py
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonProductCandidate;
-import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonProductRef;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonUserContext;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.RecommendationDecision;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.dto.BehaviorSummaryResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.RecommendationAttributionService;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.RecommendationRecordCommand;
@@ -37,10 +37,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -65,6 +63,7 @@ public class AssistantService {
     private final RecommendationAttributionService recommendationAttributionService;
     private final Executor assistantStreamingExecutor;
     private final long streamTimeoutMs;
+    private final RecommendationDecisionService recommendationDecisionService = new RecommendationDecisionService();
 
     public AssistantService(
             ConversationApplicationService conversationService,
@@ -102,8 +101,10 @@ public class AssistantService {
         if (hasText(context.clarificationQuestion())) {
             String answer = context.clarificationQuestion();
             conversationService.appendMessage(userId, threadId, "assistant", answer, requestId);
+            RecommendationDecision decision = recommendationDecisionService.decide(
+                    context.demandIntent(), context.candidates(), List.of());
             return new AssistantChatResponse(threadId, answer, List.of(), List.of(),
-                    context.candidates().size(), context.demandIntent(), null);
+                    context.candidates().size(), context.demandIntent(), decision.recommendationStatus(), null);
         }
         PythonChatRequest pythonRequest = toPythonRequest(userId, threadId, request, context);
         PythonChatResponse pythonResponse = callPythonOrFallback(pythonRequest);
@@ -111,7 +112,10 @@ public class AssistantService {
         String answer = requireAnswer(pythonResponse);
         conversationService.appendMessage(userId, threadId, "assistant", answer, requestId);
 
-        List<AssistantRecommendationItem> recommendedItems = toRecommendedItems(pythonResponse.productRefs(), context.candidates());
+        RecommendationDecision decision = recommendationDecisionService.decide(
+                context.demandIntent(), context.candidates(), pythonResponse.productRefs());
+        metrics.recordAiDiscardedReferences(decision.discardedReferences());
+        List<AssistantRecommendationItem> recommendedItems = decision.recommendedItems();
         String recommendationId = recordRecommendation(
                 userId, requestId, threadId, "sync", context, recommendedItems);
         return new AssistantChatResponse(
@@ -121,6 +125,7 @@ public class AssistantService {
                 recommendedItems,
                 context.candidates().size(),
                 context.demandIntent(),
+                decision.recommendationStatus(),
                 recommendationId
         );
     }
@@ -153,10 +158,12 @@ public class AssistantService {
         if (hasText(context.clarificationQuestion())) {
             String answer = context.clarificationQuestion();
             conversationService.appendMessage(userId, threadId, "assistant", answer, requestId);
+            RecommendationDecision decision = recommendationDecisionService.decide(
+                    context.demandIntent(), context.candidates(), List.of());
             sendEvent(emitter, active, "token", new AssistantStreamTokenEvent(answer));
             sendEvent(emitter, active, "done", new AssistantStreamDoneEvent(
                     threadId, answer, List.of(), List.of(), context.candidates().size(),
-                    "demand_clarification", context.demandIntent(), null));
+                    "demand_clarification", context.demandIntent(), decision.recommendationStatus(), null));
             emitter.complete();
             return emitter;
         }
@@ -324,28 +331,6 @@ public class AssistantService {
         return pythonResponse.answer();
     }
 
-    private List<AssistantRecommendationItem> toRecommendedItems(
-            List<PythonProductRef> productRefs,
-            List<RecommendationCandidate> candidates
-    ) {
-        if (productRefs == null || productRefs.isEmpty()) {
-            return List.of();
-        }
-        Set<String> seen = new LinkedHashSet<>();
-        List<AssistantRecommendationItem> recommendedItems = productRefs.stream()
-                .filter(ref -> isKnownCandidateRef(ref, candidates))
-                .filter(ref -> seen.add(ref.spuId() + ":" + ref.skuId()))
-                .map(ref -> new AssistantRecommendationItem(
-                        ref.spuId(),
-                        ref.skuId(),
-                        normalizeRecommendationReason(ref.reason()),
-                        ref.rankScore()
-                ))
-                .toList();
-        metrics.recordAiDiscardedReferences(productRefs.size() - recommendedItems.size());
-        return recommendedItems;
-    }
-
     private List<Long> toRecommendedSpuIds(List<AssistantRecommendationItem> recommendedItems) {
         if (recommendedItems == null || recommendedItems.isEmpty()) {
             return List.of();
@@ -374,22 +359,6 @@ public class AssistantService {
                 .toList();
         return recommendationAttributionService.record(new RecommendationRecordCommand(
                 userId, requestId, threadId, mode, candidates, selectedItems));
-    }
-
-    private String normalizeRecommendationReason(String reason) {
-        if (reason == null || reason.isBlank()) {
-            return "符合本轮 Java 候选商品条件。";
-        }
-        return reason.trim();
-    }
-
-    private boolean isKnownCandidateRef(PythonProductRef ref, List<RecommendationCandidate> candidates) {
-        if (ref == null || ref.spuId() == null || ref.skuId() == null || candidates == null || candidates.isEmpty()) {
-            return false;
-        }
-        return candidates.stream()
-                .anyMatch(candidate -> ref.spuId().equals(candidate.getSpuId())
-                        && ref.skuId().equals(candidate.getSkuId()));
     }
 
     private String titleFrom(String message) {
@@ -471,7 +440,10 @@ public class AssistantService {
                 return;
             }
             conversationService.appendMessage(userId, threadId, "assistant", answer, requestId);
-            List<AssistantRecommendationItem> recommendedItems = toRecommendedItems(response.productRefs(), context.candidates());
+            RecommendationDecision decision = recommendationDecisionService.decide(
+                    context.demandIntent(), context.candidates(), response.productRefs());
+            metrics.recordAiDiscardedReferences(decision.discardedReferences());
+            List<AssistantRecommendationItem> recommendedItems = decision.recommendedItems();
             String recommendationId = recordRecommendation(
                     userId, requestId, threadId, "stream", context, recommendedItems);
             AssistantStreamDoneEvent done = new AssistantStreamDoneEvent(
@@ -482,6 +454,7 @@ public class AssistantService {
                     context.candidates().size(),
                     response.intent(),
                     context.demandIntent(),
+                    decision.recommendationStatus(),
                     recommendationId
             );
             if (sendEvent(emitter, active, "done", done)) {

@@ -6,6 +6,8 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantChatResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantContext;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntent;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.MatchedDimension;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonProductRef;
@@ -140,7 +142,8 @@ class AssistantServiceTests {
                         "JACKET-COMMUTE-BLK-L",
                         8,
                         "场景:通勤,风格:百搭,厚度:轻薄,搭配难度:好搭"
-                ))
+                )),
+                demandIntent("外套", "autumn", List.of("commute"))
         );
         MDC.put("requestId", "req-ai-service-test");
 
@@ -151,7 +154,11 @@ class AssistantServiceTests {
                         "req-ai-service-test",
                         "A wool blend jacket fits this request.",
                         "recommendation",
-                        List.of(new PythonProductRef(1001L, 2001L, "fits the requested commute style", null))
+                        List.of(new PythonProductRef(
+                                1001L, 2001L, "fits the requested commute style", null,
+                                List.of(new MatchedDimension(
+                                        "style", "commute", "commute", "PRODUCT_STYLE_TAG"))
+                        ))
                 ));
         when(recommendationAttributionService.record(any())).thenReturn("rec_sync_test");
 
@@ -161,6 +168,7 @@ class AssistantServiceTests {
         assertThat(response.answer()).contains("wool blend jacket");
         assertThat(response.recommendedSpuIds()).containsExactly(1001L);
         assertThat(response.recommendationId()).isEqualTo("rec_sync_test");
+        assertThat(response.recommendationStatus()).isEqualTo("STRONG_MATCH");
         assertThat(response.recommendedItems())
                 .extracting("spuId", "skuId", "reason")
                 .containsExactly(tuple(1001L, 2001L, "fits the requested commute style"));
@@ -253,7 +261,8 @@ class AssistantServiceTests {
                         "JACKET-COMMUTE-BLK-L",
                         8,
                         "适用场景:通勤"
-                ))
+                )),
+                demandIntent("外套", "autumn", List.of("commute"))
         );
 
         when(assistantContextService.buildContext(10L, "th_existing", request)).thenReturn(context);
@@ -263,18 +272,36 @@ class AssistantServiceTests {
                         "A jacket fits this request.",
                         "recommendation",
                         List.of(
-                                new PythonProductRef(9999L, 8888L, "hallucinated product", null),
-                                new PythonProductRef(1001L, 2001L, "known candidate", null)
+                                new PythonProductRef(
+                                        9999L, 8888L, "hallucinated product", null,
+                                        List.of(new MatchedDimension(
+                                                "style", "commute", "commute", "PRODUCT_STYLE_TAG"))
+                                ),
+                                new PythonProductRef(
+                                        1001L, 2001L, "known candidate", null,
+                                        List.of(new MatchedDimension(
+                                                "style", "commute", "commute", "PRODUCT_STYLE_TAG"))
+                                )
                         )
                 ));
 
         AssistantChatResponse response = newAssistantService().chat(10L, request);
 
         assertThat(response.recommendedSpuIds()).containsExactly(1001L);
+        assertThat(response.recommendationStatus()).isEqualTo("STRONG_MATCH");
         verify(assistantRateLimitService).assertAllowed(10L);
         assertThat(response.recommendedItems())
                 .extracting("spuId", "skuId", "reason")
                 .containsExactly(tuple(1001L, 2001L, "known candidate"));
+    }
+
+    private DemandIntent demandIntent(String category, String season, List<String> style) {
+        return new DemandIntent(
+                DemandIntent.VERSION, DemandIntent.SOURCE_JAVA_RULE, "test", "PRODUCT_RECOMMENDATION",
+                List.of("PRODUCT_SELECTION"), null, category, season, List.of(), style, List.of(),
+                null, List.of(), null, List.of("category", "season"), List.of("style"),
+                new BigDecimal("0.80"), List.of()
+        );
     }
 
     @Test

@@ -113,13 +113,13 @@ Run: `backend\mvnw.cmd -f backend\pom.xml -Dtest=DemandIntentResolverTests,Deman
 - Test: `backend/src/test/java/.../assistant/RecommendationDecisionServiceTests.java`
 - Test: `backend/src/test/java/.../assistant/OutfitRoleResolverTests.java`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 验证只有库存分的引用降级为 `WEAK_FALLBACK`，季节/风格证据经 Java 候选事实复核后才成为 `STRONG_MATCH`，非法证据被拒绝，分类角色由 Java 生成。
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
-- [ ] **Step 3: 实现深模块接口**
+- [x] **Step 3: 实现深模块接口**
 
 ```java
 RecommendationDecision decide(DemandIntent intent,
@@ -129,9 +129,9 @@ RecommendationDecision decide(DemandIntent intent,
 
 模块内部完成商品身份、证据、状态和角色处理；同步与流式调用同一接口。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
-- [ ] **Step 5: 中文提交**
+- [x] **Step 5: 中文提交**
 
 ```text
 后端：统一强匹配判定与穿搭角色
