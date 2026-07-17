@@ -6,6 +6,8 @@ import com.recommendation.intelligentoutfitrecommendationsystem.user.model.UserP
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.math.BigDecimal;
+
 /**
  * 用户画像数据访问入口，维护基础资料、身体数据和穿衣偏好的持久化边界。
  */
@@ -23,6 +25,12 @@ public interface UserProfileMapper {
     void insertBodyData(UserBodyData bodyData);
 
     void updateBodyData(UserBodyData bodyData);
+
+    void updateBodyMeasurements(
+            @Param("userId") Long userId,
+            @Param("heightCm") BigDecimal heightCm,
+            @Param("weightKg") BigDecimal weightKg
+    );
 
     UserPreferences findPreferencesByUserId(@Param("userId") Long userId);
 

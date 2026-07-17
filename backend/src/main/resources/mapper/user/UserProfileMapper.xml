@@ -103,6 +103,14 @@
         WHERE user_id = #{userId}
     </update>
 
+    <update id="updateBodyMeasurements">
+        UPDATE user_body_data
+        SET height_cm = COALESCE(#{heightCm}, height_cm),
+            weight_kg = COALESCE(#{weightKg}, weight_kg),
+            updated_at = CURRENT_TIMESTAMP(6)
+        WHERE user_id = #{userId}
+    </update>
+
     <select id="findPreferencesByUserId" resultType="com.recommendation.intelligentoutfitrecommendationsystem.user.model.UserPreferences">
         SELECT
             id,

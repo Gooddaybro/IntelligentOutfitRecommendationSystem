@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -68,6 +69,7 @@ class UserProfileControllerTests {
                                 {
                                   "heightCm": 178.5,
                                   "weightKg": 70.2,
+                                  "gender": "male",
                                   "shoulderWidthCm": 45.0,
                                   "bustCm": 96.0,
                                   "waistCm": 80.0,
@@ -79,11 +81,36 @@ class UserProfileControllerTests {
                 .andExpect(jsonPath("$.data.heightCm").value(178.5))
                 .andExpect(jsonPath("$.data.preferredFit").value("regular"));
 
+        mockMvc.perform(patch("/api/me/body-data/measurements")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "heightCm": 177,
+                                  "weightKg": 65
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.heightCm").value(177))
+                .andExpect(jsonPath("$.data.weightKg").value(65))
+                .andExpect(jsonPath("$.data.gender").value("male"))
+                .andExpect(jsonPath("$.data.shoulderWidthCm").value(45.0))
+                .andExpect(jsonPath("$.data.waistCm").value(80.0))
+                .andExpect(jsonPath("$.data.preferredFit").value("regular"));
+
         mockMvc.perform(get("/api/me/body-data")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.shoulderWidthCm").value(45.0))
                 .andExpect(jsonPath("$.data.waistCm").value(80.0));
+
+        mockMvc.perform(patch("/api/me/body-data/measurements")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"heightCm": 20, "weightKg": 65}
+                                """))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

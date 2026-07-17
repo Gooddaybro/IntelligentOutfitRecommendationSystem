@@ -179,13 +179,13 @@ GET /api/assistant/recommendations/{recommendationId}/candidates
 - Modify: `backend/src/main/resources/mapper/user/UserProfileMapper.xml`
 - Test: `backend/src/test/java/.../user/UserProfileServiceTests.java`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 验证 PATCH 只修改身高体重，保留性别、肩宽、胸围、腰围、臀围和版型；重复提交幂等；非法范围返回 400。
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
-- [ ] **Step 3: 实现窄字段接口**
+- [x] **Step 3: 实现窄字段接口**
 
 ```http
 PATCH /api/me/body-data/measurements
@@ -194,9 +194,9 @@ Content-Type: application/json
 {"heightCm":177,"weightKg":65}
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
-- [ ] **Step 5: 中文提交**
+- [x] **Step 5: 中文提交**
 
 ```text
 后端：支持安全保存身高体重
