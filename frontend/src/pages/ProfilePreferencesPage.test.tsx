@@ -10,6 +10,7 @@ vi.mock("../shared/api/client", () => ({
     preferences: vi.fn(),
     updateProfile: vi.fn(),
     updateBodyData: vi.fn(),
+    updateBodyMeasurements: vi.fn(),
     updatePreferences: vi.fn()
   }
 }));
@@ -48,6 +49,10 @@ describe("ProfilePreferencesPage", () => {
     });
     mockedApi.updateProfile.mockImplementation(async (request) => ({ userId: 1001, ...request }));
     mockedApi.updateBodyData.mockImplementation(async (request) => ({ userId: 1001, ...request }));
+    mockedApi.updateBodyMeasurements.mockImplementation(async (request) => ({
+      ...(await mockedApi.bodyData()),
+      ...request
+    }));
     mockedApi.updatePreferences.mockImplementation(async (request) => ({ userId: 1001, ...request }));
   });
 
@@ -84,17 +89,20 @@ describe("ProfilePreferencesPage", () => {
     fireEvent.click(screen.getByTestId("body-save"));
 
     await waitFor(() =>
-      expect(mockedApi.updateBodyData).toHaveBeenCalledWith({
+      expect(mockedApi.updateBodyMeasurements).toHaveBeenCalledWith({
         heightCm: 180,
-        weightKg: 68,
-        gender: "male",
-        shoulderWidthCm: 44,
-        bustCm: 92,
-        waistCm: 76,
-        hipCm: 90,
-        preferredFit: "loose"
+        weightKg: 68
       })
     );
+    expect(mockedApi.updateBodyData).not.toHaveBeenCalled();
+  });
+
+  it("uses labelled native dark controls for gender and birthday", async () => {
+    render(<ProfilePreferencesPage />);
+    await screen.findByDisplayValue("Alex");
+
+    expect(screen.getByTestId("profile-gender")).toHaveAttribute("data-native-dark-control", "true");
+    expect(screen.getByTestId("profile-birthday")).toHaveAttribute("data-native-dark-control", "true");
   });
 
   it("normalizes comma separated preference lists before saving", async () => {

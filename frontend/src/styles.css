@@ -1070,3 +1070,33 @@ p {
     width: 100%;
   }
 }
+select[data-native-dark-control="true"],
+input[type="date"][data-native-dark-control="true"] {
+  color-scheme: dark;
+  color: #f7f7fb;
+  background: #151a29;
+  border: 1px solid #59627a;
+}
+
+select[data-native-dark-control="true"] option {
+  color: #f7f7fb;
+  background: #151a29;
+}
+
+.measurement-save-card {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.85rem;
+  border: 1px solid #59627a;
+  border-radius: 0.8rem;
+  background: #151a29;
+}
+
+.outfit-groups {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.outfit-group > h3 {
+  margin-bottom: 0.65rem;
+}

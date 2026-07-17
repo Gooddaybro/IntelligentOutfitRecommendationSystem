@@ -233,7 +233,10 @@ export function ProfilePreferencesPage() {
         preferredFit: nullableText(bodyForm.preferredFit)
       };
       setSavingSection("body");
-      setBodyForm(bodyToForm(await api.updateBodyData(request)));
+      setBodyForm(bodyToForm(await api.updateBodyMeasurements({
+        heightCm: request.heightCm,
+        weightKg: request.weightKg
+      })));
       setNotice("身体数据已保存");
     } catch (saveError) {
       setError(errorMessage(saveError, "身体数据保存失败"));
@@ -343,6 +346,7 @@ export function ProfilePreferencesPage() {
                 <span>性别</span>
                 <select
                   data-testid="profile-gender"
+                  data-native-dark-control="true"
                   value={profileForm.gender}
                   onChange={(event) => updateProfileField("gender", event.target.value)}
                 >
@@ -355,6 +359,7 @@ export function ProfilePreferencesPage() {
                 <span>生日</span>
                 <input
                   data-testid="profile-birthday"
+                  data-native-dark-control="true"
                   type="date"
                   value={profileForm.birthday}
                   onChange={(event) => updateProfileField("birthday", event.target.value)}

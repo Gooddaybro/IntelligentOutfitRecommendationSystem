@@ -2,7 +2,7 @@ import { Send, SlidersHorizontal, Square } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { api } from "../../shared/api/client";
 import { streamAssistantChat } from "../../shared/api/assistantStream";
-import type { AssistantChatRequest, DemandIntent, RecommendationCandidate, RecommendedItem } from "../../shared/api/types";
+import type { AssistantChatRequest, DemandIntent, RecommendationCandidate, RecommendationStatus, RecommendedItem } from "../../shared/api/types";
 import type { Dispatch, FormEvent, MutableRefObject, SetStateAction } from "react";
 
 export type ChatMessage = {
@@ -38,6 +38,8 @@ export type RecommendationResultMeta = {
   hasStrongMatch: boolean;
   recommendedItems?: RecommendedItem[];
   recommendationId?: string;
+  recommendationStatus?: RecommendationStatus;
+  resolvedIntent?: DemandIntent;
 };
 
 export const initialChatMessages: ChatMessage[] = [
@@ -78,7 +80,9 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
   const [internalIsStreaming, setInternalIsStreaming] = useState(false);
   const [internalError, setInternalError] = useState("");
   const [resolvedIntent, setResolvedIntent] = useState<DemandIntent | undefined>();
+  const [measurementNotice, setMeasurementNotice] = useState("");
   const internalAbortRef = useRef<AbortController | null>(null);
+  const requestSequenceRef = useRef(0);
 
   const messages = state?.messages ?? internalMessages;
   const setMessages = state?.setMessages ?? setInternalMessages;
@@ -113,6 +117,10 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
     resolvedIntent?.targetGender && `目标性别：${resolvedIntent.targetGender}`,
     resolvedIntent?.category && `解析分类：${resolvedIntent.category}`,
     resolvedIntent?.style?.length && `解析风格：${resolvedIntent.style.join(" / ")}`,
+    resolvedIntent?.season && `解析季节：${resolvedIntent.season}`,
+    resolvedIntent?.fitPreferences?.length && `解析版型：${resolvedIntent.fitPreferences.join(" / ")}`,
+    resolvedIntent?.subjectMeasurements?.heightCm && `咨询对象身高：${resolvedIntent.subjectMeasurements.heightCm} cm`,
+    resolvedIntent?.subjectMeasurements?.weightKg && `咨询对象体重：${resolvedIntent.subjectMeasurements.weightKg} kg`,
     resolvedIntent?.budgetMax && `解析预算：￥${resolvedIntent.budgetMax} 以内`
   ].filter(Boolean);
   const latestUserMessage = [...messages].reverse().find((message) => message.role === "user")?.content;
@@ -169,23 +177,44 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
     return {
       ...candidate,
       recommendationReason: matched.reason,
-      rankScore: matched.rankScore
+      rankScore: matched.rankScore,
+      outfitRole: matched.outfitRole
     };
   }
 
   async function updateRecommendations(
     spuIds: number[],
     recommendedItems: RecommendedItem[] = [],
-    effectiveRequestFilters: Partial<AssistantChatRequest> = requestFilters,
-    recommendationId?: string
+    recommendationId?: string,
+    recommendationStatus: RecommendationStatus = "WEAK_FALLBACK",
+    intentSnapshot?: DemandIntent,
+    localRequestId?: number
   ) {
-    const candidates = await api.recommendationCandidates(effectiveRequestFilters);
-    onRecommendations(orderCandidatesByRecommendations(candidates, spuIds, recommendedItems), {
-      hasAiResult: true,
-      hasStrongMatch: spuIds.length > 0 || recommendedItems.length > 0,
-      recommendedItems,
-      recommendationId
-    });
+    try {
+      const candidates = recommendationId
+        ? await api.recommendationSnapshot(recommendationId)
+        : await api.recommendationCandidates(requestFilters);
+      if (localRequestId !== undefined && localRequestId !== requestSequenceRef.current) return;
+      onRecommendations(orderCandidatesByRecommendations(candidates, spuIds, recommendedItems), {
+        hasAiResult: true,
+        hasStrongMatch: recommendationStatus === "STRONG_MATCH",
+        recommendedItems,
+        recommendationId,
+        recommendationStatus,
+        resolvedIntent: intentSnapshot
+      });
+    } catch {
+      if (localRequestId !== undefined && localRequestId !== requestSequenceRef.current) return;
+      setError("候选快照读取失败，请重试");
+      onRecommendations([], {
+        hasAiResult: true,
+        hasStrongMatch: false,
+        recommendedItems: [],
+        recommendationId,
+        recommendationStatus: "ERROR",
+        resolvedIntent: intentSnapshot
+      });
+    }
   }
 
   async function submit(event: FormEvent) {
@@ -201,11 +230,13 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
     setIsStreaming(true);
     abortRef.current = new AbortController();
     const effectiveRequestFilters = requestFilters;
+    const localRequestId = ++requestSequenceRef.current;
 
     try {
       await streamAssistantChat(
         { ...effectiveRequestFilters, threadId, message },
         async (event) => {
+          if (localRequestId !== requestSequenceRef.current) return;
           if (event.type === "thread") {
             setThreadId(event.threadId);
           }
@@ -218,7 +249,7 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
             });
           }
           if (event.type === "recommendation") {
-            await updateRecommendations(event.spuIds, event.recommendedItems, effectiveRequestFilters);
+            return;
           }
           if (event.type === "done") {
             if (event.threadId) {
@@ -236,8 +267,10 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
             await updateRecommendations(
               event.spuIds,
               event.recommendedItems,
-              requestFiltersFromResolvedIntent(event.resolvedIntent, effectiveRequestFilters),
-              event.recommendationId
+              event.recommendationId,
+              event.recommendationStatus ?? "WEAK_FALLBACK",
+              event.resolvedIntent,
+              localRequestId
             );
           }
           if (event.type === "error") {
@@ -269,12 +302,33 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
       await updateRecommendations(
         fallback.recommendedSpuIds,
         fallback.recommendedItems ?? [],
-        requestFiltersFromResolvedIntent(fallback.resolvedIntent, effectiveRequestFilters),
-        fallback.recommendationId
+        fallback.recommendationId,
+        fallback.recommendationStatus ?? "WEAK_FALLBACK",
+        fallback.resolvedIntent,
+        localRequestId
       );
     } finally {
       setIsStreaming(false);
       abortRef.current = null;
+    }
+  }
+
+  async function saveResolvedMeasurements() {
+    const measurements = resolvedIntent?.subjectMeasurements;
+    if (measurements?.subject !== "SELF" || measurements.heightCm === undefined || measurements.weightKg === undefined) return;
+    try {
+      const current = await api.bodyData();
+      if (current.heightCm === measurements.heightCm && current.weightKg === measurements.weightKg) {
+        setMeasurementNotice("个人资料中的身高体重已与本轮一致");
+        return;
+      }
+      const oldValue = `${current.heightCm ?? "未设置"} cm / ${current.weightKg ?? "未设置"} kg`;
+      const newValue = `${measurements.heightCm} cm / ${measurements.weightKg} kg`;
+      if (!window.confirm(`确认更新身体数据？\n原值：${oldValue}\n新值：${newValue}`)) return;
+      await api.updateBodyMeasurements({ heightCm: measurements.heightCm, weightKg: measurements.weightKg });
+      setMeasurementNotice("已保存为我的身体数据");
+    } catch {
+      setMeasurementNotice("保存失败，但不影响本轮穿搭结果");
     }
   }
 
@@ -286,6 +340,19 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
           <h2>当前穿搭线索</h2>
         </div>
       </div>
+      {resolvedIntent?.subjectMeasurements?.subject === "SELF" &&
+        resolvedIntent.subjectMeasurements.heightCm !== undefined &&
+        resolvedIntent.subjectMeasurements.weightKg !== undefined && (
+          <div className="measurement-save-card">
+            <span>
+              本轮采用 {resolvedIntent.subjectMeasurements.heightCm} cm / {resolvedIntent.subjectMeasurements.weightKg} kg
+              {resolvedIntent.subjectMeasurements.normalizedFrom === "ASSUMED_JIN" &&
+                `（约 ${resolvedIntent.subjectMeasurements.weightKg * 2} 斤，已换算）`}
+            </span>
+            <button type="button" onClick={() => void saveResolvedMeasurements()}>保存为我的身体数据</button>
+            {measurementNotice && <span role="status">{measurementNotice}</span>}
+          </div>
+        )}
       <div className="ai-insight ai-insight--noir">
         {activePreferenceItems.length > 0 || resolvedIntentItems.length > 0 || latestUserMessage ? (
           <>
