@@ -42,6 +42,23 @@ class DemandIntentResolverTests {
     }
 
     @Test
+    void resolvesTheApprovedNaturalLanguageAcceptanceCase() {
+        DemandIntentPatch patch = resolver.resolvePatch(request(
+                "你好，我想要轻松一点的，我177 130 夏天的衣服该怎么穿呢？男性"
+        ));
+
+        assertThat(patch.requestType()).isEqualTo("OUTFIT_ADVICE");
+        assertThat(patch.requestedCapabilities()).containsExactly("OUTFIT_PLAN", "PRODUCT_SELECTION");
+        assertThat(patch.targetGender()).isEqualTo("male");
+        assertThat(patch.season()).isEqualTo("summer");
+        assertThat(patch.style()).contains("casual");
+        assertThat(patch.fitPreferences()).contains("relaxed");
+        assertThat(patch.subjectMeasurements().heightCm()).isEqualByComparingTo("177");
+        assertThat(patch.subjectMeasurements().weightKg()).isEqualByComparingTo("65");
+        assertThat(patch.subjectMeasurements().normalizedFrom()).isEqualTo("ASSUMED_JIN");
+    }
+
+    @Test
     void normalizesBareChineseMeasurementPairAndRetainsTheAssumption() {
         DemandIntentPatch patch = resolver.resolvePatch(request("我177 130，夏天怎么穿？"));
 

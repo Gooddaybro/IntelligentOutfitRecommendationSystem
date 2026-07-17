@@ -212,21 +212,21 @@ Content-Type: application/json
 - Test: `tests/test_recommendation_service.py`
 - Test: `tests/test_api.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 覆盖纯问候、问候加穿搭、穿搭加尺码、裸数字只作为辅助信号、v1 兼容路由、无显式匹配证据时 `product_refs=[]`。
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `.venv\Scripts\python.exe -m pytest tests/test_agent_pipeline.py tests/test_recommendation_service.py tests/test_api.py -q`
 
-- [ ] **Step 3: 实现兼容路由和 `matched_dimensions`**
+- [x] **Step 3: 实现兼容路由和 `matched_dimensions`**
 
 排序分继续保留调试用途，但 `product_refs` 只输出具有结构化显式需求证据的候选。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
-- [ ] **Step 5: 中文提交**
+- [x] **Step 5: 中文提交**
 
 ```text
 AI：修复复合穿搭意图与匹配证据
@@ -240,17 +240,17 @@ AI：修复复合穿搭意图与匹配证据
 - Test: `tests/test_agent_pipeline.py`
 - Test: `tests/test_answer_service.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 验证 `OUTFIT_ADVICE` 按需求确认、搭配公式、版型材质颜色、真实商品、可选追问输出；无强匹配仍给穿搭方案，不虚构商品。
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
-- [ ] **Step 3: 实现回答模板与降级回答**
+- [x] **Step 3: 实现回答模板与降级回答**
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
-- [ ] **Step 5: 中文提交**
+- [x] **Step 5: 中文提交**
 
 ```text
 AI：增加整套穿搭回答编排
@@ -270,21 +270,21 @@ AI：增加整套穿搭回答编排
 - Test: `frontend/src/pages/AiShoppingPage.test.tsx`
 - Test: `frontend/src/features/catalog/ProductCard.test.tsx`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 验证状态机、迟到 requestId、快照接口、强/弱/空/错误展示、弱候选无归因、rankScore 不显示百分比、卡片版式不生成 AI 标签。
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `npm test -- --run src/features/assistant/assistantState.test.ts src/pages/AiShoppingPage.test.tsx src/features/catalog/ProductCard.test.tsx`
 
-- [ ] **Step 3: 实现前端状态机和快照消费**
+- [x] **Step 3: 实现前端状态机和快照消费**
 
 对话完成后按 `recommendationId` 获取候选；不再从 `resolvedIntent` 重建查询。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
-- [ ] **Step 5: 中文提交**
+- [x] **Step 5: 中文提交**
 
 ```text
 前端：统一推荐状态与候选快照展示
@@ -300,23 +300,23 @@ Run: `npm test -- --run src/features/assistant/assistantState.test.ts src/pages/
 - Test: `frontend/src/pages/ProfilePreferencesPage.test.tsx`
 - Test: `frontend/src/pages/AiShoppingPage.test.tsx`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 验证角色分组、缺失角色不造商品、`SELF` 保存入口、`OTHER/UNKNOWN` 隐藏、换算提示、PATCH 保存、表单深色控件和可访问标签。
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
-- [ ] **Step 3: 实现方案 A、方案 B 和方案 C**
+- [x] **Step 3: 实现方案 A、方案 B 和方案 C**
 
 保持原生 select/date，使用 `color-scheme: dark`，只调用身高体重 PATCH。
 
-- [ ] **Step 4: 运行测试确认通过并构建**
+- [x] **Step 4: 运行测试确认通过并构建**
 
 Run: `npm test -- --run`
 
 Run: `npm run build`
 
-- [ ] **Step 5: 中文提交**
+- [x] **Step 5: 中文提交**
 
 ```text
 前端：完善穿搭分组与资料输入体验
@@ -327,7 +327,7 @@ Run: `npm run build`
 **Files:**
 - Modify: related regression tests only when a verified defect requires it
 
-- [ ] **Step 1: Java 全量验证**
+- [x] **Step 1: Java 全量验证**
 
 Run: `backend\mvnw.cmd -f backend\pom.xml verify`
 
@@ -335,19 +335,19 @@ Run: `backend\mvnw.cmd -f backend\pom.xml verify`
 
 Run: `.venv\Scripts\python.exe -m pytest -q`
 
-- [ ] **Step 3: 前端全量测试与构建**
+- [x] **Step 3: 前端全量测试与构建**
 
 Run: `npm test -- --run`
 
 Run: `npm run build`
 
-- [ ] **Step 4: 主验收用例**
+- [x] **Step 4: 主验收用例**
 
 输入：`你好，我想要轻松一点的，我177 130，夏天的衣服该怎么穿呢？男性`
 
 检查：`OUTFIT_ADVICE`、`summer`、`casual`、`relaxed`、`177 cm / 65 kg`、换算提示、穿搭回答、候选快照、无矛盾 AI 标签。
 
-- [ ] **Step 5: 最终中文提交**
+- [x] **Step 5: 最终中文提交**
 
 ```text
 测试：补充自然语言穿搭修复回归验证

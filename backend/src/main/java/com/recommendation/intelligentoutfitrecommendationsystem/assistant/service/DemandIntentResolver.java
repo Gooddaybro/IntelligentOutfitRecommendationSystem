@@ -318,7 +318,7 @@ public class DemandIntentResolver {
         if (containsAny(message, STUDENT_SIGNALS)) {
             style.add("casual");
         }
-        if (hasText(message) && message.contains("休闲")) {
+        if (hasText(message) && (message.contains("休闲") || message.contains("轻松"))) {
             style.add("casual");
         }
         return List.copyOf(style);
@@ -400,7 +400,7 @@ public class DemandIntentResolver {
     }
 
     private List<String> resolveFitPreferences(String message) {
-        return containsAny(message, new String[]{"宽松", "略宽松", "宽一点", "oversize"})
+        return containsAny(message, new String[]{"宽松", "略宽松", "宽一点", "轻松一点", "oversize"})
                 ? List.of("relaxed") : List.of();
     }
 
