@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recommendation.intelligentoutfitrecommendationsystem.admin.mapper.AdminMapper">
+
+    <select id="countOnSaleProducts" resultType="long">
+        SELECT COUNT(*)
+        FROM product_spu
+        WHERE status = 'on_sale'
+    </select>
+
+    <select id="countSkus" resultType="long">
+        SELECT COUNT(*)
+        FROM product_sku
+    </select>
+
+    <select id="countLowStockSkus" resultType="long">
+        SELECT COUNT(*)
+        FROM inventory
+        WHERE available_stock &lt;= #{threshold}
+    </select>
+
+    <select id="countPendingShipmentOrders" resultType="long">
+        SELECT COUNT(*)
+        FROM sales_order
+        WHERE status = 'PAID'
+    </select>
+
+    <select id="countAfterSaleOrders" resultType="long">
+        SELECT COUNT(*)
+        FROM after_sale_request
+        WHERE status IN ('PENDING', 'APPROVED')
+    </select>
+
+    <select id="countOrders" resultType="long">
+        SELECT COUNT(*)
+        FROM sales_order
+    </select>
+
+    <select id="sumPaidAmount" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(total_amount), 0)
+        FROM sales_order
+        WHERE status IN ('PAID', 'COMPLETED')
+    </select>
+
+    <sql id="adminProductColumns">
+        p.id AS spu_id,
+        p.spu_code,
+        p.name,
+        p.category_id,
+        c.name AS category_name,
+        p.main_image_url,
+        MIN(s.sale_price) AS min_price,
+        MAX(s.sale_price) AS max_price,
+        COUNT(DISTINCT s.id) AS sku_count,
+        COALESCE(SUM(i.available_stock), 0) AS total_stock,
+        p.status,
+        p.created_at,
+        p.description
+    </sql>
+
+    <select id="findProducts" resultType="com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminProductResponse">
+        SELECT
+        <include refid="adminProductColumns" />
+        FROM product_spu p
+        JOIN category c ON c.id = p.category_id
+        LEFT JOIN product_sku s ON s.spu_id = p.id
+        LEFT JOIN inventory i ON i.sku_id = s.id
+        GROUP BY p.id, p.spu_code, p.name, p.category_id, c.name,
+                 p.main_image_url, p.status, p.created_at, p.description
+        ORDER BY p.id ASC
+    </select>
+
+    <select id="findProductById" resultType="com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminProductResponse">
+        SELECT
+        <include refid="adminProductColumns" />
+        FROM product_spu p
+        JOIN category c ON c.id = p.category_id
+        LEFT JOIN product_sku s ON s.spu_id = p.id
+        LEFT JOIN inventory i ON i.sku_id = s.id
+        WHERE p.id = #{spuId}
+        GROUP BY p.id, p.spu_code, p.name, p.category_id, c.name,
+                 p.main_image_url, p.status, p.created_at, p.description
+    </select>
+
+    <update id="updateProductStatus">
+        UPDATE product_spu
+        SET status = #{status}, updated_at = CURRENT_TIMESTAMP(6)
+        WHERE id = #{spuId}
+    </update>
+</mapper>

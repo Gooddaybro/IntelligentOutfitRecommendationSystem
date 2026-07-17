@@ -51,6 +51,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/actuator/prometheus").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/payments/callback/**").permitAll()
                         .requestMatchers("/internal/**").permitAll()
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/ai/tasks/**").hasRole("ADMIN")
                         .anyRequest().authenticated()
                 )
