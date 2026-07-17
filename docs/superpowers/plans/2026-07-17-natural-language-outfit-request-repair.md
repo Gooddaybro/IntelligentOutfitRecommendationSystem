@@ -331,7 +331,7 @@ Run: `npm run build`
 
 Run: `backend\mvnw.cmd -f backend\pom.xml verify`
 
-- [ ] **Step 2: Python 全量验证**
+- [x] **Step 2: Python 全量验证**
 
 Run: `.venv\Scripts\python.exe -m pytest -q`
 
