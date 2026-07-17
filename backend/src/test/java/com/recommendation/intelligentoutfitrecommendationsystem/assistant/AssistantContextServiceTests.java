@@ -423,6 +423,36 @@ class AssistantContextServiceTests {
     }
 
     @Test
+    void candidateQueryUsesTheResolvedSeasonInsteadOfRescanningRawText() {
+        UserProfileService profiles = mock(UserProfileService.class);
+        RecommendationCandidateQueryService candidates = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversations = mock(ConversationApplicationService.class);
+        DemandIntentStateService states = mock(DemandIntentStateService.class);
+        AssistantContextService service = new AssistantContextService(
+                profiles, candidates, conversations, null, states
+        );
+        AssistantChatRequest request = new AssistantChatRequest(
+                null, "冬天怎么穿", null, null, null, null, null, null, null
+        );
+        DemandIntent effective = new DemandIntent(
+                DemandIntent.VERSION, DemandIntent.SOURCE_JAVA_RULE, request.message(),
+                "OUTFIT_ADVICE", List.of("OUTFIT_PLAN", "PRODUCT_SELECTION"),
+                null, null, "summer", List.of(), List.of(), List.of(), null, List.of(), null,
+                List.of("season"), List.of(), new BigDecimal("0.80"), List.of()
+        );
+        when(conversations.getMessages(anyLong(), anyString())).thenReturn(List.of());
+        when(states.apply(anyLong(), anyString(), anyString(), any(), any(), any())).thenReturn(effective);
+        when(candidates.findCandidates(any())).thenReturn(List.of());
+
+        service.buildContext(10L, "thread-resolved-season", request);
+
+        ArgumentCaptor<RecommendationCandidateQuery> captor =
+                ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
+        verify(candidates).findCandidates(captor.capture());
+        assertThat(captor.getValue().getSeason()).isEqualTo("summer");
+    }
+
+    @Test
     void versatileDemandUsesExistingStyleCodeInsteadOfBasic() {
         UserProfileService userProfileService = mock(UserProfileService.class);
         RecommendationCandidateQueryService recommendationCandidateQueryService = mock(RecommendationCandidateQueryService.class);

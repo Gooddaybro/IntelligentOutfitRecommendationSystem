@@ -199,8 +199,10 @@ public class AssistantContextService {
                 ? demandIntentNormalizer.category(String.valueOf(pending.candidateValue())) : null;
         Integer budget = "budgetMax".equals(pending.slot()) && pending.candidateValue() instanceof Number number
                 ? number.intValue() : null;
-        return new DemandIntentPatch("confirm", pending.rawText(), gender, false, category,
-                List.of(), List.of(), budget, List.of());
+        return new DemandIntentPatch(
+                "confirm", pending.rawText(), null, List.of(), gender, false, category, null,
+                List.of(), List.of(), List.of(), budget, List.of(), null, false
+        );
     }
 
     private List<PythonChatHistoryItem> recentHistory(
@@ -261,22 +263,7 @@ public class AssistantContextService {
         if (hasText(request.season())) {
             return request.season().trim();
         }
-        String rawQuery = demandIntent.rawQuery();
-        // 自然语言季节词必须落到数据库已有 code，避免 Python 收到一池明显不相关的候选。
-        if (demandIntent.attributes().contains("保暖")
-                || containsAny(rawQuery, "秋冬", "冬季", "冬天", "冬", "保暖", "厚款", "厚实", "怕冷")) {
-            return "winter";
-        }
-        if (containsAny(rawQuery, "秋季", "秋天", "秋")) {
-            return "autumn";
-        }
-        if (containsAny(rawQuery, "夏季", "夏天", "夏")) {
-            return "summer";
-        }
-        if (containsAny(rawQuery, "春季", "春天", "春")) {
-            return "spring";
-        }
-        return null;
+        return demandIntent.season();
     }
 
     private boolean containsAny(String text, String... signals) {

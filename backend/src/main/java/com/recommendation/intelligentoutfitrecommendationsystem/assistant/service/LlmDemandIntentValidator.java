@@ -24,6 +24,7 @@ public class LlmDemandIntentValidator {
             "budgetMax", new BigDecimal("0.95"),
             "scene", new BigDecimal("0.65"),
             "style", new BigDecimal("0.65"),
+            "fitPreferences", new BigDecimal("0.65"),
             "attributes", new BigDecimal("0.65")
     );
     private static final Set<String> HARD_SLOTS = Set.of("targetGender", "category", "budgetMax");
@@ -175,12 +176,16 @@ public class LlmDemandIntentValidator {
     @SuppressWarnings("unchecked")
     private DemandIntentPatch toPatch(String rawQuery, Map<String, Object> values) {
         return new DemandIntentPatch(
-                "merge", rawQuery, (String) values.get("targetGender"), false,
+                "merge", rawQuery, null, List.of(), (String) values.get("targetGender"), false,
                 (String) values.get("category"),
+                null,
                 (List<String>) values.getOrDefault("scene", List.of()),
                 (List<String>) values.getOrDefault("style", List.of()),
+                (List<String>) values.getOrDefault("fitPreferences", List.of()),
                 (Integer) values.get("budgetMax"),
-                (List<String>) values.getOrDefault("attributes", List.of())
+                (List<String>) values.getOrDefault("attributes", List.of()),
+                null,
+                false
         );
     }
 

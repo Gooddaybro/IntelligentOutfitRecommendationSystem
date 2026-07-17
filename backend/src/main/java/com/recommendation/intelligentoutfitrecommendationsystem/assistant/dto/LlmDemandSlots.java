@@ -11,7 +11,8 @@ public record LlmDemandSlots(
         List<String> scene,
         List<String> style,
         Integer budgetMax,
-        List<String> attributes
+        List<String> attributes,
+        List<String> fitPreferences
 ) {
     public Map<String, Object> presentSlots() {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -21,7 +22,20 @@ public record LlmDemandSlots(
         putIfPresent(result, "style", style);
         putIfPresent(result, "budgetMax", budgetMax);
         putIfPresent(result, "attributes", attributes);
+        putIfPresent(result, "fitPreferences", fitPreferences);
         return Map.copyOf(result);
+    }
+
+    /** Creates the original parser shape while leaving v2 fit preferences absent. */
+    public LlmDemandSlots(
+            String targetGender,
+            String category,
+            List<String> scene,
+            List<String> style,
+            Integer budgetMax,
+            List<String> attributes
+    ) {
+        this(targetGender, category, scene, style, budgetMax, attributes, null);
     }
 
     private void putIfPresent(Map<String, Object> result, String slot, Object value) {

@@ -87,7 +87,8 @@ class SharedJavaPythonContractTests {
                 "scene",
                 "style",
                 "budgetMax",
-                "attributes"
+                "attributes",
+                "fitPreferences"
         ));
         assertThat(recordComponentNames(SlotEvidence.class)).isEqualTo(Set.of("text", "source"));
     }

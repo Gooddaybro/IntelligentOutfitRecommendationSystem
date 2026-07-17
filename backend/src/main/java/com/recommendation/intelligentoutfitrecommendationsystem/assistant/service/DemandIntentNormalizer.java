@@ -21,6 +21,9 @@ public class DemandIntentNormalizer {
     private static final Map<String, String> STYLES = Map.of(
             "MATURE", "mature", "RUGGED", "rugged", "MINIMAL", "minimal", "CASUAL", "casual"
     );
+    private static final Map<String, String> FIT_PREFERENCES = Map.of(
+            "RELAXED", "relaxed", "REGULAR", "regular", "SLIM", "slim"
+    );
     private static final Map<String, String> ATTRIBUTES = Map.ofEntries(
             Map.entry("TALLER", "显高"), Map.entry("SLIMMING", "显瘦"),
             Map.entry("COVERING", "遮肉"), Map.entry("HIGH_WAIST", "高腰"),
@@ -48,6 +51,7 @@ public class DemandIntentNormalizer {
         putReverse(result, "category", CATEGORIES, intent.category());
         putReverseList(result, "scene", SCENES, intent.scene());
         putReverseList(result, "style", STYLES, intent.style());
+        putReverseList(result, "fitPreferences", FIT_PREFERENCES, intent.fitPreferences());
         if (intent.budgetMax() != null) {
             result.put("budgetMax", intent.budgetMax());
         }
@@ -94,7 +98,7 @@ public class DemandIntentNormalizer {
                     : "male".equals(value) && containsAny(evidenceText, "男", "他", "爸爸", "兄弟");
             case "category" -> evidenceText.contains(value)
                     || ("半身裙".equals(value) && evidenceText.contains("裙"));
-            case "scene", "style" -> evidenceText.contains(chineseSoftValue(value));
+            case "scene", "style", "fitPreferences" -> evidenceText.contains(chineseSoftValue(value));
             case "attributes" -> evidenceText.contains(value);
             default -> false;
         };
@@ -106,6 +110,7 @@ public class DemandIntentNormalizer {
             case "category" -> CATEGORIES;
             case "scene" -> SCENES;
             case "style" -> STYLES;
+            case "fitPreferences" -> FIT_PREFERENCES;
             case "attributes" -> ATTRIBUTES;
             default -> Map.of();
         };
@@ -141,7 +146,8 @@ public class DemandIntentNormalizer {
     }
 
     private boolean isListSlot(String slot) {
-        return "scene".equals(slot) || "style".equals(slot) || "attributes".equals(slot);
+        return "scene".equals(slot) || "style".equals(slot) || "fitPreferences".equals(slot)
+                || "attributes".equals(slot);
     }
 
     private String chineseSoftValue(String value) {
@@ -156,6 +162,9 @@ public class DemandIntentNormalizer {
             case "rugged" -> "硬朗";
             case "minimal" -> "简约";
             case "casual" -> "休闲";
+            case "relaxed" -> "轻松";
+            case "regular" -> "合身";
+            case "slim" -> "修身";
             default -> value;
         };
     }

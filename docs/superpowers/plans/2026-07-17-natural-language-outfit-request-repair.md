@@ -74,7 +74,7 @@
 - Test: `backend/src/test/java/.../assistant/DemandIntentResolverTests.java`
 - Test: `backend/src/test/java/.../assistant/DemandIntentMergerTests.java`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 覆盖：混合问候进入 `OUTFIT_ADVICE`、`177 130` 归一化、`SELF/OTHER/UNKNOWN`、季节进入硬过滤、条件补充保留 capabilities、切换对象清理测量。
 
@@ -86,17 +86,17 @@ assertThat(intent.subjectMeasurements().weightKg()).isEqualByComparingTo("65");
 assertThat(intent.subjectMeasurements().normalizedFrom()).isEqualTo("ASSUMED_JIN");
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `backend\mvnw.cmd -f backend\pom.xml -Dtest=DemandIntentResolverTests,DemandIntentMergerTests test`
 
-- [ ] **Step 3: 实现 demand-intent-v2**
+- [x] **Step 3: 实现 demand-intent-v2**
 
 保持旧 JSON 可读；规范字段只存在于 `demand_intent`；请求类型与附加能力使用稳定枚举字符串。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
-- [ ] **Step 5: 中文提交**
+- [x] **Step 5: 中文提交**
 
 ```text
 后端：升级穿搭需求意图契约
