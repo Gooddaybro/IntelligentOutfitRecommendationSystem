@@ -46,6 +46,24 @@ describe("ProductCard", () => {
     expect(container.querySelector(".ai-match-badge")).not.toBeInTheDocument();
   });
 
+  it("labels a safe conversation mention without exposing AI recommendation facts", () => {
+    render(
+      <MemoryRouter>
+        <ProductCard
+          candidate={{ ...candidate, recommendationReason: "不应显示的弱证据", rankScore: 0.92 }}
+          onAction={vi.fn()}
+          recommendationStatus="WEAK_FALLBACK"
+          isMentioned
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText("对话提及")).toBeVisible();
+    expect(screen.queryByText("AI 推荐")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("recommendation-reason")).not.toBeInTheDocument();
+    expect(screen.queryByText("排序分 0.92")).not.toBeInTheDocument();
+  });
+
   it("links a recommendation to its product detail", () => {
     render(<MemoryRouter><ProductCard candidate={candidate} onAction={vi.fn()} /></MemoryRouter>);
 

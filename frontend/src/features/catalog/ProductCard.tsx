@@ -25,9 +25,10 @@ type ProductCardProps = {
   variant?: ProductCardVariant;
   recommendationStatus?: RecommendationStatus;
   isAttributed?: boolean;
+  isMentioned?: boolean;
 };
 
-export function ProductCard({ candidate, onAction, actionMetadata, position, onBehaviorEvent, variant = "standard", recommendationStatus, isAttributed = false }: ProductCardProps) {
+export function ProductCard({ candidate, onAction, actionMetadata, position, onBehaviorEvent, variant = "standard", recommendationStatus, isAttributed = false, isMentioned = false }: ProductCardProps) {
   const shouldShowAiFacts = recommendationStatus === "STRONG_MATCH" && isAttributed;
 
   return (
@@ -46,6 +47,7 @@ export function ProductCard({ candidate, onAction, actionMetadata, position, onB
     >
       <Link className="product-image" to={`/app/products/${candidate.spuId}`} aria-label={`查看${candidate.name}详情`}>
         {shouldShowAiFacts && <span className="ai-match-badge">AI 推荐</span>}
+        {!shouldShowAiFacts && isMentioned && <span className="conversation-mention-badge">对话提及</span>}
         {candidate.mainImageUrl ? (
           <img src={candidate.mainImageUrl} alt={candidate.name} onError={(event) => { event.currentTarget.style.display = "none"; }} />
         ) : (
@@ -66,7 +68,7 @@ export function ProductCard({ candidate, onAction, actionMetadata, position, onB
           <strong>￥{candidate.salePrice}</strong>
           <span>{candidate.stockStatus || "库存以结算为准"}</span>
         </div>
-        {candidate.recommendationReason && (
+        {shouldShowAiFacts && candidate.recommendationReason && (
           <p className="recommendation-reason" data-testid="recommendation-reason">
             <strong>推荐理由</strong>
             {candidate.recommendationReason}
