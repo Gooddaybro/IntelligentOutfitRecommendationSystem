@@ -1,6 +1,7 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.assistant;
 
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntent;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantMentionedItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.MatchedDimension;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonProductRef;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.RecommendationDecisionService;
@@ -32,6 +33,8 @@ class RecommendationDecisionServiceTests {
         var decision = service.decide(intent(), List.of(candidate()), List.of(ref));
 
         assertThat(decision.recommendationStatus()).isEqualTo("STRONG_MATCH");
+        assertThat(decision.mentionedItems())
+                .containsExactly(new AssistantMentionedItem(1001L, 2001L, "TOP"));
         assertThat(decision.recommendedItems()).singleElement().satisfies(item -> {
             assertThat(item.spuId()).isEqualTo(1001L);
             assertThat(item.rankScore()).isEqualByComparingTo("1.35");
@@ -47,6 +50,8 @@ class RecommendationDecisionServiceTests {
         var decision = service.decide(intent(), List.of(candidate()), List.of(ref));
 
         assertThat(decision.recommendationStatus()).isEqualTo("WEAK_FALLBACK");
+        assertThat(decision.mentionedItems())
+                .containsExactly(new AssistantMentionedItem(1001L, 2001L, "TOP"));
         assertThat(decision.recommendedItems()).isEmpty();
     }
 
@@ -64,6 +69,8 @@ class RecommendationDecisionServiceTests {
         var decision = service.decide(intent(), List.of(candidate()), List.of(unknown, contradicted));
 
         assertThat(decision.recommendationStatus()).isEqualTo("WEAK_FALLBACK");
+        assertThat(decision.mentionedItems())
+                .containsExactly(new AssistantMentionedItem(1001L, 2001L, "TOP"));
         assertThat(decision.recommendedItems()).isEmpty();
         assertThat(decision.discardedReferences()).isEqualTo(2);
     }
@@ -78,6 +85,7 @@ class RecommendationDecisionServiceTests {
         var decision = service.decide(intent(), List.of(), List.of(ref));
 
         assertThat(decision.recommendationStatus()).isEqualTo("EMPTY");
+        assertThat(decision.mentionedItems()).isEmpty();
         assertThat(decision.recommendedItems()).isEmpty();
     }
 
