@@ -89,6 +89,18 @@ class RecommendationDecisionServiceTests {
         assertThat(decision.recommendedItems()).isEmpty();
     }
 
+    @Test
+    void unavailableCandidateCannotBecomeAConversationMention() {
+        var ref = new PythonProductRef(1001L, 2001L, "商品已售罄", BigDecimal.ONE, List.of());
+
+        var decision = service.decide(intent(), List.of(candidate(0, "out_of_stock")), List.of(ref));
+
+        assertThat(decision.recommendationStatus()).isEqualTo("WEAK_FALLBACK");
+        assertThat(decision.mentionedItems()).isEmpty();
+        assertThat(decision.recommendedItems()).isEmpty();
+        assertThat(decision.discardedReferences()).isEqualTo(1);
+    }
+
     private DemandIntent intent() {
         return new DemandIntent(
                 DemandIntent.VERSION, DemandIntent.SOURCE_JAVA_RULE, "夏天休闲穿搭",
@@ -100,11 +112,15 @@ class RecommendationDecisionServiceTests {
     }
 
     private RecommendationCandidate candidate() {
+        return candidate(8, "in_stock");
+    }
+
+    private RecommendationCandidate candidate(int availableStock, String stockStatus) {
         return new RecommendationCandidate(
                 1001L, 2001L, "SPU-1001", "夏季休闲T恤", "T恤", null,
                 "relaxed", "黑色", "L", "棉", "summer", "casual",
-                new BigDecimal("139"), "in_stock", new BigDecimal("139"), new BigDecimal("139"),
-                8, "SKU-2001", 8, "风格:休闲,版型:宽松"
+                new BigDecimal("139"), stockStatus, new BigDecimal("139"), new BigDecimal("139"),
+                availableStock, "SKU-2001", availableStock, "风格:休闲,版型:宽松"
         );
     }
 }
