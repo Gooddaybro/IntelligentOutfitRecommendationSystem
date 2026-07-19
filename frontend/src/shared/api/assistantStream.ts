@@ -80,11 +80,14 @@ function normalizeRecommendedItems(payload: unknown): RecommendedItem[] {
 }
 
 /** 兼容同步与 SSE 命名差异，但不从文本或缺失的 SKU 推断商品身份。 */
-function normalizeMentionedItems(payload: unknown): MentionedItem[] {
-  const source =
-    (payload as { mentionedItems?: unknown }).mentionedItems ??
-    (payload as { mentioned_items?: unknown }).mentioned_items ??
-    [];
+function normalizeMentionedItems(payload: unknown): MentionedItem[] | undefined {
+  const record = payload as Record<string, unknown>;
+  const hasCamelCaseField = Object.prototype.hasOwnProperty.call(record, "mentionedItems");
+  const hasSnakeCaseField = Object.prototype.hasOwnProperty.call(record, "mentioned_items");
+  if (!hasCamelCaseField && !hasSnakeCaseField) {
+    return undefined;
+  }
+  const source = hasCamelCaseField ? record.mentionedItems : record.mentioned_items;
 
   if (!Array.isArray(source)) {
     return [];

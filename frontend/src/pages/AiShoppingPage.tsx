@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { Link } from "react-router-dom";
 import { ChatPanel } from "../features/assistant/ChatPanel";
 import type { ChatPanelState, RecommendationResultMeta } from "../features/assistant/ChatPanel";
 import { ProductCard } from "../features/catalog/ProductCard";
@@ -92,7 +93,7 @@ export function AiShoppingPage({
 
   function isAttributedCandidate(candidate: RecommendationCandidate) {
     return recommendationMeta?.recommendedItems?.some((item) =>
-      item.spuId === candidate.spuId && (item.skuId === undefined || item.skuId === candidate.skuId)
+      item.skuId !== undefined && item.spuId === candidate.spuId && item.skuId === candidate.skuId
     ) ?? false;
   }
 
@@ -109,9 +110,13 @@ export function AiShoppingPage({
     recordRecommendationEvent(event.eventType, event.candidate, event.metadata);
   const status = recommendationMeta?.recommendationStatus;
   const isOutfit = recommendationMeta?.resolvedIntent?.requestType === "OUTFIT_ADVICE";
-  const mentionedKeys = new Set(
-    recommendationMeta?.mentionedItems?.map((item) => `${item.spuId}:${item.skuId}`) ?? []
-  );
+  // 字段缺失代表滚动升级中的旧响应，可安全回退到带完整 SKU 的强推荐；显式空数组不可回退。
+  const effectiveMentionedItems = recommendationMeta?.mentionedItems
+    ?? recommendationMeta?.recommendedItems?.flatMap((item) =>
+      item.skuId === undefined ? [] : [{ spuId: item.spuId, skuId: item.skuId, outfitRole: item.outfitRole }]
+    )
+    ?? [];
+  const mentionedKeys = new Set(effectiveMentionedItems.map((item) => `${item.spuId}:${item.skuId}`));
   // AI 完成后只展示 Java 明确返回的商品身份；没有结构化 ID 时绝不从回答文本猜商品。
   const boundCandidates = recommendations.filter((candidate) =>
     mentionedKeys.has(`${candidate.spuId}:${candidate.skuId}`)
@@ -177,7 +182,26 @@ export function AiShoppingPage({
               return (
                 <section key={role} className="outfit-group" aria-label={label}>
                   <h3>{label}</h3>
-                  <p>{items.length > 0 ? items.map((candidate) => candidate.name).join(" / ") : "暂未绑定商品"}</p>
+                  {items.length > 0 ? (
+                    <div className="outfit-group__items">
+                      {items.map((candidate) => {
+                        const attributed = isAttributedCandidate(candidate);
+                        return (
+                          <Link
+                            key={`${candidate.spuId}-${candidate.skuId}`}
+                            className="outfit-group__item"
+                            to={`/app/products/${candidate.spuId}`}
+                            aria-label={`查看${candidate.name}详情`}
+                          >
+                            <span>{candidate.name}</span>
+                            <small className={`outfit-role-badge outfit-role-badge--${attributed ? "ai" : "mention"}`}>
+                              {attributed ? "AI 推荐" : "对话提及"}
+                            </small>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  ) : <p>暂无绑定商品，请参考左侧文字建议</p>}
                 </section>
               );
             })}

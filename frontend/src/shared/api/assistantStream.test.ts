@@ -46,11 +46,11 @@ describe("parseSseEventBlock", () => {
   });
 
   it("derives recommendation ids from recommended items when legacy id list is absent", () => {
-    expect(
-      parseSseEventBlock(
-        'event: done\ndata: {"thread_id":"th-2","recommended_items":[{"spu_id":1002,"sku_id":2101,"reason":"预算匹配","rank_score":0.87}]}'
-      )
-    ).toMatchObject({
+    const event = parseSseEventBlock(
+      'event: done\ndata: {"thread_id":"th-2","recommended_items":[{"spu_id":1002,"sku_id":2101,"reason":"预算匹配","rank_score":0.87}]}'
+    );
+
+    expect(event).toMatchObject({
       type: "done",
       threadId: "th-2",
       answer: undefined,
@@ -59,6 +59,7 @@ describe("parseSseEventBlock", () => {
       resolvedIntent: undefined,
       recommendationId: undefined
     });
+    expect(event).toHaveProperty("mentionedItems", undefined);
   });
 
   it("keeps legacy recommendation events compatible", () => {

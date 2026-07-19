@@ -128,29 +128,26 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
 
   function orderCandidatesByRecommendations(
     candidates: RecommendationCandidate[],
-    spuIds: number[],
     recommendedItems: RecommendedItem[] = [],
-    mentionedItems: MentionedItem[] = []
+    mentionedItems?: MentionedItem[]
   ) {
-    const idOrder = new Map(spuIds.map((id, index) => [id, index]));
-    const orderedSkuItems = [
-      ...recommendedItems.filter((item) => item.skuId !== undefined),
-      ...mentionedItems.filter((mentioned) => !recommendedItems.some(
-        (recommended) => recommended.spuId === mentioned.spuId && recommended.skuId === mentioned.skuId
-      ))
-    ];
+    // 老版本没有 mentionedItems 时，只允许用推荐结果中完整的 SPU/SKU 做兼容绑定。
+    // 明确返回空数组则表示本轮没有绑定商品，不能回退到旧字段。
+    const effectiveMentionedItems = mentionedItems ?? recommendedItems.flatMap((item) =>
+      item.skuId === undefined ? [] : [{ spuId: item.spuId, skuId: item.skuId, outfitRole: item.outfitRole }]
+    );
     const skuOrder = new Map(
-      orderedSkuItems
+      effectiveMentionedItems
         .map((item, index) => [`${item.spuId}:${item.skuId}`, index])
     );
 
-    if (!idOrder.size && !skuOrder.size) {
-      return attachRecommendationFacts(candidates, recommendedItems, mentionedItems);
+    if (!skuOrder.size) {
+      return attachRecommendationFacts(candidates, recommendedItems, effectiveMentionedItems);
     }
 
     return [...candidates].sort((first, second) => {
-      const firstOrder = skuOrder.get(`${first.spuId}:${first.skuId}`) ?? idOrder.get(first.spuId);
-      const secondOrder = skuOrder.get(`${second.spuId}:${second.skuId}`) ?? idOrder.get(second.spuId);
+      const firstOrder = skuOrder.get(`${first.spuId}:${first.skuId}`);
+      const secondOrder = skuOrder.get(`${second.spuId}:${second.skuId}`);
 
       if (firstOrder === undefined && secondOrder === undefined) {
         return 0;
@@ -165,7 +162,7 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
       }
 
       return firstOrder - secondOrder;
-    }).map((candidate) => attachRecommendationFact(candidate, recommendedItems, mentionedItems));
+    }).map((candidate) => attachRecommendationFact(candidate, recommendedItems, effectiveMentionedItems));
   }
 
   function attachRecommendationFacts(
@@ -181,9 +178,9 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
     recommendedItems: RecommendedItem[],
     mentionedItems: MentionedItem[]
   ) {
-    const recommended =
-      recommendedItems.find((item) => item.skuId !== undefined && item.spuId === candidate.spuId && item.skuId === candidate.skuId) ??
-      recommendedItems.find((item) => item.spuId === candidate.spuId);
+    const recommended = recommendedItems.find(
+      (item) => item.skuId !== undefined && item.spuId === candidate.spuId && item.skuId === candidate.skuId
+    );
 
     if (recommended) {
       return {
@@ -202,9 +199,8 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
   }
 
   async function updateRecommendations(
-    spuIds: number[],
     recommendedItems: RecommendedItem[] = [],
-    mentionedItems: MentionedItem[] = [],
+    mentionedItems?: MentionedItem[],
     recommendationId?: string,
     recommendationStatus: RecommendationStatus = "WEAK_FALLBACK",
     intentSnapshot?: DemandIntent,
@@ -215,7 +211,7 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
         ? await api.recommendationSnapshot(recommendationId)
         : await api.recommendationCandidates(requestFilters);
       if (localRequestId !== undefined && localRequestId !== requestSequenceRef.current) return;
-      onRecommendations(orderCandidatesByRecommendations(candidates, spuIds, recommendedItems, mentionedItems), {
+      onRecommendations(orderCandidatesByRecommendations(candidates, recommendedItems, mentionedItems), {
         hasAiResult: true,
         hasStrongMatch: recommendationStatus === "STRONG_MATCH",
         recommendedItems,
@@ -287,7 +283,6 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
               });
             }
             await updateRecommendations(
-              event.spuIds,
               event.recommendedItems,
               event.mentionedItems,
               event.recommendationId,
@@ -323,9 +318,8 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
         return next;
       });
       await updateRecommendations(
-        fallback.recommendedSpuIds,
         fallback.recommendedItems ?? [],
-        fallback.mentionedItems ?? [],
+        fallback.mentionedItems,
         fallback.recommendationId,
         fallback.recommendationStatus ?? "WEAK_FALLBACK",
         fallback.resolvedIntent,

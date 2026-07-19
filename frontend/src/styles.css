@@ -1186,6 +1186,40 @@ select[data-native-dark-control="true"] option {
   overflow-wrap: anywhere;
 }
 
+.outfit-group__items {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.outfit-group__item {
+  color: var(--text);
+  display: grid;
+  font-size: 12px;
+  gap: 0.35rem;
+  text-decoration: none;
+}
+
+.outfit-group__item:hover > span {
+  text-decoration: underline;
+}
+
+.outfit-role-badge {
+  border-radius: 999px;
+  font-size: 10px;
+  justify-self: start;
+  padding: 0.2rem 0.45rem;
+}
+
+.outfit-role-badge--ai {
+  background: #dcebe3;
+  color: #245c4e;
+}
+
+.outfit-role-badge--mention {
+  background: #eee3d2;
+  color: #78502d;
+}
+
 .bound-products {
   border-top: 1px solid #ded3c3;
   margin-top: 22px;
