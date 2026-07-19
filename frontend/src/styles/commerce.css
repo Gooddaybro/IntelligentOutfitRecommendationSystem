@@ -180,7 +180,7 @@
   color-scheme: light;
   color: var(--ink-900);
   background: #fff;
-  border-color: #cfc4b2;
+  border-color: #8f8574;
   caret-color: var(--ink-900);
 }
 .profile-wardrobe-page input:focus,
@@ -193,6 +193,37 @@
 .profile-wardrobe-page select[data-native-dark-control="true"] option {
   color: var(--ink-900);
   background: #fff;
+}
+.profile-wardrobe-page .profile-page-heading > button {
+  color: var(--forest-900);
+  background: var(--surface);
+  border-color: #8f8574;
+}
+.profile-wardrobe-page .profile-page-heading > button:hover:not(:disabled) {
+  color: var(--forest-950);
+  background: var(--moss-100);
+  border-color: var(--sage-700);
+}
+.profile-wardrobe-page .profile-page-heading > button:focus-visible {
+  outline: 3px solid rgb(95 124 88 / 24%);
+  outline-offset: 2px;
+}
+.profile-wardrobe-page .status-line {
+  color: var(--forest-900);
+  background: #edf4ea;
+  border-color: #afc5a9;
+}
+.profile-wardrobe-page .error-text {
+  color: var(--danger);
+  background: #f9ebe8;
+  border: 1px solid #d7a49c;
+  border-radius: 14px;
+  padding: 10px 14px;
+}
+.profile-wardrobe-page .profile-empty-state {
+  color: var(--ink-600);
+  background: var(--surface);
+  border-color: #8f8574;
 }
 .profile-wardrobe-page .primary-button {
   color: #fff;
