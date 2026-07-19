@@ -276,7 +276,7 @@ export function ProfilePreferencesPage() {
   }
 
   return (
-    <main className="workbench profile-layout noir-page noir-page--profile" data-testid="profile-page">
+    <main className="profile-layout profile-wardrobe-page" data-testid="profile-page">
       <div className="profile-page-heading">
         <div>
           <p className="eyebrow">我的偏好</p>

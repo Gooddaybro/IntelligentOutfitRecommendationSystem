@@ -60,6 +60,9 @@ describe("ProfilePreferencesPage", () => {
     render(<ProfilePreferencesPage />);
 
     expect(await screen.findByDisplayValue("Alex")).toBeInTheDocument();
+    const page = screen.getByTestId("profile-page");
+    expect(page).toHaveClass("profile-wardrobe-page");
+    expect(page).not.toHaveClass("noir-page");
     expect(screen.getByDisplayValue("178.5")).toBeInTheDocument();
     expect(screen.getByDisplayValue("commute, minimal")).toBeInTheDocument();
     expect(mockedApi.profile).toHaveBeenCalledTimes(1);
