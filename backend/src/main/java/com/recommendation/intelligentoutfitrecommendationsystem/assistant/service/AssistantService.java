@@ -103,7 +103,7 @@ public class AssistantService {
             conversationService.appendMessage(userId, threadId, "assistant", answer, requestId);
             RecommendationDecision decision = recommendationDecisionService.decide(
                     context.demandIntent(), context.candidates(), List.of());
-            return new AssistantChatResponse(threadId, answer, List.of(), List.of(),
+            return new AssistantChatResponse(threadId, answer, List.of(), List.of(), List.of(),
                     context.candidates().size(), context.demandIntent(), decision.recommendationStatus(), null);
         }
         PythonChatRequest pythonRequest = toPythonRequest(userId, threadId, request, context);
@@ -123,6 +123,7 @@ public class AssistantService {
                 answer,
                 toRecommendedSpuIds(recommendedItems),
                 recommendedItems,
+                decision.mentionedItems(),
                 context.candidates().size(),
                 context.demandIntent(),
                 decision.recommendationStatus(),
@@ -162,7 +163,7 @@ public class AssistantService {
                     context.demandIntent(), context.candidates(), List.of());
             sendEvent(emitter, active, "token", new AssistantStreamTokenEvent(answer));
             sendEvent(emitter, active, "done", new AssistantStreamDoneEvent(
-                    threadId, answer, List.of(), List.of(), context.candidates().size(),
+                    threadId, answer, List.of(), List.of(), List.of(), context.candidates().size(),
                     "demand_clarification", context.demandIntent(), decision.recommendationStatus(), null));
             emitter.complete();
             return emitter;
@@ -451,6 +452,7 @@ public class AssistantService {
                     answer,
                     toRecommendedSpuIds(recommendedItems),
                     recommendedItems,
+                    decision.mentionedItems(),
                     context.candidates().size(),
                     response.intent(),
                     context.demandIntent(),

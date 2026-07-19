@@ -169,6 +169,9 @@ class AssistantServiceTests {
         assertThat(response.recommendedSpuIds()).containsExactly(1001L);
         assertThat(response.recommendationId()).isEqualTo("rec_sync_test");
         assertThat(response.recommendationStatus()).isEqualTo("STRONG_MATCH");
+        assertThat(response.mentionedItems())
+                .extracting("spuId", "skuId", "outfitRole")
+                .containsExactly(tuple(1001L, 2001L, "OUTER"));
         assertThat(response.recommendedItems())
                 .extracting("spuId", "skuId", "reason")
                 .containsExactly(tuple(1001L, 2001L, "fits the requested commute style"));
@@ -361,6 +364,7 @@ class AssistantServiceTests {
                 .doesNotContain("/secret/path")
                 .doesNotContain("api-key");
         assertThat(response.recommendedSpuIds()).isEmpty();
+        assertThat(response.mentionedItems()).isEmpty();
         assertThat(response.recommendedItems()).isEmpty();
         assertThat(response.candidatesCount()).isEqualTo(1);
         verify(assistantRateLimitService).assertAllowed(10L);

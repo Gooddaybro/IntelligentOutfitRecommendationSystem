@@ -12,7 +12,8 @@ import java.util.List;
  * @param threadId Java 会话标识
  * @param answer 完整助手回答
  * @param recommendedSpuIds Python 从 Java 候选池中选出的 SPU 引用
- * @param recommendedItems Python 对候选商品的用户可见推荐理由
+ * @param recommendedItems Java 已核验的强推荐商品及用户可见理由
+ * @param mentionedItems 回答提及且已精确绑定到 Java 可售候选的商品，不代表强推荐
  * @param candidatesCount 本轮 Java 提供给 Python 的候选商品数量
  * @param intent Python 识别出的用户意图
  * @param resolvedIntent Java 统一解析出的筛选意图
@@ -24,6 +25,7 @@ public record AssistantStreamDoneEvent(
         String answer,
         @JsonProperty("recommended_spu_ids") List<Long> recommendedSpuIds,
         @JsonProperty("recommended_items") List<AssistantRecommendationItem> recommendedItems,
+        @JsonProperty("mentioned_items") List<AssistantMentionedItem> mentionedItems,
         @JsonProperty("candidates_count") int candidatesCount,
         String intent,
         @JsonProperty("resolved_intent") DemandIntent resolvedIntent,
@@ -40,7 +42,7 @@ public record AssistantStreamDoneEvent(
             DemandIntent resolvedIntent,
             String recommendationStatus
     ) {
-        this(threadId, answer, recommendedSpuIds, recommendedItems, candidatesCount, intent,
+        this(threadId, answer, recommendedSpuIds, recommendedItems, List.of(), candidatesCount, intent,
                 resolvedIntent, recommendationStatus, null);
     }
 
@@ -52,7 +54,7 @@ public record AssistantStreamDoneEvent(
             int candidatesCount,
             String intent
     ) {
-        this(threadId, answer, recommendedSpuIds, recommendedItems, candidatesCount, intent, null,
+        this(threadId, answer, recommendedSpuIds, recommendedItems, List.of(), candidatesCount, intent, null,
                 recommendedItems == null || recommendedItems.isEmpty() ? "WEAK_FALLBACK" : "STRONG_MATCH", null);
     }
 }
