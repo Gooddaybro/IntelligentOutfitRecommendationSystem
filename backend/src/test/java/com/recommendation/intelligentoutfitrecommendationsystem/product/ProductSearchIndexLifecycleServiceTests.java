@@ -47,6 +47,16 @@ class ProductSearchIndexLifecycleServiceTests {
     }
 
     @Test
+    void neverDeletesFailedIndexWhenAliasAlreadyPointsToIt() {
+        when(gateway.findAliasTargets("product_current"))
+                .thenReturn(Set.of("product_20260720120000"));
+
+        service.deleteFailedIndex("product_20260720120000");
+
+        verify(gateway, never()).deleteIndex("product_20260720120000");
+    }
+
+    @Test
     void deletesOnlyHistoryOutsideConfiguredRetentionWindow() {
         when(gateway.listIndices("product_*")).thenReturn(List.of(
                 index("product_20260720140000", 4),

@@ -54,7 +54,11 @@ public class ProductSearchIndexLifecycleService {
      * 删除本次失败重建创建的物理索引；异常名称绝不下发到 ES。
      */
     public void deleteFailedIndex(String indexName) {
-        if (retentionPolicy.isManagedIndex(indexName)) {
+        if (!retentionPolicy.isManagedIndex(indexName)) {
+            return;
+        }
+        // 别名切换可能已在 ES 生效但客户端未收到响应；删除前重读别名，避免误删当前索引。
+        if (!gateway.findAliasTargets(indexAlias).contains(indexName)) {
             gateway.deleteIndex(indexName);
         }
     }
