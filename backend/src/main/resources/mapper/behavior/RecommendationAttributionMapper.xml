@@ -33,6 +33,7 @@
             recommendation_id,
             spu_id,
             sku_id,
+            candidate_position,
             selected,
             rank_position,
             rank_score
@@ -42,12 +43,94 @@
                 #{recommendationId},
                 #{item.spuId},
                 #{item.skuId},
+                #{item.candidatePosition},
                 #{item.selected},
                 #{item.rankPosition},
                 #{item.rankScore}
             )
         </foreach>
     </insert>
+
+    <select id="existsOwnedRecommendation" resultType="int">
+        SELECT COUNT(*)
+        FROM assistant_recommendation
+        WHERE recommendation_id = #{recommendationId}
+          AND user_id = #{userId}
+    </select>
+
+    <select id="findOwnedCandidates"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate">
+        SELECT
+            p.id AS spu_id,
+            sku.id AS sku_id,
+            p.spu_code,
+            p.name,
+            c.name AS category_name,
+            p.main_image_url,
+            f.name AS fit_type,
+            co.name AS color,
+            so.code AS size,
+            (
+                SELECT GROUP_CONCAT(m.name ORDER BY m.id SEPARATOR ',')
+                FROM product_material pm
+                JOIN material m ON m.id = pm.material_id
+                WHERE pm.spu_id = p.id
+            ) AS materials,
+            (
+                SELECT GROUP_CONCAT(se.code ORDER BY se.id SEPARATOR ',')
+                FROM product_season ps
+                JOIN season se ON se.id = ps.season_id
+                WHERE ps.spu_id = p.id
+            ) AS seasons,
+            (
+                SELECT GROUP_CONCAT(st.code ORDER BY st.id SEPARATOR ',')
+                FROM product_style_tag pst
+                JOIN style_tag st ON st.id = pst.style_tag_id
+                WHERE pst.spu_id = p.id
+            ) AS style_tags,
+            sku.sale_price,
+            'in_stock' AS stock_status,
+            (
+                SELECT MIN(inner_sku.sale_price)
+                FROM product_sku inner_sku
+                WHERE inner_sku.spu_id = p.id AND inner_sku.status = 'on_sale'
+            ) AS min_price,
+            (
+                SELECT MAX(inner_sku.sale_price)
+                FROM product_sku inner_sku
+                WHERE inner_sku.spu_id = p.id AND inner_sku.status = 'on_sale'
+            ) AS max_price,
+            (
+                SELECT COALESCE(SUM(inner_inv.available_stock), 0)
+                FROM product_sku inner_sku
+                LEFT JOIN inventory inner_inv ON inner_inv.sku_id = inner_sku.id
+                WHERE inner_sku.spu_id = p.id AND inner_sku.status = 'on_sale'
+            ) AS total_available_stock,
+            sku.sku_code,
+            inv.available_stock,
+            (
+                SELECT GROUP_CONCAT(CONCAT(pa.attr_name, ':', pa.attr_value) ORDER BY pa.id SEPARATOR ',')
+                FROM product_attribute pa
+                WHERE pa.spu_id = p.id
+            ) AS attribute_tags
+        FROM assistant_recommendation ar
+        JOIN assistant_recommendation_item ari ON ari.recommendation_id = ar.recommendation_id
+        JOIN product_spu p ON p.id = ari.spu_id
+        JOIN category c ON c.id = p.category_id
+        LEFT JOIN fit_type f ON f.id = p.fit_type_id
+        JOIN product_sku sku ON sku.id = ari.sku_id AND sku.spu_id = p.id
+        JOIN color co ON co.id = sku.color_id
+        JOIN size_option so ON so.id = sku.size_id
+        JOIN inventory inv ON inv.sku_id = sku.id
+        WHERE ar.recommendation_id = #{recommendationId}
+          AND ar.user_id = #{userId}
+          AND p.status = 'on_sale'
+          AND sku.status = 'on_sale'
+          AND inv.available_stock &gt; 0
+        ORDER BY ari.selected DESC,
+                 CASE WHEN ari.selected = TRUE THEN ari.rank_position ELSE 2147483647 END ASC,
+                 ari.candidate_position ASC
+    </select>
 
     <select id="existsOwnedSelectedItem" resultType="int">
         SELECT COUNT(*)

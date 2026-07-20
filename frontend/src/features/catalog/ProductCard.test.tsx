@@ -16,12 +16,14 @@ const candidate = {
 describe("ProductCard", () => {
   it("marks an editorial featured card without changing the add-to-cart action", () => {
     const onAction = vi.fn();
-    render(<MemoryRouter><ProductCard candidate={candidate} onAction={onAction} variant="featured" /></MemoryRouter>);
+    render(<MemoryRouter><ProductCard candidate={candidate} onAction={onAction} variant="featured" recommendationStatus="STRONG_MATCH" isAttributed /></MemoryRouter>);
 
     const card = screen.getByTestId("recommendation-card");
     expect(card).toHaveClass("product-card--featured");
     expect(card).toHaveAttribute("data-variant", "featured");
-    expect(screen.getByText("AI 首选")).toBeVisible();
+    expect(screen.getByText("AI 推荐")).toBeVisible();
+    expect(screen.getByText("排序分 0.92")).toBeVisible();
+    expect(screen.queryByText("AI 匹配 92%")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId("add-to-cart-action"));
     expect(onAction).toHaveBeenCalledWith(expect.objectContaining({
@@ -31,13 +33,14 @@ describe("ProductCard", () => {
     }));
   });
 
-  it("shows an AI editorial fallback only on supporting cards without recommendation facts", () => {
+  it("does not generate AI labels for weak candidates", () => {
     const candidateWithoutAiFacts = { ...candidate, rankScore: undefined };
     const { container, rerender } = render(
-      <MemoryRouter><ProductCard candidate={candidateWithoutAiFacts} onAction={vi.fn()} variant="supporting" /></MemoryRouter>
+      <MemoryRouter><ProductCard candidate={candidateWithoutAiFacts} onAction={vi.fn()} variant="supporting" recommendationStatus="WEAK_FALLBACK" /></MemoryRouter>
     );
 
-    expect(screen.getByText("AI 精选")).toBeVisible();
+    expect(container.querySelector(".ai-match-badge")).not.toBeInTheDocument();
+    expect(screen.queryByText("AI 首选")).not.toBeInTheDocument();
 
     rerender(<MemoryRouter><ProductCard candidate={candidateWithoutAiFacts} onAction={vi.fn()} variant="standard" /></MemoryRouter>);
     expect(container.querySelector(".ai-match-badge")).not.toBeInTheDocument();

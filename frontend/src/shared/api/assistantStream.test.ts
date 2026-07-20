@@ -19,16 +19,17 @@ describe("parseSseEventBlock", () => {
   it("parses done events with answer and recommendation ids", () => {
     expect(
       parseSseEventBlock(
-        'event: done\ndata: {"thread_id":"th-1","answer":"建议选择通勤外套","recommended_spu_ids":[1001,1002],"recommended_items":[{"spuId":1001,"skuId":2001,"reason":"通勤场景匹配","rankScore":0.91}],"candidates_count":3,"intent":"recommendation","resolved_intent":{"targetGender":"female","category":"半裙","budgetMax":500},"recommendation_id":"rec_123"}'
+        'event: done\ndata: {"thread_id":"th-1","answer":"建议选择通勤外套","recommended_spu_ids":[1001,1002],"recommended_items":[{"spuId":1001,"skuId":2001,"reason":"通勤场景匹配","rankScore":1.91,"outfitRole":"TOP"}],"candidates_count":3,"intent":"recommendation","resolved_intent":{"requestType":"OUTFIT_ADVICE","targetGender":"female","category":"半裙","budgetMax":500},"recommendation_status":"STRONG_MATCH","recommendation_id":"rec_123"}'
       )
     ).toEqual({
       type: "done",
       threadId: "th-1",
       answer: "建议选择通勤外套",
       spuIds: [1001, 1002],
-      recommendedItems: [{ spuId: 1001, skuId: 2001, reason: "通勤场景匹配", rankScore: 0.91 }],
-      resolvedIntent: { targetGender: "female", category: "半裙", budgetMax: 500 },
-      recommendationId: "rec_123"
+      recommendedItems: [{ spuId: 1001, skuId: 2001, reason: "通勤场景匹配", rankScore: 1.91, outfitRole: "TOP" }],
+      resolvedIntent: { requestType: "OUTFIT_ADVICE", targetGender: "female", category: "半裙", budgetMax: 500 },
+      recommendationId: "rec_123",
+      recommendationStatus: "STRONG_MATCH"
     });
   });
 

@@ -92,6 +92,22 @@ class LlmDemandIntentValidatorTests {
         assertThat(result.patch()).isNull();
     }
 
+    @Test
+    void acceptsRelaxedFitPreferenceWithExactEvidence() {
+        var response = new LlmDemandParseResponse(
+                "1.0", "MERGE",
+                new LlmDemandSlots(null, null, null, null, null, null, List.of("RELAXED")),
+                Map.of("fitPreferences", new BigDecimal("0.90")),
+                Map.of("fitPreferences", List.of(new SlotEvidence("轻松一点", "CURRENT_MESSAGE"))),
+                false, null, null, null
+        );
+
+        var result = validator.validate(response, "想要轻松一点", Set.of(), null);
+
+        assertThat(result.patch()).isNotNull();
+        assertThat(result.patch().fitPreferences()).containsExactly("relaxed");
+    }
+
     private LlmDemandParseResponse response(String gender, BigDecimal confidence, SlotEvidence evidence) {
         return new LlmDemandParseResponse(
                 "1.0", "MERGE", new LlmDemandSlots(gender, null, null, null, null, null),

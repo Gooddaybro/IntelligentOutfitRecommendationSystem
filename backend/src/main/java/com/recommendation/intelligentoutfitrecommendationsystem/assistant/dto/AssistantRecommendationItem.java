@@ -1,6 +1,7 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * AI 推荐结果中可展示给前端的商品解释。
@@ -11,11 +12,23 @@ import java.math.BigDecimal;
  * @param skuId Java 可售 SKU ID
  * @param reason 用户可见的推荐理由
  * @param rankScore Python 返回的排序分，仅用于展示或调试，不参与交易决策
+ * @param matchedDimensions Java 已核验的结构化匹配证据
+ * @param outfitRole Java 根据商品分类生成的穿搭角色
  */
 public record AssistantRecommendationItem(
         Long spuId,
         Long skuId,
         String reason,
-        BigDecimal rankScore
+        BigDecimal rankScore,
+        List<MatchedDimension> matchedDimensions,
+        String outfitRole
 ) {
+    public AssistantRecommendationItem {
+        matchedDimensions = matchedDimensions == null ? List.of() : List.copyOf(matchedDimensions);
+    }
+
+    /** Creates a legacy weak item without structured evidence or an outfit role. */
+    public AssistantRecommendationItem(Long spuId, Long skuId, String reason, BigDecimal rankScore) {
+        this(spuId, skuId, reason, rankScore, List.of(), null);
+    }
 }

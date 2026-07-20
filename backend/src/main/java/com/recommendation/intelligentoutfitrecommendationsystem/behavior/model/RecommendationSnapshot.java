@@ -28,6 +28,7 @@ public record RecommendationSnapshot(
     public record Item(
             Long spuId,
             Long skuId,
+            Integer candidatePosition,
             boolean selected,
             Integer rankPosition,
             BigDecimal rankScore

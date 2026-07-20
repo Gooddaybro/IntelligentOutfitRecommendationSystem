@@ -5,6 +5,8 @@ import com.recommendation.intelligentoutfitrecommendationsystem.behavior.model.R
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.RecommendationAttributionService;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.RecommendationRecordCommand;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -15,7 +17,9 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class RecommendationAttributionServiceTests {
@@ -55,12 +59,30 @@ class RecommendationAttributionServiceTests {
         assertThat(snapshot.candidateCount()).isEqualTo(2);
         assertThat(snapshot.ruleVersion()).isEqualTo("java-rule-reranker-v1");
         assertThat(snapshot.items())
-                .extracting("skuId", "selected", "rankPosition", "rankScore")
+                .extracting("skuId", "candidatePosition", "selected", "rankPosition", "rankScore")
                 .containsExactly(
-                        org.assertj.core.api.Assertions.tuple(2001L, false, null, null),
-                        org.assertj.core.api.Assertions.tuple(2002L, true, 1, new BigDecimal("0.93"))
+                        org.assertj.core.api.Assertions.tuple(2001L, 1, false, null, null),
+                        org.assertj.core.api.Assertions.tuple(2002L, 2, true, 1, new BigDecimal("0.93"))
                 );
         verify(mapper).insertItems(recommendationId, snapshot.items());
         verify(applicationMetrics).recordRecommendationFunnel("exposure");
+    }
+
+    @Test
+    void readsOnlyAnOwnedCandidateSnapshot() {
+        RecommendationAttributionService service = new RecommendationAttributionService(mapper, applicationMetrics);
+        RecommendationCandidate candidate = new RecommendationCandidate();
+        candidate.setSpuId(1001L);
+        candidate.setSkuId(2001L);
+        when(mapper.existsOwnedRecommendation("rec_owned", 10L)).thenReturn(1);
+        when(mapper.findOwnedCandidates("rec_owned", 10L)).thenReturn(List.of(candidate));
+
+        assertThat(service.getCandidateSnapshot(10L, "rec_owned"))
+                .extracting(RecommendationCandidate::getSkuId)
+                .containsExactly(2001L);
+
+        when(mapper.existsOwnedRecommendation("rec_other", 10L)).thenReturn(0);
+        assertThatThrownBy(() -> service.getCandidateSnapshot(10L, "rec_other"))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 }

@@ -3,7 +3,9 @@ package com.recommendation.intelligentoutfitrecommendationsystem.behavior.servic
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.mapper.RecommendationAttributionMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.model.RecommendationSnapshot;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -60,10 +62,14 @@ public class RecommendationAttributionService {
     }
 
     private List<RecommendationSnapshot.Item> mergeItems(RecommendationRecordCommand command) {
-        Map<Long, RecommendationRecordCommand.Item> candidates = new LinkedHashMap<>();
-        safe(command.candidates()).stream()
-                .filter(this::hasProductIdentity)
-                .forEach(item -> candidates.putIfAbsent(item.skuId(), item));
+        Map<Long, PositionedCandidate> candidates = new LinkedHashMap<>();
+        int candidatePosition = 1;
+        for (RecommendationRecordCommand.Item candidate : safe(command.candidates())) {
+            if (hasProductIdentity(candidate) && !candidates.containsKey(candidate.skuId())) {
+                candidates.put(candidate.skuId(), new PositionedCandidate(candidatePosition, candidate));
+                candidatePosition++;
+            }
+        }
 
         Map<Long, RankedSelection> selections = new LinkedHashMap<>();
         int position = 1;
@@ -75,21 +81,31 @@ public class RecommendationAttributionService {
         }
 
         return candidates.values().stream()
-                .map(candidate -> toSnapshotItem(candidate, selections.get(candidate.skuId())))
+                .map(candidate -> toSnapshotItem(candidate, selections.get(candidate.item().skuId())))
                 .toList();
     }
 
     private RecommendationSnapshot.Item toSnapshotItem(
-            RecommendationRecordCommand.Item candidate,
+            PositionedCandidate candidate,
             RankedSelection selection
     ) {
         return new RecommendationSnapshot.Item(
-                candidate.spuId(),
-                candidate.skuId(),
+                candidate.item().spuId(),
+                candidate.item().skuId(),
+                candidate.position(),
                 selection != null,
                 selection == null ? null : selection.position(),
                 selection == null ? null : selection.item().rankScore()
         );
+    }
+
+    /** Returns the original candidate snapshot with current Java price and inventory facts. */
+    public List<RecommendationCandidate> getCandidateSnapshot(Long userId, String recommendationId) {
+        if (userId == null || userId <= 0 || !StringUtils.hasText(recommendationId)
+                || mapper.existsOwnedRecommendation(recommendationId.trim(), userId) == 0) {
+            throw new ResourceNotFoundException("recommendation not found");
+        }
+        return mapper.findOwnedCandidates(recommendationId.trim(), userId);
     }
 
     private void validate(RecommendationRecordCommand command) {
@@ -114,5 +130,8 @@ public class RecommendationAttributionService {
     }
 
     private record RankedSelection(int position, RecommendationRecordCommand.Item item) {
+    }
+
+    private record PositionedCandidate(int position, RecommendationRecordCommand.Item item) {
     }
 }

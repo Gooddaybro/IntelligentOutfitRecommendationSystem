@@ -1,6 +1,6 @@
 import { ShoppingBag, ShoppingCart } from "lucide-react";
 import { Link } from "react-router-dom";
-import type { BehaviorEventType, RecommendationCandidate } from "../../shared/api/types";
+import type { BehaviorEventType, RecommendationCandidate, RecommendationStatus } from "../../shared/api/types";
 import {
   buildAddToCartAction,
   buildBuyNowAction,
@@ -23,16 +23,12 @@ type ProductCardProps = {
   position?: number;
   onBehaviorEvent?: (event: ProductBehaviorEvent) => void;
   variant?: ProductCardVariant;
+  recommendationStatus?: RecommendationStatus;
+  isAttributed?: boolean;
 };
 
-export function ProductCard({ candidate, onAction, actionMetadata, position, onBehaviorEvent, variant = "standard" }: ProductCardProps) {
-  const hasRecommendationFacts = candidate.rankScore !== undefined || Boolean(candidate.recommendationReason);
-  const matchLabel = candidate.rankScore !== undefined
-    ? `AI 匹配 ${Math.round(candidate.rankScore * 100)}%`
-    : hasRecommendationFacts
-      ? "AI 推荐"
-      : "AI 精选";
-  const shouldShowMatchBadge = hasRecommendationFacts || variant !== "standard";
+export function ProductCard({ candidate, onAction, actionMetadata, position, onBehaviorEvent, variant = "standard", recommendationStatus, isAttributed = false }: ProductCardProps) {
+  const shouldShowAiFacts = recommendationStatus === "STRONG_MATCH" && isAttributed;
 
   return (
     <article
@@ -49,8 +45,7 @@ export function ProductCard({ candidate, onAction, actionMetadata, position, onB
       }
     >
       <Link className="product-image" to={`/app/products/${candidate.spuId}`} aria-label={`查看${candidate.name}详情`}>
-        {variant === "featured" && <span className="featured-card-label">AI 首选</span>}
-        {shouldShowMatchBadge && <span className="ai-match-badge">{matchLabel}</span>}
+        {shouldShowAiFacts && <span className="ai-match-badge">AI 推荐</span>}
         {candidate.mainImageUrl ? (
           <img src={candidate.mainImageUrl} alt={candidate.name} onError={(event) => { event.currentTarget.style.display = "none"; }} />
         ) : (
@@ -76,6 +71,9 @@ export function ProductCard({ candidate, onAction, actionMetadata, position, onB
             <strong>推荐理由</strong>
             {candidate.recommendationReason}
           </p>
+        )}
+        {shouldShowAiFacts && candidate.rankScore !== undefined && (
+          <p className="recommendation-rank-score">排序分 {candidate.rankScore}</p>
         )}
         <div className="product-actions">
           <button

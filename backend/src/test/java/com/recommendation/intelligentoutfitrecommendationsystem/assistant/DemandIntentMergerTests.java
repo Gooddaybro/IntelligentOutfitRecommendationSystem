@@ -3,6 +3,7 @@ package com.recommendation.intelligentoutfitrecommendationsystem.assistant;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntent;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntentPatch;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.SubjectMeasurements;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.DemandIntentMerger;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.DemandIntentResolver;
 import org.junit.jupiter.api.Test;
@@ -74,6 +75,40 @@ class DemandIntentMergerTests {
         assertThat(patch.targetGender()).isEqualTo("male");
     }
 
+    @Test
+    void keepsTheCurrentTaskWhenTheNextTurnOnlyAddsAFitPreference() {
+        DemandIntent previous = outfitIntent(null);
+
+        DemandIntent result = merger.merge(previous, resolver.resolvePatch(request("再宽松一点")));
+
+        assertThat(result.requestType()).isEqualTo("OUTFIT_ADVICE");
+        assertThat(result.requestedCapabilities()).containsExactly("OUTFIT_PLAN", "PRODUCT_SELECTION");
+        assertThat(result.fitPreferences()).contains("relaxed");
+        assertThat(result.softPreferences()).contains("fitPreferences");
+    }
+
+    @Test
+    void clearsSelfMeasurementsWhenConsultationSwitchesToAnotherPerson() {
+        SubjectMeasurements self = new SubjectMeasurements(
+                new BigDecimal("177"), new BigDecimal("65"), "我年177 130",
+                "ASSUMED_JIN", "SELF", "ACTIVE_DEMAND", "CURRENT_MESSAGE"
+        );
+        DemandIntent previous = outfitIntent(self);
+
+        DemandIntent result = merger.merge(previous, resolver.resolvePatch(request("改为给我朋友看看男款外套")));
+
+        assertThat(result.subjectMeasurements()).isNull();
+    }
+
+    @Test
+    void addsSeasonToHardFiltersAndUsesVersionTwo() {
+        DemandIntent result = merger.merge(null, resolver.resolvePatch(request("夏天怎么穿")));
+
+        assertThat(result.version()).isEqualTo("demand-intent-v2");
+        assertThat(result.season()).isEqualTo("summer");
+        assertThat(result.hardFilters()).contains("season");
+    }
+
     private AssistantChatRequest request(String message) {
         return new AssistantChatRequest(null, message, null, null, null, null, null, null, null);
     }
@@ -83,14 +118,42 @@ class DemandIntentMergerTests {
                 DemandIntent.VERSION,
                 DemandIntent.SOURCE_JAVA_RULE,
                 "previous",
+                null,
+                List.of(),
                 gender,
                 category,
+                null,
                 scene,
                 List.of("minimal"),
+                List.of(),
                 budget,
                 List.of(),
+                null,
                 List.of("targetGender", "category"),
                 List.of("scene", "style"),
+                new BigDecimal("0.80"),
+                List.of()
+        );
+    }
+
+    private DemandIntent outfitIntent(SubjectMeasurements measurements) {
+        return new DemandIntent(
+                DemandIntent.VERSION,
+                DemandIntent.SOURCE_JAVA_RULE,
+                "previous",
+                "OUTFIT_ADVICE",
+                List.of("OUTFIT_PLAN", "PRODUCT_SELECTION"),
+                "male",
+                null,
+                "summer",
+                List.of(),
+                List.of("casual"),
+                List.of(),
+                null,
+                List.of(),
+                measurements,
+                List.of("targetGender", "season"),
+                List.of("style"),
                 new BigDecimal("0.80"),
                 List.of()
         );

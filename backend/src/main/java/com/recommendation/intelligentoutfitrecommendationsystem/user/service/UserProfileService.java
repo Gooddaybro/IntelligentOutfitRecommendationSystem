@@ -8,6 +8,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.common.cache.Cac
 import com.recommendation.intelligentoutfitrecommendationsystem.common.cache.RedisCacheService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserBodyDataRequest;
+import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.BodyMeasurementsPatchRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserBodyDataResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserPreferencesRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserPreferencesResponse;
@@ -117,6 +118,29 @@ public class UserProfileService {
             userProfileMapper.updateBodyData(bodyData);
         }
         return toBodyDataResponse(userId, bodyData);
+    }
+
+    /** Updates only explicitly supplied measurements and preserves all other body profile fields. */
+    @Transactional
+    public UserBodyDataResponse updateBodyMeasurements(Long userId, BodyMeasurementsPatchRequest request) {
+        if (request == null || request.heightCm() == null && request.weightKg() == null) {
+            throw new BadRequestException("heightCm or weightKg is required");
+        }
+        UserBodyData existing = userProfileMapper.findBodyDataByUserId(userId);
+        if (existing == null) {
+            UserBodyData bodyData = new UserBodyData();
+            bodyData.setUserId(userId);
+            bodyData.setHeightCm(request.heightCm());
+            bodyData.setWeightKg(request.weightKg());
+            userProfileMapper.insertBodyData(bodyData);
+        } else {
+            userProfileMapper.updateBodyMeasurements(userId, request.heightCm(), request.weightKg());
+        }
+        UserBodyData updated = userProfileMapper.findBodyDataByUserId(userId);
+        if (updated == null) {
+            throw new IllegalStateException("body measurements were not persisted");
+        }
+        return toBodyDataResponse(userId, updated);
     }
 
     @Transactional(readOnly = true)

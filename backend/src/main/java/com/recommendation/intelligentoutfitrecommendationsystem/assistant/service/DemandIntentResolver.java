@@ -4,10 +4,12 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.As
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntent;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntentPatch;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DeterministicDemandParseResult;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.SubjectMeasurements;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserBodyDataResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserProfileResponse;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -38,6 +40,19 @@ public class DemandIntentResolver {
     };
     private static final String[] SLIMMER_SIGNALS = {"显瘦", "遮肉", "不显胖", "梨形", "腿粗", "胯宽"};
     private static final String[] TALLER_SIGNALS = {"显高", "小个子", "显腿长", "不压个子"};
+    private static final String[] OUTFIT_SIGNALS = {
+            "怎么穿", "如何穿", "如何搭配", "怎么搭配", "穿什么好", "穿啥好", "穿搭"
+    };
+    private static final String[] SIZE_SIGNALS = {"穿什么码", "穿多大码", "几码", "尺码", "号型"};
+    private static final String[] PRODUCT_SIGNALS = {"推荐几件", "想买", "帮我找", "给我推荐", "看看商品"};
+    private static final String[] OTHER_SUBJECT_SIGNALS = {
+            "我朋友", "我的朋友", "朋友", "男友", "女友", "爸爸", "妈妈", "家人", "给他", "给她"
+    };
+    private static final String[] SELF_SUBJECT_SIGNALS = {"我本人", "给我自己", "我自己", "本人"};
+    private static final Pattern MEASUREMENT_PAIR_PATTERN = Pattern.compile(
+            "(?<!\\d)(\\d{3})(?:\\s*(?:cm|厘米|公分))?\\s*[,，/]?\\s+(\\d{2,3})(?:\\s*(kg|公斤|千克|斤))?(?!\\d)",
+            Pattern.CASE_INSENSITIVE
+    );
     private static final Pattern MESSAGE_BUDGET_MAX_PATTERN = Pattern.compile(
             "(?:预算\\s*)?(\\d{2,5})\\s*(?:以内|以下|内)|不超过\\s*(\\d{2,5})"
     );
@@ -50,8 +65,12 @@ public class DemandIntentResolver {
         DemandIntentPatch patch = resolvePatch(request);
         String profileGender = resolveProfileGender(bodyData, profile);
         if (patch.targetGender() == null && !patch.clearTargetGender() && profileGender != null) {
-            patch = new DemandIntentPatch(patch.action(), patch.rawQuery(), profileGender, false,
-                    patch.category(), patch.scene(), patch.style(), patch.budgetMax(), patch.attributes());
+            patch = new DemandIntentPatch(
+                    patch.action(), patch.rawQuery(), patch.requestType(), patch.requestedCapabilities(),
+                    profileGender, false, patch.category(), patch.season(), patch.scene(), patch.style(),
+                    patch.fitPreferences(), patch.budgetMax(), patch.attributes(), patch.subjectMeasurements(),
+                    patch.clearSubjectMeasurements()
+            );
         }
         return new DemandIntentMerger().merge(null, patch);
     }
@@ -67,16 +86,25 @@ public class DemandIntentResolver {
                 ? "switch" : "initialize";
         String category = resolveCategory(request);
         List<String> scene = resolveScene(rawQuery);
+        String requestType = resolveRequestType(rawQuery);
+        SubjectMeasurements measurements = resolveSubjectMeasurements(rawQuery);
+        boolean clearMeasurements = reset || measurements == null && resolveExplicitSubject(rawQuery) != null;
         return new DemandIntentPatch(
                 action,
                 rawQuery,
+                requestType,
+                resolveCapabilities(requestType, rawQuery),
                 targetGender,
                 clearGender,
                 category,
+                resolveRequestSeason(request, rawQuery),
                 scene,
                 resolveStyle(request, rawQuery, scene),
+                resolveFitPreferences(rawQuery),
                 resolveBudgetMax(request),
-                resolveAttributes(rawQuery)
+                resolveAttributes(rawQuery),
+                measurements,
+                clearMeasurements
         );
     }
 
@@ -96,6 +124,17 @@ public class DemandIntentResolver {
             addLongestMatch(matchedFragments, raw,
                     new String[]{"半身裙", "百褶裙", "直筒裙", "裙子", "外套"});
         }
+        if (patch.requestType() != null) {
+            lockedSlots.add("requestType");
+            addLongestMatch(matchedFragments, raw, OUTFIT_SIGNALS);
+            addLongestMatch(matchedFragments, raw, SIZE_SIGNALS);
+            addLongestMatch(matchedFragments, raw, PRODUCT_SIGNALS);
+        }
+        if (patch.season() != null) {
+            lockedSlots.add("season");
+            addLongestMatch(matchedFragments, raw,
+                    new String[]{"春天", "春季", "夏天", "夏季", "秋天", "秋季", "冬天", "冬季"});
+        }
         if (patch.budgetMax() != null) {
             lockedSlots.add("budgetMax");
             Matcher matcher = MESSAGE_BUDGET_MAX_PATTERN.matcher(raw);
@@ -110,6 +149,13 @@ public class DemandIntentResolver {
         }
         if (!patch.style().isEmpty()) {
             lockedSlots.add("style");
+        }
+        if (!patch.fitPreferences().isEmpty()) {
+            lockedSlots.add("fitPreferences");
+        }
+        if (patch.subjectMeasurements() != null) {
+            lockedSlots.add("subjectMeasurements");
+            matchedFragments.add(patch.subjectMeasurements().originalText());
         }
         if (!patch.attributes().isEmpty()) {
             lockedSlots.add("attributes");
@@ -272,10 +318,158 @@ public class DemandIntentResolver {
         if (containsAny(message, STUDENT_SIGNALS)) {
             style.add("casual");
         }
-        if (hasText(message) && message.contains("休闲")) {
+        if (hasText(message) && (message.contains("休闲") || message.contains("轻松"))) {
             style.add("casual");
         }
         return List.copyOf(style);
+    }
+
+    private String resolveRequestType(String message) {
+        if (containsAny(message, OUTFIT_SIGNALS)) {
+            return "OUTFIT_ADVICE";
+        }
+        if (containsAny(message, SIZE_SIGNALS)) {
+            return "SIZE_RECOMMENDATION";
+        }
+        if (containsAny(message, PRODUCT_SIGNALS)) {
+            return "PRODUCT_RECOMMENDATION";
+        }
+        String content = message == null ? "" : message
+                .replaceAll("你好|嗨|哈喽|谢谢|谢啦|感谢", "")
+                .replaceAll("[，,。.!！？?\\s]+", "");
+        return content.isEmpty() && hasText(message) ? "CHAT" : null;
+    }
+
+    private List<String> resolveCapabilities(String requestType, String message) {
+        if (requestType == null) {
+            return List.of();
+        }
+        LinkedHashSet<String> capabilities = new LinkedHashSet<>();
+        switch (requestType) {
+            case "OUTFIT_ADVICE" -> {
+                capabilities.add("OUTFIT_PLAN");
+                capabilities.add("PRODUCT_SELECTION");
+            }
+            case "PRODUCT_RECOMMENDATION" -> capabilities.add("PRODUCT_SELECTION");
+            case "SIZE_RECOMMENDATION" -> capabilities.add("SIZE_GUIDANCE");
+            default -> {
+                return List.of();
+            }
+        }
+        if (containsAny(message, SIZE_SIGNALS)) {
+            capabilities.add("SIZE_GUIDANCE");
+        }
+        return List.copyOf(capabilities);
+    }
+
+    private String resolveSeason(String message) {
+        if (containsAny(message, new String[]{"秋冬", "保暖", "厚款", "厚实", "怕冷", "不容易冷"})) {
+            return "winter";
+        }
+        if (containsAny(message, new String[]{"春天", "春季", "春装"})) {
+            return "spring";
+        }
+        if (containsAny(message, new String[]{"夏天", "夏季", "夏装"})) {
+            return "summer";
+        }
+        if (containsAny(message, new String[]{"秋天", "秋季", "秋装"})) {
+            return "autumn";
+        }
+        if (containsAny(message, new String[]{"冬天", "冬季", "冬装"})) {
+            return "winter";
+        }
+        return null;
+    }
+
+    private String resolveRequestSeason(AssistantChatRequest request, String message) {
+        String explicit = normalizeSeason(request == null ? null : request.season());
+        return explicit == null ? resolveSeason(message) : explicit;
+    }
+
+    private String normalizeSeason(String season) {
+        if (!hasText(season)) {
+            return null;
+        }
+        return switch (season.trim().toLowerCase(Locale.ROOT)) {
+            case "spring", "春", "春季", "春天" -> "spring";
+            case "summer", "夏", "夏季", "夏天" -> "summer";
+            case "autumn", "fall", "秋", "秋季", "秋天" -> "autumn";
+            case "winter", "冬", "冬季", "冬天" -> "winter";
+            default -> null;
+        };
+    }
+
+    private List<String> resolveFitPreferences(String message) {
+        return containsAny(message, new String[]{"宽松", "略宽松", "宽一点", "轻松一点", "oversize"})
+                ? List.of("relaxed") : List.of();
+    }
+
+    private SubjectMeasurements resolveSubjectMeasurements(String message) {
+        if (!hasText(message)) {
+            return null;
+        }
+        Matcher matcher = MEASUREMENT_PAIR_PATTERN.matcher(message);
+        if (!matcher.find()) {
+            return null;
+        }
+        BigDecimal height = new BigDecimal(matcher.group(1));
+        BigDecimal originalWeight = new BigDecimal(matcher.group(2));
+        String unit = matcher.group(3);
+        String normalizedFrom;
+        BigDecimal weightKg;
+        if (unit != null && Set.of("kg", "公斤", "千克").contains(unit.toLowerCase(Locale.ROOT))) {
+            normalizedFrom = "EXPLICIT_KG";
+            weightKg = originalWeight;
+        } else {
+            normalizedFrom = unit == null ? "ASSUMED_JIN" : "EXPLICIT_JIN";
+            weightKg = originalWeight.divide(new BigDecimal("2"), 1, RoundingMode.HALF_UP).stripTrailingZeros();
+        }
+        if (height.compareTo(new BigDecimal("120")) < 0 || height.compareTo(new BigDecimal("230")) > 0
+                || weightKg.compareTo(new BigDecimal("30")) < 0 || weightKg.compareTo(new BigDecimal("250")) > 0) {
+            return null;
+        }
+        String subject = resolveMeasurementSubject(message, matcher.start());
+        String prefix = measurementPrefix(message, matcher.start(), subject);
+        return new SubjectMeasurements(
+                height, weightKg, prefix + matcher.group(), normalizedFrom, subject,
+                "ACTIVE_DEMAND", "CURRENT_MESSAGE"
+        );
+    }
+
+    private String resolveMeasurementSubject(String message, int measurementStart) {
+        String context = message.substring(Math.max(0, measurementStart - 10), measurementStart);
+        if (containsAny(context, OTHER_SUBJECT_SIGNALS)) {
+            return "OTHER";
+        }
+        if (containsAny(context, SELF_SUBJECT_SIGNALS) || context.matches(".*我(?:高)?\\s*$")) {
+            return "SELF";
+        }
+        return "UNKNOWN";
+    }
+
+    private String measurementPrefix(String message, int measurementStart, String subject) {
+        String context = message.substring(Math.max(0, measurementStart - 10), measurementStart);
+        String[] signals = "OTHER".equals(subject) ? OTHER_SUBJECT_SIGNALS
+                : "SELF".equals(subject) ? new String[]{"我本人", "给我自己", "我自己", "本人", "我高", "我"}
+                : new String[0];
+        String longest = "";
+        for (String signal : signals) {
+            int index = context.lastIndexOf(signal);
+            if (index >= 0 && index + signal.length() == context.length() && signal.length() > longest.length()) {
+                longest = signal;
+            }
+        }
+        return longest;
+    }
+
+    private String resolveExplicitSubject(String message) {
+        if (containsAny(message, OTHER_SUBJECT_SIGNALS)) {
+            return "OTHER";
+        }
+        if (containsAny(message, SELF_SUBJECT_SIGNALS)) {
+            return "SELF";
+        }
+        return null;
     }
 
     private Integer resolveBudgetMax(AssistantChatRequest request) {

@@ -43,6 +43,14 @@ export type UserBodyDataResponse = UserBodyDataRequest & {
   userId: number;
 };
 
+export type BodyMeasurementsPatchRequest = {
+  heightCm?: number | null;
+  weightKg?: number | null;
+};
+
+export type RecommendationStatus = "STRONG_MATCH" | "WEAK_FALLBACK" | "EMPTY" | "ERROR";
+export type OutfitRole = "TOP" | "BOTTOM" | "OUTER" | "SHOES" | "ACCESSORY" | "OTHER";
+
 export type UserPreferencesRequest = {
   preferredStyles: string[];
   preferredColors: string[];
@@ -90,6 +98,7 @@ export type RecommendationCandidate = {
   availableStock?: number;
   recommendationReason?: string;
   rankScore?: number;
+  outfitRole?: OutfitRole;
 };
 
 export type RecommendedItem = {
@@ -97,18 +106,40 @@ export type RecommendedItem = {
   skuId?: number;
   reason?: string;
   rankScore?: number;
+  matchedDimensions?: Array<{
+    dimension: string;
+    requestedValue: string;
+    candidateValue: string;
+    evidenceSource: string;
+  }>;
+  outfitRole?: OutfitRole;
+};
+
+export type SubjectMeasurements = {
+  heightCm?: number;
+  weightKg?: number;
+  originalText?: string;
+  normalizedFrom?: string;
+  subject?: "SELF" | "OTHER" | "UNKNOWN";
+  scope?: string;
+  source?: string;
 };
 
 export type DemandIntent = {
   version?: string;
   source?: string;
   rawQuery?: string;
+  requestType?: string | null;
+  requestedCapabilities?: string[];
   targetGender?: string | null;
   category?: string | null;
+  season?: string | null;
   scene?: string[];
   style?: string[];
+  fitPreferences?: string[];
   budgetMax?: number | null;
   attributes?: string[];
+  subjectMeasurements?: SubjectMeasurements | null;
   hardFilters?: string[];
   softPreferences?: string[];
   confidence?: number;
@@ -219,6 +250,7 @@ export type AssistantChatResponse = {
   candidatesCount: number;
   resolvedIntent?: DemandIntent;
   recommendationId?: string;
+  recommendationStatus?: RecommendationStatus;
 };
 
 export type BehaviorEventType =

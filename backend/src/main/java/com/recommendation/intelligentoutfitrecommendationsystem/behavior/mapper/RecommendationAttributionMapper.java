@@ -1,6 +1,7 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.behavior.mapper;
 
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.model.RecommendationSnapshot;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -20,6 +21,16 @@ public interface RecommendationAttributionMapper {
     int insertItems(
             @Param("recommendationId") String recommendationId,
             @Param("items") List<RecommendationSnapshot.Item> items
+    );
+
+    int existsOwnedRecommendation(
+            @Param("recommendationId") String recommendationId,
+            @Param("userId") Long userId
+    );
+
+    List<RecommendationCandidate> findOwnedCandidates(
+            @Param("recommendationId") String recommendationId,
+            @Param("userId") Long userId
     );
 
     int existsOwnedSelectedItem(

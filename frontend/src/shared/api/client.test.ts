@@ -123,4 +123,25 @@ describe("current user profile api client", () => {
       })
     );
   });
+
+  it("patches only height and weight", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, text: () => Promise.resolve("{}") });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.updateBodyMeasurements({ heightCm: 177, weightKg: 65 });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/me/body-data/measurements",
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ heightCm: 177, weightKg: 65 }) })
+    );
+  });
+
+  it("reads the persisted recommendation candidate snapshot", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, text: () => Promise.resolve(JSON.stringify({ data: [] })) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.recommendationSnapshot("rec / 1");
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/assistant/recommendations/rec%20%2F%201/candidates", expect.anything());
+  });
 });

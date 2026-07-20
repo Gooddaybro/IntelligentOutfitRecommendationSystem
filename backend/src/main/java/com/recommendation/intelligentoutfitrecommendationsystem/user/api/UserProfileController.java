@@ -3,6 +3,7 @@ package com.recommendation.intelligentoutfitrecommendationsystem.user.api;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.api.ApiResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.security.CurrentUser;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserBodyDataRequest;
+import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.BodyMeasurementsPatchRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserBodyDataResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserPreferencesRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserPreferencesResponse;
@@ -13,6 +14,7 @@ import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -61,6 +63,15 @@ public class UserProfileController {
     ) {
         CurrentUser currentUser = CurrentUser.from(authentication);
         return ApiResponse.ok(userProfileService.updateBodyData(currentUser.userId(), request));
+    }
+
+    @PatchMapping("/body-data/measurements")
+    public ApiResponse<UserBodyDataResponse> updateBodyMeasurements(
+            Authentication authentication,
+            @Valid @RequestBody BodyMeasurementsPatchRequest request
+    ) {
+        CurrentUser currentUser = CurrentUser.from(authentication);
+        return ApiResponse.ok(userProfileService.updateBodyMeasurements(currentUser.userId(), request));
     }
 
     @GetMapping("/preferences")
