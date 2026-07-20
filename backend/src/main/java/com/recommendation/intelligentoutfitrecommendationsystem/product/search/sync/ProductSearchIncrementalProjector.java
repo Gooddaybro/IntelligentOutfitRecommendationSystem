@@ -8,7 +8,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.product.search.E
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchIndexRow;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchDocument;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchUnavailableException;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -18,7 +18,7 @@ import java.time.Clock;
  * 以 MySQL 当前事实重建单个商品文档，而不是信任可能过期的消息快照。
  */
 @Component
-@ConditionalOnProperty(prefix = "app.product-search-sync", name = "enabled", havingValue = "true")
+@ConditionalOnExpression("${app.product-search-sync.enabled:false} and ${app.elasticsearch.enabled:false}")
 public class ProductSearchIncrementalProjector {
     private final ElasticsearchClient client;
     private final ProductMapper productMapper;

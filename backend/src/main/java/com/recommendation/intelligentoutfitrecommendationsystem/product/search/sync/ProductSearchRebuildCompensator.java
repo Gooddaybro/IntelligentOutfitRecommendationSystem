@@ -1,6 +1,6 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.product.search.sync;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -9,7 +9,7 @@ import java.util.List;
  * 补偿全量快照读取期间发生的商品变化，关闭“快照读取完成到别名切换”之间的数据窗口。
  */
 @Component
-@ConditionalOnProperty(prefix = "app.product-search-sync", name = "enabled", havingValue = "true")
+@ConditionalOnExpression("${app.product-search-sync.enabled:false} and ${app.elasticsearch.enabled:false}")
 public class ProductSearchRebuildCompensator {
     private final ProductSearchOutboxMapper outboxMapper;
     private final ProductSearchIncrementalProjector projector;

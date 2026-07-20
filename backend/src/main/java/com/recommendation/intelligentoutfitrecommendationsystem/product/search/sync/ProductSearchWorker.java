@@ -10,7 +10,7 @@ import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Component;
@@ -26,7 +26,7 @@ import java.time.ZoneOffset;
  */
 @Component
 @Profile("worker")
-@ConditionalOnProperty(prefix = "app.product-search-sync", name = "enabled", havingValue = "true")
+@ConditionalOnExpression("${app.product-search-sync.enabled:false} and ${app.elasticsearch.enabled:false}")
 public class ProductSearchWorker {
     private static final String CONSUMER_NAME = "product-search-worker-v1";
 

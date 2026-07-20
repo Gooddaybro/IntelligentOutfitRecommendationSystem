@@ -21,6 +21,7 @@ import java.util.List;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -62,6 +63,36 @@ class ProductSearchOutboxRelayTests {
             data.getFuture().complete(new CorrelationData.Confirm(true, null));
             return null;
         }).when(rabbitTemplate).convertAndSend(anyString(), anyString(), anyString(), any(CorrelationData.class));
+
+        relay.publishBatch();
+
+        verify(mapper, never()).markPublished(anyString(), anyString(), any());
+        verify(mapper).releaseClaim(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void negativeConfirmReleasesClaim() {
+        completeConfirm(false);
+
+        relay.publishBatch();
+
+        verify(mapper, never()).markPublished(anyString(), anyString(), any());
+        verify(mapper).releaseClaim(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void confirmTimeoutReleasesClaim() {
+        relay.publishBatch();
+
+        verify(mapper, never()).markPublished(anyString(), anyString(), any());
+        verify(mapper).releaseClaim(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void brokerFailureReleasesClaim() {
+        doThrow(new IllegalStateException("broker unavailable"))
+                .when(rabbitTemplate)
+                .convertAndSend(anyString(), anyString(), anyString(), any(CorrelationData.class));
 
         relay.publishBatch();
 
