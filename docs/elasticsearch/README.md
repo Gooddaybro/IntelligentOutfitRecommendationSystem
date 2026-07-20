@@ -1,6 +1,6 @@
 # Elasticsearch 商品搜索实验
 
-本实验只验证商品搜索能力，不修改 Java、前端或 MySQL 商品搜索链路。Elasticsearch 只是可删除、可重建的搜索副本，MySQL 仍然是商品、价格、库存和上下架状态的事实源。
+本目录同时保存搜索实验和 Java 接入说明。Elasticsearch 只是可删除、可重建的搜索副本，MySQL 仍然是商品、价格、库存和上下架状态的事实源。
 
 > **安全边界：**本地 Compose 为了降低学习成本关闭了 Elasticsearch 安全认证，只允许用于本机学习，不能直接用于生产或暴露到公网。
 
@@ -8,7 +8,7 @@
 
 | 文件 | 作用 |
 |---|---|
-| `product-v1-index.json` | 定义分片、Mapping、standard/SmartCN 字段和 `product_current` 别名。 |
+| `../../backend/src/main/resources/elasticsearch/product-index.json` | Java 重建与手工实验共用的分片和 Mapping 定义。 |
 | `product-v1-seed.ndjson` | 使用稳定 SPU ID 写入 10 件真实项目商品，可重复执行。 |
 | `product-search-lab.http` | 保存分词、查询、过滤、高亮和评分解释实验。 |
 
@@ -53,17 +53,19 @@ $kibana.StatusCode
 
 ## 创建索引
 
-索引定义在创建 `product_v1` 时一并创建 `product_current` 写别名：
+创建实验索引后，再单独创建 `product_current` 写别名：
 
 ```powershell
-$body = Get-Content -Raw -Encoding UTF8 docs/elasticsearch/product-v1-index.json
+$body = Get-Content -Raw -Encoding UTF8 backend/src/main/resources/elasticsearch/product-index.json
 Invoke-RestMethod `
     -Method Put `
     -Uri http://localhost:9200/product_v1 `
     -ContentType application/json `
     -Body $body
 
-Invoke-RestMethod http://localhost:9200/_alias/product_current
+$aliasBody = '{"actions":[{"add":{"index":"product_v1","alias":"product_current","is_write_index":true}}]}'
+Invoke-RestMethod -Method Post -Uri http://localhost:9200/_aliases `
+    -ContentType application/json -Body $aliasBody
 ```
 
 如果返回“索引已经存在”，请不要直接覆盖 Mapping；使用后面的重建步骤恢复实验环境。
@@ -127,12 +129,37 @@ Invoke-RestMethod http://localhost:9200/product_current/_count
 
 ## 重建索引
 
+### 由 Java 从 MySQL 全量重建（推荐）
+
+启动后端时显式开启 ES：
+
+```powershell
+$env:APP_ELASTICSEARCH_ENABLED = 'true'
+cd backend
+.\mvnw.cmd spring-boot:run
+```
+
+然后调用内部运维接口：
+
+```powershell
+Invoke-RestMethod `
+    -Method Post `
+    -Uri http://localhost:8080/internal/search/products/rebuild `
+    -Headers @{ 'X-Internal-Token' = 'dev-internal-token' }
+```
+
+该操作会读取 MySQL 商品事实，创建带 UTC 时间戳的新物理索引，批量写入并校验数量，最后在单个原子操作中把 `product_current` 切换到新索引。并发重复提交会被拒绝，失败时旧索引仍可搜索。
+
+商城的 `/api/products` 与内部 `/internal/products/search` 地址保持不变。开启 ES 时先使用 ES 找到有序 SPU ID，再从 MySQL 补齐当前价格和上下架状态；连接失败、服务端错误或别名尚不存在时自动回退到 MySQL LIKE。功能开关默认关闭，因此没有 ES 的环境不受影响。
+
+### 手工恢复实验索引
+
 `product_v1` 是实验索引，Mapping 错误时从版本化文件重建，不在原索引上强行修改不兼容字段：
 
 ```powershell
 Invoke-RestMethod -Method Delete http://localhost:9200/product_v1
 
-$body = Get-Content -Raw -Encoding UTF8 docs/elasticsearch/product-v1-index.json
+$body = Get-Content -Raw -Encoding UTF8 backend/src/main/resources/elasticsearch/product-index.json
 Invoke-RestMethod `
     -Method Put `
     -Uri http://localhost:9200/product_v1 `
@@ -147,6 +174,10 @@ $bulk = Invoke-RestMethod `
     -Body ([Text.Encoding]::UTF8.GetBytes($seed))
 
 if ($bulk.errors) { throw '重建后的 Bulk 写入包含失败项' }
+
+$aliasBody = '{"actions":[{"remove":{"index":"product_*","alias":"product_current","must_exist":false}},{"add":{"index":"product_v1","alias":"product_current","is_write_index":true}}]}'
+Invoke-RestMethod -Method Post -Uri http://localhost:9200/_aliases `
+    -ContentType application/json -Body $aliasBody
 ```
 
 后续真实升级应创建 `product_v2` 并原子切换 `product_current`，而不是复用已经稳定运行的物理索引名称。
@@ -164,6 +195,10 @@ docker volume rm intelligent_outfit_elasticsearch_data
 不要使用模糊匹配或批量清理命令删除其他项目卷。
 
 ## 常见问题
+
+### 开启 ES 后仍然返回旧搜索结果
+
+商城搜索沿用现有 Redis 缓存，缓存键不变，默认存在数分钟可接受的一致性窗口。开发验证时可以等待缓存过期，或仅清理对应的 `product:search:*` 键；不要清空整个 Redis。
 
 ### 9200 或 5601 端口被占用
 

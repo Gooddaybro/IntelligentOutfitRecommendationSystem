@@ -86,7 +86,7 @@
 ### Task 5: Implement Versioned Full Rebuild and Internal Endpoint
 
 **Files:**
-- Move: `docs/elasticsearch/product-v1-index.json` to `backend/src/main/resources/elasticsearch/product-index.json`
+- Move: `backend/src/main/resources/elasticsearch/product-index.json` to `backend/src/main/resources/elasticsearch/product-index.json`
 - Modify: `docs/elasticsearch/README.md`
 - Create: `backend/src/main/java/com/recommendation/intelligentoutfitrecommendationsystem/product/search/ProductSearchRebuildResult.java`
 - Create: `backend/src/main/java/com/recommendation/intelligentoutfitrecommendationsystem/product/search/ProductSearchIndexService.java`
