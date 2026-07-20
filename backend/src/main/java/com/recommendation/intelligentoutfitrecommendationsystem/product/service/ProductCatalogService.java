@@ -10,6 +10,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.product.model.Pr
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.ProductDetail;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.ProductSearchItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.SkuSearchItem;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchService;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
@@ -24,15 +25,18 @@ import java.util.Map;
 public class ProductCatalogService {
 
     private final ProductMapper productMapper;
+    private final ProductSearchService productSearchService;
     private final RedisCacheService redisCacheService;
     private final CacheTtlProperties cacheTtlProperties;
 
     public ProductCatalogService(
             ProductMapper productMapper,
+            ProductSearchService productSearchService,
             RedisCacheService redisCacheService,
             CacheTtlProperties cacheTtlProperties
     ) {
         this.productMapper = productMapper;
+        this.productSearchService = productSearchService;
         this.redisCacheService = redisCacheService;
         this.cacheTtlProperties = cacheTtlProperties;
     }
@@ -55,7 +59,7 @@ public class ProductCatalogService {
         if (cachedProducts.isPresent()) {
             return cachedProducts.get();
         }
-        List<ProductSearchItem> products = productMapper.searchProducts(mapperKeyword, mapperCategory);
+        List<ProductSearchItem> products = productSearchService.search(mapperKeyword, mapperCategory);
         redisCacheService.setValue(cacheKey, products, cacheTtlProperties.productSearchTtl());
         return products;
     }

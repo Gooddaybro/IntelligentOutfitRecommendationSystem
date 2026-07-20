@@ -18,10 +18,10 @@ import org.springframework.context.annotation.Configuration;
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(ElasticsearchSearchProperties.class)
-@ConditionalOnProperty(prefix = "app.elasticsearch", name = "enabled", havingValue = "true")
 public class ElasticsearchSearchConfiguration {
 
     @Bean(destroyMethod = "close")
+    @ConditionalOnProperty(prefix = "app.elasticsearch", name = "enabled", havingValue = "true")
     RestClient elasticsearchRestClient(ElasticsearchSearchProperties properties) {
         HttpHost[] hosts = properties.getUris().stream().map(HttpHost::create).toArray(HttpHost[]::new);
         return RestClient.builder(hosts)
@@ -32,11 +32,13 @@ public class ElasticsearchSearchConfiguration {
     }
 
     @Bean(destroyMethod = "")
+    @ConditionalOnProperty(prefix = "app.elasticsearch", name = "enabled", havingValue = "true")
     ElasticsearchTransport elasticsearchTransport(RestClient restClient) {
         return new RestClientTransport(restClient, new JacksonJsonpMapper());
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "app.elasticsearch", name = "enabled", havingValue = "true")
     ElasticsearchClient elasticsearchClient(ElasticsearchTransport transport) {
         return new ElasticsearchClient(transport);
     }

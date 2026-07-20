@@ -15,6 +15,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.product.model.Re
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.SkuSearchItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.service.ProductCatalogService;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.service.RecommendationCandidateQueryService;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -45,6 +46,9 @@ class ProductCatalogServiceTests {
     @Mock
     private RedisCacheService redisCacheService;
 
+    @Mock
+    private ProductSearchService productSearchService;
+
     private ProductCatalogService service;
     private RecommendationCandidateQueryService candidateService;
 
@@ -53,7 +57,8 @@ class ProductCatalogServiceTests {
         CacheTtlProperties cacheTtlProperties = new CacheTtlProperties();
         cacheTtlProperties.setProductDetailJitterMinutes(0);
         cacheTtlProperties.setRecommendationCandidatesJitterMinutes(0);
-        service = new ProductCatalogService(productMapper, redisCacheService, cacheTtlProperties);
+        service = new ProductCatalogService(
+                productMapper, productSearchService, redisCacheService, cacheTtlProperties);
         candidateService = new RecommendationCandidateQueryService(
                 productMapper, redisCacheService, cacheTtlProperties);
     }
@@ -86,7 +91,7 @@ class ProductCatalogServiceTests {
 
         assertThat(products).extracting(ProductSearchItem::getSpuCode)
                 .containsExactly("TSHIRT_BASIC_001");
-        verify(productMapper, never()).searchProducts(any(), any());
+        verify(productSearchService, never()).search(any(), any());
         verify(redisCacheService, never()).setValue(any(), any(), any());
     }
 
@@ -95,14 +100,14 @@ class ProductCatalogServiceTests {
         List<ProductSearchItem> mapperProducts = List.of(productSearchItem());
         when(redisCacheService.getList(anyString(), eq(ProductSearchItem.class)))
                 .thenReturn(Optional.empty());
-        when(productMapper.searchProducts("TSHIRT_BASIC_001", null))
+        when(productSearchService.search("TSHIRT_BASIC_001", null))
                 .thenReturn(mapperProducts);
 
         var products = service.searchProducts(" TSHIRT_BASIC_001 ", null);
 
         assertThat(products).extracting(ProductSearchItem::getSpuCode)
                 .containsExactly("TSHIRT_BASIC_001");
-        verify(productMapper).searchProducts("TSHIRT_BASIC_001", null);
+        verify(productSearchService).search("TSHIRT_BASIC_001", null);
         verify(redisCacheService).setValue(anyString(), eq(mapperProducts), any(Duration.class));
     }
 
@@ -111,7 +116,7 @@ class ProductCatalogServiceTests {
         List<ProductSearchItem> mapperProducts = List.of(productSearchItem());
         when(redisCacheService.getList(anyString(), eq(ProductSearchItem.class)))
                 .thenReturn(Optional.empty());
-        when(productMapper.searchProducts("TSHIRT_BASIC_001", "\u5916\u5957"))
+        when(productSearchService.search("TSHIRT_BASIC_001", "\u5916\u5957"))
                 .thenReturn(mapperProducts);
 
         service.searchProducts(" TSHIRT_BASIC_001 ", " \u5916\u5957 ");
@@ -119,7 +124,7 @@ class ProductCatalogServiceTests {
         ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
         verify(redisCacheService).getList(keyCaptor.capture(), eq(ProductSearchItem.class));
         assertThat(keyCaptor.getValue()).isEqualTo("product:search:tshirt_basic_001:\u5916\u5957");
-        verify(productMapper).searchProducts("TSHIRT_BASIC_001", "\u5916\u5957");
+        verify(productSearchService).search("TSHIRT_BASIC_001", "\u5916\u5957");
     }
 
     @Test
