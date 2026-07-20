@@ -84,6 +84,53 @@
         ORDER BY p.id
     </select>
 
+    <!-- MySQL 降级搜索只决定候选 SPU；实时商品摘要由统一的补齐查询读取。 -->
+    <select id="searchProductIds" resultType="java.lang.Long">
+        SELECT p.id
+        FROM product_spu p
+        JOIN category c ON c.id = p.category_id
+        WHERE p.status = 'on_sale'
+        <if test="keyword != null">
+            AND (
+                p.name LIKE CONCAT('%', #{keyword}, '%')
+                OR p.spu_code LIKE CONCAT('%', #{keyword}, '%')
+                OR c.name LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+        <if test="category != null">
+            AND c.name = #{category}
+        </if>
+        ORDER BY p.id
+        LIMIT #{limit}
+    </select>
+
+    <!--
+        ES 只返回候选 ID；这里从 MySQL 读取当前上下架状态和价格。
+        IN 查询本身不承诺顺序，调用方会按 ES 命中顺序重新排列。
+    -->
+    <select id="findSearchItemsBySpuIds" resultType="com.recommendation.intelligentoutfitrecommendationsystem.product.model.ProductSearchItem">
+        SELECT
+            p.id AS spu_id,
+            p.spu_code,
+            p.name,
+            c.name AS category_name,
+            p.main_image_url,
+            f.name AS fit_type,
+            MIN(s.sale_price) AS min_price,
+            MAX(s.sale_price) AS max_price
+        FROM product_spu p
+        JOIN category c ON c.id = p.category_id
+        LEFT JOIN fit_type f ON f.id = p.fit_type_id
+        JOIN product_sku s ON s.spu_id = p.id AND s.status = 'on_sale'
+        WHERE p.status = 'on_sale'
+          AND p.id IN
+          <foreach collection="spuIds" item="spuId" open="(" separator="," close=")">
+              #{spuId}
+          </foreach>
+        GROUP BY p.id, p.spu_code, p.name, c.name, p.main_image_url, f.name
+        ORDER BY p.id
+    </select>
+
     <!--
         商品详情基础字段只查询单值属性。
         材质、季节、风格标签和扩展属性由 Service 分轻量查询装配，避免 resultMap 嵌套过深。

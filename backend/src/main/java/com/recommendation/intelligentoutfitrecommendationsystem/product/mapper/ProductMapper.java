@@ -24,6 +24,14 @@ public interface ProductMapper {
             @Param("category") String category
     );
 
+    List<Long> searchProductIds(
+            @Param("keyword") String keyword,
+            @Param("category") String category,
+            @Param("limit") int limit
+    );
+
+    List<ProductSearchItem> findSearchItemsBySpuIds(@Param("spuIds") List<Long> spuIds);
+
     ProductDetail findProductDetailBase(@Param("spuId") Long spuId);
 
     SkuSearchItem findSku(
