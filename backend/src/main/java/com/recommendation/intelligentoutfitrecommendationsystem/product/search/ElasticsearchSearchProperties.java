@@ -1,6 +1,9 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.product.search;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
+
+import jakarta.validation.constraints.Min;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -11,6 +14,7 @@ import java.util.List;
  * <p>关闭开关时应用只使用 MySQL，保证没有 Elasticsearch 的测试和部署环境仍能启动。</p>
  */
 @ConfigurationProperties(prefix = "app.elasticsearch")
+@Validated
 public class ElasticsearchSearchProperties {
     private boolean enabled;
     private List<String> uris = new ArrayList<>(List.of("http://localhost:9200"));
@@ -20,6 +24,8 @@ public class ElasticsearchSearchProperties {
     private int socketTimeoutMs = 2000;
     private int searchLimit = 500;
     private int bulkBatchSize = 200;
+    @Min(0)
+    private int retainedHistoryCount = 2;
 
     public boolean isEnabled() {
         return enabled;
@@ -83,5 +89,13 @@ public class ElasticsearchSearchProperties {
 
     public void setBulkBatchSize(int bulkBatchSize) {
         this.bulkBatchSize = bulkBatchSize;
+    }
+
+    public int getRetainedHistoryCount() {
+        return retainedHistoryCount;
+    }
+
+    public void setRetainedHistoryCount(int retainedHistoryCount) {
+        this.retainedHistoryCount = retainedHistoryCount;
     }
 }
