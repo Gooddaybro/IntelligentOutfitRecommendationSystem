@@ -1,0 +1,103 @@
+### 集群健康状态：单节点实验索引将副本设为 0，因此应达到 green。
+GET http://localhost:9200/_cluster/health
+
+### 插件清单：应包含 analysis-smartcn。
+GET http://localhost:9200/_cat/plugins?v
+
+### standard 分词器基线。
+POST http://localhost:9200/_analyze
+Content-Type: application/json
+
+{"analyzer":"standard","text":"冬季通勤外套"}
+
+### SmartCN 中文分词器对照。
+POST http://localhost:9200/_analyze
+Content-Type: application/json
+
+{"analyzer":"smartcn","text":"冬季通勤外套"}
+
+### standard 名称字段单字段检索。
+POST http://localhost:9200/product_current/_search
+Content-Type: application/json
+
+{"query":{"match":{"name":"冬季通勤外套"}}}
+
+### SmartCN 名称子字段单字段检索。
+POST http://localhost:9200/product_current/_search
+Content-Type: application/json
+
+{"query":{"match":{"name.smartcn":"冬季通勤外套"}}}
+
+### 多字段权重、上架过滤与高亮联合实验。
+POST http://localhost:9200/product_current/_search
+Content-Type: application/json
+
+{
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "multi_match": {
+            "query": "冬季通勤外套",
+            "fields": [
+              "name.smartcn^5",
+              "styles.search^3",
+              "category.search^2",
+              "scenes.search^2",
+              "materials.search^1.5",
+              "description.smartcn"
+            ]
+          }
+        }
+      ],
+      "filter": [
+        { "term": { "status": "on_sale" } }
+      ]
+    }
+  },
+  "highlight": {
+    "pre_tags": ["<em>"],
+    "post_tags": ["</em>"],
+    "fields": {
+      "name.smartcn": {},
+      "description.smartcn": {}
+    }
+  }
+}
+
+### category、season、status 均为 keyword 精确过滤，不参与相关度评分。
+POST http://localhost:9200/product_current/_search
+Content-Type: application/json
+
+{
+  "query": {
+    "bool": {
+      "must": [
+        { "match": { "description.smartcn": "通勤" } }
+      ],
+      "filter": [
+        { "term": { "category": "外套" } },
+        { "term": { "seasons": "autumn" } },
+        { "term": { "status": "on_sale" } }
+      ]
+    }
+  }
+}
+
+### 解释轻量保暖羽绒服为何命中“冬季通勤外套”。
+POST http://localhost:9200/product_current/_explain/1106
+Content-Type: application/json
+
+{
+  "query": {
+    "multi_match": {
+      "query": "冬季通勤外套",
+      "fields": [
+        "name.smartcn^5",
+        "styles.search^3",
+        "category.search^2",
+        "description.smartcn"
+      ]
+    }
+  }
+}
