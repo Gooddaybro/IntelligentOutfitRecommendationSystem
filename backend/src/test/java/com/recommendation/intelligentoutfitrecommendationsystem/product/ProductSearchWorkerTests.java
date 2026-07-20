@@ -3,25 +3,27 @@ package com.recommendation.intelligentoutfitrecommendationsystem.product;
 import co.elastic.clients.elasticsearch._types.ElasticsearchException;
 import com.rabbitmq.client.Channel;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchUnavailableException;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.sync.ProductSearchConsumptionRecorder;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.sync.ProductSearchInboxMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.sync.ProductSearchIncrementalProjector;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.sync.ProductSearchSyncMessage;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.sync.ProductSearchWorker;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.sync.RabbitProductSearchTopology;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.io.IOException;
-import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneOffset;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -30,23 +32,26 @@ import static org.mockito.Mockito.when;
 class ProductSearchWorkerTests {
     private final ProductSearchIncrementalProjector projector = mock(ProductSearchIncrementalProjector.class);
     private final ProductSearchInboxMapper inboxMapper = mock(ProductSearchInboxMapper.class);
+    private final ProductSearchConsumptionRecorder consumptionRecorder = mock(ProductSearchConsumptionRecorder.class);
     private final RabbitTemplate rabbitTemplate = mock(RabbitTemplate.class);
     private final Channel channel = mock(Channel.class);
     private ProductSearchWorker worker;
 
     @BeforeEach
     void setUp() {
-        worker = new ProductSearchWorker(projector, inboxMapper, rabbitTemplate,
-                Clock.fixed(Instant.parse("2026-07-20T10:00:00Z"), ZoneOffset.UTC));
+        worker = new ProductSearchWorker(projector, inboxMapper, consumptionRecorder, rabbitTemplate);
     }
 
     @Test
     void projectsAndRecordsInboxBeforeAcknowledging() throws IOException {
         worker.handle(validPayload(), 0, 7L, channel);
 
-        verify(projector).project(1001L);
-        verify(inboxMapper).insert(eq("product-search-worker-v1"), eq("event-1"), eq(1001L), any());
-        verify(channel).basicAck(7L, false);
+        var order = inOrder(projector, consumptionRecorder, channel);
+        order.verify(projector).project(1001L);
+        order.verify(consumptionRecorder).record(new ProductSearchSyncMessage(
+                "event-1", 1001L, ProductSearchSyncMessage.EVENT_TYPE,
+                Instant.parse("2026-07-20T10:00:00Z"), ProductSearchSyncMessage.SCHEMA_VERSION));
+        order.verify(channel).basicAck(7L, false);
     }
 
     @Test
@@ -56,7 +61,20 @@ class ProductSearchWorkerTests {
         worker.handle(validPayload(), 0, 8L, channel);
 
         verify(projector, never()).project(anyLong());
+        verify(consumptionRecorder, never()).record(any());
         verify(channel).basicAck(8L, false);
+    }
+
+    @Test
+    void concurrentDuplicateIsAcknowledgedWithoutRetry() throws IOException {
+        doThrow(new DuplicateKeyException("duplicate"))
+                .when(consumptionRecorder).record(any());
+
+        worker.handle(validPayload(), 0, 12L, channel);
+
+        verify(projector).project(1001L);
+        verify(rabbitTemplate, never()).send(anyString(), anyString(), any(Message.class));
+        verify(channel).basicAck(12L, false);
     }
 
     @Test

@@ -1,8 +1,11 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.product;
 
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.cache.ProductSearchCacheVersionService;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.sync.ProductSearchConsumptionRecorder;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.sync.ProductSearchInboxMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.sync.ProductSearchOutboxEvent;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.sync.ProductSearchOutboxMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.sync.ProductSearchSyncMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,6 +14,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -23,6 +27,10 @@ class ProductSearchSyncPersistenceTests {
     private ProductSearchOutboxMapper outboxMapper;
     @Autowired
     private ProductSearchInboxMapper inboxMapper;
+    @Autowired
+    private ProductSearchConsumptionRecorder consumptionRecorder;
+    @Autowired
+    private ProductSearchCacheVersionService versionService;
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
@@ -57,6 +65,20 @@ class ProductSearchSyncPersistenceTests {
         assertThat(inboxMapper.exists("worker-v1", "event-1")).isTrue();
         assertThatThrownBy(() -> inboxMapper.insert("worker-v1", "event-1", 1001L, now))
                 .isInstanceOf(DuplicateKeyException.class);
+    }
+
+    @Test
+    void duplicateInboxRollsBackCacheVersionAdvance() {
+        LocalDateTime now = LocalDateTime.of(2026, 7, 20, 10, 0);
+        inboxMapper.insert("product-search-worker-v1", "event-rollback", 1001L, now);
+        long versionBefore = versionService.currentVersion();
+        ProductSearchSyncMessage message = new ProductSearchSyncMessage(
+                "event-rollback", 1001L, ProductSearchSyncMessage.EVENT_TYPE,
+                Instant.parse("2026-07-20T10:00:00Z"), ProductSearchSyncMessage.SCHEMA_VERSION);
+
+        assertThatThrownBy(() -> consumptionRecorder.record(message))
+                .isInstanceOf(DuplicateKeyException.class);
+        assertThat(versionService.currentVersion()).isEqualTo(versionBefore);
     }
 
     private ProductSearchOutboxEvent insert(String eventId, Long spuId, LocalDateTime availableAt) {

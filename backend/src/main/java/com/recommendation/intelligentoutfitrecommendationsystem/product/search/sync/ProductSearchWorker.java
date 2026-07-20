@@ -17,9 +17,6 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.time.Clock;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 
 /**
  * 商品搜索专用 Worker：幂等消费、读取 MySQL 当前事实并投影到 Elasticsearch。
@@ -28,23 +25,21 @@ import java.time.ZoneOffset;
 @Profile("worker")
 @ConditionalOnExpression("${app.product-search-sync.enabled:false} and ${app.elasticsearch.enabled:false}")
 public class ProductSearchWorker {
-    private static final String CONSUMER_NAME = "product-search-worker-v1";
-
     private final ProductSearchIncrementalProjector projector;
     private final ProductSearchInboxMapper inboxMapper;
+    private final ProductSearchConsumptionRecorder consumptionRecorder;
     private final RabbitTemplate rabbitTemplate;
-    private final Clock clock;
     private final ObjectMapper objectMapper = JsonMapper.builder().addModule(new JavaTimeModule()).build();
 
     public ProductSearchWorker(
             ProductSearchIncrementalProjector projector,
             ProductSearchInboxMapper inboxMapper,
-            RabbitTemplate rabbitTemplate,
-            Clock clock) {
+            ProductSearchConsumptionRecorder consumptionRecorder,
+            RabbitTemplate rabbitTemplate) {
         this.projector = projector;
         this.inboxMapper = inboxMapper;
+        this.consumptionRecorder = consumptionRecorder;
         this.rabbitTemplate = rabbitTemplate;
-        this.clock = clock;
     }
 
     @RabbitListener(
@@ -66,17 +61,17 @@ public class ProductSearchWorker {
             return;
         }
 
-        if (inboxMapper.exists(CONSUMER_NAME, message.eventId())) {
+        if (inboxMapper.exists(ProductSearchConsumptionRecorder.CONSUMER_NAME, message.eventId())) {
             channel.basicAck(deliveryTag, false);
             return;
         }
 
         try {
             projector.project(message.spuId());
-            inboxMapper.insert(CONSUMER_NAME, message.eventId(), message.spuId(), now());
+            consumptionRecorder.record(message);
             channel.basicAck(deliveryTag, false);
         } catch (DuplicateKeyException duplicate) {
-            // 并发消费者可能同时通过 exists；ES 写入按 SPU ID 幂等，唯一键冲突可视为已完成。
+            // Inbox 冲突会使记录事务回滚，因此不会误推进缓存版本。
             channel.basicAck(deliveryTag, false);
         } catch (RuntimeException exception) {
             routeFailure(payload, retryStage, exception);
@@ -144,7 +139,4 @@ public class ProductSearchWorker {
         return 0;
     }
 
-    private LocalDateTime now() {
-        return LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
-    }
 }
