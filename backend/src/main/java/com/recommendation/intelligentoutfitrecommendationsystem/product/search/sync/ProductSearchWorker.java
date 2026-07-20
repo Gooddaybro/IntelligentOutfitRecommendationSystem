@@ -68,10 +68,13 @@ public class ProductSearchWorker {
 
         try {
             projector.project(message.spuId());
-            consumptionRecorder.record(message);
-            channel.basicAck(deliveryTag, false);
-        } catch (DuplicateKeyException duplicate) {
-            // Inbox 冲突会使记录事务回滚，因此不会误推进缓存版本。
+            try {
+                consumptionRecorder.record(message);
+            } catch (DuplicateKeyException duplicate) {
+                // Inbox 冲突会使记录事务回滚，因此不会误推进缓存版本。
+                channel.basicAck(deliveryTag, false);
+                return;
+            }
             channel.basicAck(deliveryTag, false);
         } catch (RuntimeException exception) {
             routeFailure(payload, retryStage, exception);

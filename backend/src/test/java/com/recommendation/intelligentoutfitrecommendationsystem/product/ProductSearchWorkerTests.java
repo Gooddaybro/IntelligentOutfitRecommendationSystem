@@ -78,6 +78,19 @@ class ProductSearchWorkerTests {
     }
 
     @Test
+    void projectorDuplicateKeyFailureUsesRetryQueue() throws IOException {
+        doThrow(new DuplicateKeyException("projector database conflict"))
+                .when(projector).project(1001L);
+
+        worker.handle(validPayload(), 0, 13L, channel);
+
+        verify(rabbitTemplate).send(eq(RabbitProductSearchTopology.EXCHANGE),
+                eq(RabbitProductSearchTopology.RETRY_10S_ROUTING_KEY), any(Message.class));
+        verify(consumptionRecorder, never()).record(any());
+        verify(channel).basicAck(13L, false);
+    }
+
+    @Test
     void retryableFailureUsesNextRetryQueue() throws IOException {
         doThrow(new ProductSearchUnavailableException("ES unavailable", new IOException()))
                 .when(projector).project(1001L);
