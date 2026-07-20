@@ -3,13 +3,13 @@ package com.recommendation.intelligentoutfitrecommendationsystem.product.search.
 import org.springframework.stereotype.Component;
 
 /**
- * Builds product search cache keys whose version namespace makes stale generations unreachable.
+ * Builds unambiguous product search cache keys whose version namespace makes stale generations unreachable.
  */
 @Component
 public class ProductSearchCacheKeyFactory {
 
     /**
-     * Preserves the caller's normalized query parts while isolating entries by cache generation.
+     * Escapes Redis key delimiters in caller-normalized query parts while isolating entries by cache generation.
      *
      * @param version positive cache generation
      * @param normalizedKeyword caller-normalized keyword
@@ -21,6 +21,12 @@ public class ProductSearchCacheKeyFactory {
         if (version <= 0) {
             throw new IllegalArgumentException("product search cache version must be positive");
         }
-        return "product:search:v" + version + ":" + normalizedKeyword + ":" + normalizedCategory;
+        return "product:search:v" + version + ":"
+                + escapeQueryPart(normalizedKeyword) + ":"
+                + escapeQueryPart(normalizedCategory);
+    }
+
+    private String escapeQueryPart(String value) {
+        return value.replace("%", "%25").replace(":", "%3A");
     }
 }

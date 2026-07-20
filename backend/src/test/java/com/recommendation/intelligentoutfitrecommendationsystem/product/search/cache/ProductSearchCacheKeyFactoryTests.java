@@ -23,4 +23,20 @@ class ProductSearchCacheKeyFactoryTests {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("product search cache version must be positive");
     }
+
+    @Test
+    void escapesSeparatorsSoDifferentQueryPartsCannotShareAKey() {
+        assertThat(factory.create(7, "a:b", "c"))
+                .isEqualTo("product:search:v7:a%3Ab:c")
+                .isNotEqualTo(factory.create(7, "a", "b:c"));
+        assertThat(factory.create(7, "a", "b:c"))
+                .isEqualTo("product:search:v7:a:b%3Ac");
+    }
+
+    @Test
+    void escapesPercentBeforeSeparatorToAvoidEncodedTextCollisions() {
+        assertThat(factory.create(7, "a%3Ab", "c"))
+                .isEqualTo("product:search:v7:a%253Ab:c")
+                .isNotEqualTo(factory.create(7, "a:b", "c"));
+    }
 }
