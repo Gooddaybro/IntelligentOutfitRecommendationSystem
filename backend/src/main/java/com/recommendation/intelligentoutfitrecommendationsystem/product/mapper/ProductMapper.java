@@ -35,6 +35,8 @@ public interface ProductMapper {
 
     List<ProductSearchIndexRow> findAllSearchIndexRows();
 
+    ProductSearchIndexRow findSearchIndexRowBySpuId(@Param("spuId") Long spuId);
+
     ProductDetail findProductDetailBase(@Param("spuId") Long spuId);
 
     SkuSearchItem findSku(
