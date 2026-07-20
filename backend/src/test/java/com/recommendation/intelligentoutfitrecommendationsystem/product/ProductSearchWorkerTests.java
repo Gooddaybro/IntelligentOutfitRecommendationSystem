@@ -66,6 +66,34 @@ class ProductSearchWorkerTests {
     }
 
     @Test
+    void inboxLookupFailureUsesRetryQueue() throws IOException {
+        when(inboxMapper.exists("product-search-worker-v1", "event-1"))
+                .thenThrow(new IllegalStateException("MySQL unavailable"));
+
+        worker.handle(validPayload(), 0, 14L, channel);
+
+        verify(rabbitTemplate).send(eq(RabbitProductSearchTopology.EXCHANGE),
+                eq(RabbitProductSearchTopology.RETRY_10S_ROUTING_KEY), any(Message.class));
+        verify(projector, never()).project(anyLong());
+        verify(consumptionRecorder, never()).record(any());
+        verify(channel).basicAck(14L, false);
+    }
+
+    @Test
+    void inboxLookupFailureAtLastStageGoesToDeadLetterQueue() throws IOException {
+        when(inboxMapper.exists("product-search-worker-v1", "event-1"))
+                .thenThrow(new IllegalStateException("MySQL unavailable"));
+
+        worker.handle(validPayload(), 3, 15L, channel);
+
+        verify(rabbitTemplate).send(eq(RabbitProductSearchTopology.EXCHANGE),
+                eq(RabbitProductSearchTopology.DLQ_ROUTING_KEY), any(Message.class));
+        verify(projector, never()).project(anyLong());
+        verify(consumptionRecorder, never()).record(any());
+        verify(channel).basicAck(15L, false);
+    }
+
+    @Test
     void concurrentDuplicateIsAcknowledgedWithoutRetry() throws IOException {
         doThrow(new DuplicateKeyException("duplicate"))
                 .when(consumptionRecorder).record(any());

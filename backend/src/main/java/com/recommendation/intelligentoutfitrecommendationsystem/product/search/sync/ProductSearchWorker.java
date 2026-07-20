@@ -61,12 +61,11 @@ public class ProductSearchWorker {
             return;
         }
 
-        if (inboxMapper.exists(ProductSearchConsumptionRecorder.CONSUMER_NAME, message.eventId())) {
-            channel.basicAck(deliveryTag, false);
-            return;
-        }
-
         try {
+            if (inboxMapper.exists(ProductSearchConsumptionRecorder.CONSUMER_NAME, message.eventId())) {
+                channel.basicAck(deliveryTag, false);
+                return;
+            }
             projector.project(message.spuId());
             try {
                 consumptionRecorder.record(message);
