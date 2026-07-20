@@ -3,7 +3,7 @@ package com.recommendation.intelligentoutfitrecommendationsystem.product.search.
 import org.springframework.stereotype.Component;
 
 /**
- * Builds unambiguous product search cache keys whose version namespace makes stale generations unreachable.
+ * Builds unambiguous product search cache keys whose independent namespace keeps legacy and stale entries unreachable.
  */
 @Component
 public class ProductSearchCacheKeyFactory {
@@ -21,7 +21,7 @@ public class ProductSearchCacheKeyFactory {
         if (version <= 0) {
             throw new IllegalArgumentException("product search cache version must be positive");
         }
-        return "product:search:v" + version + ":"
+        return "product:search-versioned:v" + version + ":"
                 + escapeQueryPart(normalizedKeyword) + ":"
                 + escapeQueryPart(normalizedCategory);
     }

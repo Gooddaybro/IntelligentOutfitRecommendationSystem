@@ -99,15 +99,17 @@ class ProductCatalogServiceTests {
         List<ProductSearchItem> cachedProducts = List.of(productSearchItem());
         when(productSearchCacheVersionService.currentVersion()).thenReturn(7L);
         when(productSearchCacheKeyFactory.create(7L, "tshirt_basic_001", ""))
-                .thenReturn("product:search:v7:tshirt_basic_001:");
-        when(redisCacheService.getList("product:search:v7:tshirt_basic_001:", ProductSearchItem.class))
+                .thenReturn("product:search-versioned:v7:tshirt_basic_001:");
+        when(redisCacheService.getList(
+                "product:search-versioned:v7:tshirt_basic_001:", ProductSearchItem.class))
                 .thenReturn(Optional.of(cachedProducts));
 
         var products = service.searchProducts(" TSHIRT_BASIC_001 ", null);
 
         assertThat(products).extracting(ProductSearchItem::getSpuCode)
                 .containsExactly("TSHIRT_BASIC_001");
-        verify(redisCacheService).getList("product:search:v7:tshirt_basic_001:", ProductSearchItem.class);
+        verify(redisCacheService).getList(
+                "product:search-versioned:v7:tshirt_basic_001:", ProductSearchItem.class);
         verify(productSearchService, never()).search(any(), any());
         verify(redisCacheService, never()).setValue(any(), any(), any());
     }
@@ -117,8 +119,9 @@ class ProductCatalogServiceTests {
         List<ProductSearchItem> mapperProducts = List.of(productSearchItem());
         when(productSearchCacheVersionService.currentVersion()).thenReturn(7L);
         when(productSearchCacheKeyFactory.create(7L, "tshirt_basic_001", ""))
-                .thenReturn("product:search:v7:tshirt_basic_001:");
-        when(redisCacheService.getList("product:search:v7:tshirt_basic_001:", ProductSearchItem.class))
+                .thenReturn("product:search-versioned:v7:tshirt_basic_001:");
+        when(redisCacheService.getList(
+                "product:search-versioned:v7:tshirt_basic_001:", ProductSearchItem.class))
                 .thenReturn(Optional.empty());
         when(productSearchService.search("TSHIRT_BASIC_001", null))
                 .thenReturn(mapperProducts);
@@ -129,7 +132,9 @@ class ProductCatalogServiceTests {
                 .containsExactly("TSHIRT_BASIC_001");
         verify(productSearchService).search("TSHIRT_BASIC_001", null);
         verify(redisCacheService).setValue(
-                eq("product:search:v7:tshirt_basic_001:"), eq(mapperProducts), any(Duration.class));
+                eq("product:search-versioned:v7:tshirt_basic_001:"),
+                eq(mapperProducts),
+                any(Duration.class));
     }
 
     @Test
@@ -137,8 +142,9 @@ class ProductCatalogServiceTests {
         List<ProductSearchItem> mapperProducts = List.of(productSearchItem());
         when(productSearchCacheVersionService.currentVersion()).thenReturn(7L);
         when(productSearchCacheKeyFactory.create(7L, "coat", "\u5916\u5957"))
-                .thenReturn("product:search:v7:coat:\u5916\u5957");
-        when(redisCacheService.getList("product:search:v7:coat:\u5916\u5957", ProductSearchItem.class))
+                .thenReturn("product:search-versioned:v7:coat:\u5916\u5957");
+        when(redisCacheService.getList(
+                "product:search-versioned:v7:coat:\u5916\u5957", ProductSearchItem.class))
                 .thenReturn(Optional.empty());
         when(productSearchService.search("Coat", "\u5916\u5957"))
                 .thenReturn(mapperProducts);
@@ -146,10 +152,13 @@ class ProductCatalogServiceTests {
         service.searchProducts(" Coat ", " \u5916\u5957 ");
 
         verify(productSearchCacheKeyFactory).create(7L, "coat", "\u5916\u5957");
-        verify(redisCacheService).getList("product:search:v7:coat:\u5916\u5957", ProductSearchItem.class);
+        verify(redisCacheService).getList(
+                "product:search-versioned:v7:coat:\u5916\u5957", ProductSearchItem.class);
         verify(productSearchService).search("Coat", "\u5916\u5957");
         verify(redisCacheService).setValue(
-                eq("product:search:v7:coat:\u5916\u5957"), eq(mapperProducts), any(Duration.class));
+                eq("product:search-versioned:v7:coat:\u5916\u5957"),
+                eq(mapperProducts),
+                any(Duration.class));
     }
 
     @Test
@@ -157,9 +166,9 @@ class ProductCatalogServiceTests {
         List<ProductSearchItem> cachedProducts = List.of(productSearchItem());
         when(productSearchCacheVersionService.currentVersion()).thenReturn(7L, 8L);
         when(productSearchCacheKeyFactory.create(7L, "coat", "\u5916\u5957"))
-                .thenReturn("product:search:v7:coat:\u5916\u5957");
+                .thenReturn("product:search-versioned:v7:coat:\u5916\u5957");
         when(productSearchCacheKeyFactory.create(8L, "coat", "\u5916\u5957"))
-                .thenReturn("product:search:v8:coat:\u5916\u5957");
+                .thenReturn("product:search-versioned:v8:coat:\u5916\u5957");
         when(redisCacheService.getList(anyString(), eq(ProductSearchItem.class)))
                 .thenReturn(Optional.of(cachedProducts));
 
@@ -170,8 +179,8 @@ class ProductCatalogServiceTests {
         verify(redisCacheService, org.mockito.Mockito.times(2))
                 .getList(keyCaptor.capture(), eq(ProductSearchItem.class));
         assertThat(keyCaptor.getAllValues()).containsExactly(
-                "product:search:v7:coat:\u5916\u5957",
-                "product:search:v8:coat:\u5916\u5957");
+                "product:search-versioned:v7:coat:\u5916\u5957",
+                "product:search-versioned:v8:coat:\u5916\u5957");
     }
 
     @Test

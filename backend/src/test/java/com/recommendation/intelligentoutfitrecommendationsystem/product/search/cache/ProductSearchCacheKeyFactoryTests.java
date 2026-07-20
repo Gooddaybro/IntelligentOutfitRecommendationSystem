@@ -12,9 +12,9 @@ class ProductSearchCacheKeyFactoryTests {
     @Test
     void createsDifferentNamespacesForDifferentVersions() {
         assertThat(factory.create(7, "coat", "外套"))
-                .isEqualTo("product:search:v7:coat:外套");
+                .isEqualTo("product:search-versioned:v7:coat:外套");
         assertThat(factory.create(8, "coat", "外套"))
-                .isEqualTo("product:search:v8:coat:外套");
+                .isEqualTo("product:search-versioned:v8:coat:外套");
     }
 
     @Test
@@ -27,16 +27,22 @@ class ProductSearchCacheKeyFactoryTests {
     @Test
     void escapesSeparatorsSoDifferentQueryPartsCannotShareAKey() {
         assertThat(factory.create(7, "a:b", "c"))
-                .isEqualTo("product:search:v7:a%3Ab:c")
+                .isEqualTo("product:search-versioned:v7:a%3Ab:c")
                 .isNotEqualTo(factory.create(7, "a", "b:c"));
         assertThat(factory.create(7, "a", "b:c"))
-                .isEqualTo("product:search:v7:a:b%3Ac");
+                .isEqualTo("product:search-versioned:v7:a:b%3Ac");
     }
 
     @Test
     void escapesPercentBeforeSeparatorToAvoidEncodedTextCollisions() {
         assertThat(factory.create(7, "a%3Ab", "c"))
-                .isEqualTo("product:search:v7:a%253Ab:c")
+                .isEqualTo("product:search-versioned:v7:a%253Ab:c")
                 .isNotEqualTo(factory.create(7, "a:b", "c"));
+    }
+
+    @Test
+    void versionedNamespaceCannotCollideWithLegacySearchKey() {
+        assertThat(factory.create(7, "a", "b"))
+                .isNotEqualTo("product:search:v7:a:b");
     }
 }
