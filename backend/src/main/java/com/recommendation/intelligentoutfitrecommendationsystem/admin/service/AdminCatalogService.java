@@ -25,6 +25,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminU
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.mapper.AdminMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.sync.ProductSearchChangeRecorder;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -59,10 +60,15 @@ public class AdminCatalogService {
 
     private final AdminMapper adminMapper;
     private final JdbcTemplate jdbcTemplate;
+    private final ProductSearchChangeRecorder productSearchChangeRecorder;
 
-    public AdminCatalogService(AdminMapper adminMapper, JdbcTemplate jdbcTemplate) {
+    public AdminCatalogService(
+            AdminMapper adminMapper,
+            JdbcTemplate jdbcTemplate,
+            ProductSearchChangeRecorder productSearchChangeRecorder) {
         this.adminMapper = adminMapper;
         this.jdbcTemplate = jdbcTemplate;
+        this.productSearchChangeRecorder = productSearchChangeRecorder;
     }
 
     @Transactional(readOnly = true)
@@ -109,6 +115,8 @@ public class AdminCatalogService {
         createOrUpdateDefaultSku(spuId, normalized);
         replaceStyleTags(spuId, normalized.styleTags());
         insertAudit("CREATE_PRODUCT", "SPU", String.valueOf(spuId), "SUCCESS", normalized.spuCode());
+        // 与商品写入处于同一事务，避免数据库成功但同步事件丢失。
+        productSearchChangeRecorder.record(spuId);
         return requireProduct(spuId);
     }
 
@@ -131,6 +139,7 @@ public class AdminCatalogService {
         createOrUpdateDefaultSku(spuId, normalized);
         replaceStyleTags(spuId, normalized.styleTags());
         insertAudit("UPDATE_PRODUCT", "SPU", String.valueOf(spuId), "SUCCESS", normalized.spuCode());
+        productSearchChangeRecorder.record(spuId);
         return requireProduct(spuId);
     }
 
@@ -143,6 +152,7 @@ public class AdminCatalogService {
         }
         jdbcTemplate.update("UPDATE product_sku SET status = ? WHERE spu_id = ?", toSkuStatus(dbStatus), spuId);
         insertAudit("CHANGE_PRODUCT_STATUS", "SPU", String.valueOf(spuId), "SUCCESS", toApiStatus(dbStatus));
+        productSearchChangeRecorder.record(spuId);
         return requireProduct(spuId);
     }
 
@@ -167,23 +177,35 @@ public class AdminCatalogService {
         if (request != null && categoryId.equals(request.parentId())) {
             throw new BadRequestException("category cannot be its own parent");
         }
+        String existingName = queryNullable("SELECT name FROM category WHERE id = ?", String.class, categoryId);
+        if (existingName == null) {
+            throw new ResourceNotFoundException("category not found");
+        }
+        String requestedName = request == null ? null : trimToNull(request.name());
+        String updatedName = requestedName == null ? existingName : requestedName;
+        List<Long> affectedSpuIds = existingName.equals(updatedName)
+                ? List.of()
+                : jdbcTemplate.queryForList(
+                        "SELECT id FROM product_spu WHERE category_id = ? ORDER BY id", Long.class, categoryId);
         boolean enabled = request == null || request.enabled() == null || request.enabled();
         if (request != null && request.sortOrder() != null) {
             jdbcTemplate.update("""
                     UPDATE category
-                    SET status = ?, sort_order = ?, updated_at = CURRENT_TIMESTAMP(6)
+                    SET name = ?, status = ?, sort_order = ?, updated_at = CURRENT_TIMESTAMP(6)
                     WHERE id = ?
-                    """, enabled ? "active" : "inactive", request.sortOrder(), categoryId);
+                    """, updatedName, enabled ? "active" : "inactive", request.sortOrder(), categoryId);
         } else {
             jdbcTemplate.update("""
                     UPDATE category
-                    SET status = ?, updated_at = CURRENT_TIMESTAMP(6)
+                    SET name = ?, status = ?, updated_at = CURRENT_TIMESTAMP(6)
                     WHERE id = ?
-                    """, enabled ? "active" : "inactive", categoryId);
+                    """, updatedName, enabled ? "active" : "inactive", categoryId);
         }
         AdminCategoryResponse category = findCategory(categoryId);
         insertAudit(enabled ? "ENABLE_CATEGORY" : "DISABLE_CATEGORY", "CATEGORY", String.valueOf(categoryId),
                 "SUCCESS", category.name());
+        // 分类名会进入搜索文档，因此仅在名称变化时为该分类下商品批量生成同步事件。
+        affectedSpuIds.forEach(productSearchChangeRecorder::record);
         return category;
     }
 

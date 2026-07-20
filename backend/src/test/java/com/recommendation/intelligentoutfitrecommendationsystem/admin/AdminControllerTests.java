@@ -21,7 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ActiveProfiles("test")
-@SpringBootTest
+@SpringBootTest(properties = "app.product-search-sync.enabled=true")
 @AutoConfigureMockMvc
 class AdminControllerTests {
 
@@ -36,7 +36,8 @@ class AdminControllerTests {
     void restoreSeedProductStatus() {
         jdbcTemplate.update("UPDATE product_spu SET status = 'on_sale' WHERE id = 1001");
         jdbcTemplate.update("UPDATE product_sku SET status = 'on_sale' WHERE spu_id = 1001");
-        jdbcTemplate.update("UPDATE category SET status = 'active' WHERE id = 1");
+        jdbcTemplate.update("UPDATE category SET name = '上衣', status = 'active' WHERE id = 1");
+        jdbcTemplate.update("UPDATE category SET name = 'T恤', status = 'active' WHERE id = 2");
         jdbcTemplate.update("UPDATE inventory SET available_stock = 6 WHERE sku_id = 2001");
         jdbcTemplate.update("UPDATE sales_order SET status = 'PAID' WHERE order_no = 'ORDDEMO9001PAID'");
         jdbcTemplate.update("UPDATE user_account SET status = 'active' WHERE id = 9001");
@@ -47,6 +48,7 @@ class AdminControllerTests {
         safeUpdate("DELETE FROM admin_inventory_adjustment");
         safeUpdate("DELETE FROM order_shipment");
         safeUpdate("DELETE FROM admin_audit_log");
+        safeUpdate("DELETE FROM product_search_outbox");
     }
 
     @Test
@@ -96,6 +98,10 @@ class AdminControllerTests {
                 .andExpect(jsonPath("$.data.spuId").value(1001))
                 .andExpect(jsonPath("$.data.spuCode").value("TSHIRT_BASIC_001"))
                 .andExpect(jsonPath("$.data.status").value("OFF_SHELF"));
+
+        Integer eventCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_search_outbox WHERE spu_id = 1001", Integer.class);
+        org.assertj.core.api.Assertions.assertThat(eventCount).isEqualTo(1);
 
         mockMvc.perform(get("/api/admin/products")
                         .with(jwt().jwt(token -> token.subject("1"))
@@ -157,6 +163,10 @@ class AdminControllerTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.name").value("Admin Test Product Updated"))
                 .andExpect(jsonPath("$.data.status").value("ON_SALE"));
+
+        Integer eventCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_search_outbox WHERE spu_id = ?", Integer.class, spuId);
+        org.assertj.core.api.Assertions.assertThat(eventCount).isEqualTo(2);
     }
 
     @Test
@@ -167,13 +177,20 @@ class AdminControllerTests {
                 .andExpect(jsonPath("$.data[0].enabled").isBoolean())
                 .andExpect(jsonPath("$.data[0].productCount").isNumber());
 
-        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/admin/categories/{id}", 1)
+        int affectedProducts = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_spu WHERE category_id = 2", Integer.class);
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/admin/categories/{id}", 2)
                         .with(adminJwt())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"id\":1,\"name\":\"ROOT\",\"level\":1,\"sortOrder\":1,\"enabled\":false,\"productCount\":0}"))
+                        .content("{\"id\":2,\"name\":\"测试T恤\",\"level\":2,\"sortOrder\":1,\"enabled\":false,\"productCount\":0}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.id").value(1))
+                .andExpect(jsonPath("$.data.id").value(2))
+                .andExpect(jsonPath("$.data.name").value("测试T恤"))
                 .andExpect(jsonPath("$.data.enabled").value(false));
+
+        Integer categoryEventCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_search_outbox", Integer.class);
+        org.assertj.core.api.Assertions.assertThat(categoryEventCount).isEqualTo(affectedProducts);
 
         mockMvc.perform(get("/api/admin/inventory").with(adminJwt()))
                 .andExpect(status().isOk())
@@ -191,6 +208,11 @@ class AdminControllerTests {
                 .andExpect(jsonPath("$.data.lastAdjustment.beforeStock").value(6))
                 .andExpect(jsonPath("$.data.lastAdjustment.afterStock").value(15))
                 .andExpect(jsonPath("$.data.lastAdjustment.reason").value("manual count"));
+
+        // 库存不属于当前搜索文档，调整库存不应产生额外同步事件。
+        Integer eventCountAfterInventory = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_search_outbox", Integer.class);
+        org.assertj.core.api.Assertions.assertThat(eventCountAfterInventory).isEqualTo(categoryEventCount);
     }
 
     @Test

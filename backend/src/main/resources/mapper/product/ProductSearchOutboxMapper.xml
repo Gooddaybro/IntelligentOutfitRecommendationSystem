@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recommendation.intelligentoutfitrecommendationsystem.product.search.sync.ProductSearchOutboxMapper">
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO product_search_outbox
+            (event_id, spu_id, event_type, schema_version, payload, status, available_at)
+        VALUES
+            (#{eventId}, #{spuId}, #{eventType}, #{schemaVersion}, #{payload}, #{status}, #{availableAt})
+    </insert>
+
+    <!-- 扫描只产生候选；claim 的条件更新才决定 Relay 所有权。 -->
+    <select id="findPublishable" resultType="com.recommendation.intelligentoutfitrecommendationsystem.product.search.sync.ProductSearchOutboxEvent">
+        SELECT * FROM product_search_outbox
+        WHERE status = 'NEW' AND available_at &lt;= #{now}
+          AND (claim_until IS NULL OR claim_until &lt;= #{now})
+        ORDER BY id LIMIT #{limit}
+    </select>
+
+    <update id="claim">
+        UPDATE product_search_outbox
+        SET claimed_by = #{claimedBy}, claim_until = #{claimUntil},
+            publish_attempts = publish_attempts + 1, updated_at = #{now}
+        WHERE event_id = #{eventId} AND status = 'NEW' AND available_at &lt;= #{now}
+          AND (claim_until IS NULL OR claim_until &lt;= #{now})
+    </update>
+
+    <update id="markPublished">
+        UPDATE product_search_outbox
+        SET status = 'PUBLISHED', published_at = #{publishedAt}, claimed_by = NULL,
+            claim_until = NULL, last_error = NULL, updated_at = #{publishedAt}
+        WHERE event_id = #{eventId} AND status = 'NEW' AND claimed_by = #{claimedBy}
+    </update>
+
+    <update id="releaseClaim">
+        UPDATE product_search_outbox
+        SET claimed_by = NULL, claim_until = NULL, last_error = #{lastError},
+            updated_at = CURRENT_TIMESTAMP(6)
+        WHERE event_id = #{eventId} AND status = 'NEW' AND claimed_by = #{claimedBy}
+    </update>
+
+    <select id="findMaxId" resultType="java.lang.Long">
+        SELECT COALESCE(MAX(id), 0) FROM product_search_outbox
+    </select>
+
+    <!-- 重建补偿按 SPU 去重；同一商品多个事件都只读取一次当前事实。 -->
+    <select id="findDistinctSpuIdsInRange" resultType="java.lang.Long">
+        SELECT DISTINCT spu_id FROM product_search_outbox
+        WHERE id &gt; #{afterId} AND id &lt;= #{throughId}
+        ORDER BY spu_id
+    </select>
+</mapper>
