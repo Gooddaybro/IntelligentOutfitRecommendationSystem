@@ -84,6 +84,55 @@
         ORDER BY p.id
     </select>
 
+    <!--
+        全量重建一次性读取所有 SPU，包括已下架商品，让 status 过滤规则也能在索引中验证。
+        多值维度在子查询中聚合，避免多张关联表连接后产生笛卡尔积和重复标签。
+    -->
+    <select id="findAllSearchIndexRows" resultType="com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchIndexRow">
+        SELECT
+            p.id AS spu_id,
+            p.spu_code,
+            p.name,
+            p.description,
+            c.name AS category,
+            f.name AS fit_type,
+            (
+                SELECT GROUP_CONCAT(m.name ORDER BY m.id SEPARATOR ',')
+                FROM product_material pm
+                JOIN material m ON m.id = pm.material_id
+                WHERE pm.spu_id = p.id
+            ) AS materials,
+            CONCAT_WS(',',
+                (
+                    SELECT GROUP_CONCAT(st.code ORDER BY st.id SEPARATOR ',')
+                    FROM product_style_tag pst
+                    JOIN style_tag st ON st.id = pst.style_tag_id
+                    WHERE pst.spu_id = p.id
+                ),
+                (
+                    SELECT GROUP_CONCAT(pa.attr_value ORDER BY pa.id SEPARATOR ',')
+                    FROM product_attribute pa
+                    WHERE pa.spu_id = p.id AND pa.attr_name = '风格'
+                )
+            ) AS styles,
+            (
+                SELECT GROUP_CONCAT(pa.attr_value ORDER BY pa.id SEPARATOR ',')
+                FROM product_attribute pa
+                WHERE pa.spu_id = p.id AND pa.attr_name IN ('场景', '适用场景')
+            ) AS scenes,
+            (
+                SELECT GROUP_CONCAT(se.code ORDER BY se.id SEPARATOR ',')
+                FROM product_season ps
+                JOIN season se ON se.id = ps.season_id
+                WHERE ps.spu_id = p.id
+            ) AS seasons,
+            p.status
+        FROM product_spu p
+        JOIN category c ON c.id = p.category_id
+        LEFT JOIN fit_type f ON f.id = p.fit_type_id
+        ORDER BY p.id
+    </select>
+
     <!-- MySQL 降级搜索只决定候选 SPU；实时商品摘要由统一的补齐查询读取。 -->
     <select id="searchProductIds" resultType="java.lang.Long">
         SELECT p.id

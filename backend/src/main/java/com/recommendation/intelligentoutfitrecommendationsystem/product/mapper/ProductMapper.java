@@ -8,6 +8,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.product.model.Re
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidateLiveFact;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidateSnapshot;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.SkuSearchItem;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchIndexRow;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -31,6 +32,8 @@ public interface ProductMapper {
     );
 
     List<ProductSearchItem> findSearchItemsBySpuIds(@Param("spuIds") List<Long> spuIds);
+
+    List<ProductSearchIndexRow> findAllSearchIndexRows();
 
     ProductDetail findProductDetailBase(@Param("spuId") Long spuId);
 

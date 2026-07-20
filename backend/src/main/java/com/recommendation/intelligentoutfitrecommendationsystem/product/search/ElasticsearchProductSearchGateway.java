@@ -64,7 +64,13 @@ public class ElasticsearchProductSearchGateway implements ProductSearchGateway {
             query = Query.of(builder -> builder.bool(bool -> bool
                     .must(must -> must.multiMatch(multiMatch -> multiMatch
                             .query(criteria.keyword())
-                            .fields("name^5", "styles^3", "category^2", "description")))
+                            .fields(
+                                    "name.smartcn^5",
+                                    "styles.search^3",
+                                    "category.search^2",
+                                    "scenes.search^2",
+                                    "materials.search^1.5",
+                                    "description.smartcn")))
                     .filter(filters)));
         }
 

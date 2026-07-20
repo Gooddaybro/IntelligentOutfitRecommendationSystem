@@ -1,0 +1,137 @@
+package com.recommendation.intelligentoutfitrecommendationsystem.product.search;
+
+import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch.core.BulkRequest;
+import co.elastic.clients.elasticsearch.core.BulkResponse;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.mapper.ProductMapper;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/**
+ * 从 MySQL 构建新商品索引，验证后原子切换查询别名。
+ *
+ * <p>重建始终写入新物理索引，失败时旧别名保持不变，因此线上搜索不会读到半成品。</p>
+ */
+@Service
+@ConditionalOnProperty(prefix = "app.elasticsearch", name = "enabled", havingValue = "true")
+public class ProductSearchIndexService {
+
+    private static final DateTimeFormatter INDEX_TIME =
+            DateTimeFormatter.ofPattern("yyyyMMddHHmmss").withZone(ZoneOffset.UTC);
+
+    private final ElasticsearchClient client;
+    private final ProductMapper productMapper;
+    private final ElasticsearchSearchProperties properties;
+    private final Clock clock;
+    private final AtomicBoolean rebuilding = new AtomicBoolean();
+
+    @Autowired
+    public ProductSearchIndexService(
+            ElasticsearchClient client,
+            ProductMapper productMapper,
+            ElasticsearchSearchProperties properties
+    ) {
+        this(client, productMapper, properties, Clock.systemUTC());
+    }
+
+    ProductSearchIndexService(
+            ElasticsearchClient client,
+            ProductMapper productMapper,
+            ElasticsearchSearchProperties properties,
+            Clock clock
+    ) {
+        this.client = client;
+        this.productMapper = productMapper;
+        this.properties = properties;
+        this.clock = clock;
+    }
+
+    /**
+     * 执行一次互斥的全量重建。
+     *
+     * @return 新索引、文档数量和别名
+     */
+    public ProductSearchRebuildResult rebuild() {
+        if (!rebuilding.compareAndSet(false, true)) {
+            throw new BadRequestException("商品搜索索引正在重建，请勿重复提交");
+        }
+
+        Instant rebuiltAt = clock.instant();
+        String indexName = properties.getIndexPrefix() + INDEX_TIME.format(rebuiltAt);
+        try {
+            List<ProductSearchIndexRow> rows = productMapper.findAllSearchIndexRows();
+            createIndex(indexName);
+            bulkIndex(indexName, rows, rebuiltAt);
+            client.indices().refresh(request -> request.index(indexName));
+            long actualCount = client.count(request -> request.index(indexName)).count();
+            if (actualCount != rows.size()) {
+                throw new IllegalStateException(
+                        "商品索引文档数量不一致，预期 " + rows.size() + "，实际 " + actualCount);
+            }
+            switchAlias(indexName);
+            return new ProductSearchRebuildResult(indexName, actualCount, properties.getIndexAlias());
+        } catch (IOException exception) {
+            throw new ProductSearchUnavailableException("商品搜索索引重建失败", exception);
+        } finally {
+            rebuilding.set(false);
+        }
+    }
+
+    private void createIndex(String indexName) throws IOException {
+        ClassPathResource mapping = new ClassPathResource("elasticsearch/product-index.json");
+        try (InputStream input = mapping.getInputStream()) {
+            client.indices().create(request -> request.index(indexName).withJson(input));
+        }
+    }
+
+    private void bulkIndex(String indexName, List<ProductSearchIndexRow> rows, Instant rebuiltAt)
+            throws IOException {
+        int batchSize = properties.getBulkBatchSize();
+        for (int start = 0; start < rows.size(); start += batchSize) {
+            int end = Math.min(start + batchSize, rows.size());
+            BulkRequest.Builder request = new BulkRequest.Builder();
+            for (ProductSearchIndexRow row : rows.subList(start, end)) {
+                ProductSearchDocument document = row.toDocument(rebuiltAt);
+                request.operations(operation -> operation.index(index -> index
+                        .index(indexName)
+                        .id(String.valueOf(row.spuId()))
+                        .document(document)));
+            }
+            BulkResponse response = client.bulk(request.build());
+            if (response.errors()) {
+                String reason = response.items().stream()
+                        .filter(item -> item.error() != null)
+                        .map(item -> item.error().reason())
+                        .findFirst()
+                        .orElse("未知批量写入错误");
+                throw new IllegalStateException("商品索引批量写入失败: " + reason);
+            }
+        }
+    }
+
+    private void switchAlias(String indexName) throws IOException {
+        String alias = properties.getIndexAlias();
+        // 删除旧指向与添加新指向放在同一个 aliases 请求中，避免查询出现无别名窗口。
+        client.indices().updateAliases(request -> request
+                .actions(action -> action.remove(remove -> remove
+                        .index(properties.getIndexPrefix() + "*")
+                        .alias(alias)
+                        .mustExist(false)))
+                .actions(action -> action.add(add -> add
+                        .index(indexName)
+                        .alias(alias)
+                        .isWriteIndex(true))));
+    }
+}

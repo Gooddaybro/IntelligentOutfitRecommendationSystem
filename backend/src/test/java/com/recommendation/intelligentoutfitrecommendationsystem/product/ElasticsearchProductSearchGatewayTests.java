@@ -58,7 +58,13 @@ class ElasticsearchProductSearchGatewayTests {
         assertThat(request.index()).containsExactly("product_current");
         assertThat(request.size()).isEqualTo(20);
         assertThat(request.query().bool().must().getFirst().multiMatch().fields())
-                .containsExactly("name^5", "styles^3", "category^2", "description");
+                .containsExactly(
+                        "name.smartcn^5",
+                        "styles.search^3",
+                        "category.search^2",
+                        "scenes.search^2",
+                        "materials.search^1.5",
+                        "description.smartcn");
         assertThat(request.query().bool().filter()).hasSize(2);
     }
 

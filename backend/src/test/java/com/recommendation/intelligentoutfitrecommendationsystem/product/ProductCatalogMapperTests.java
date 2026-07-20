@@ -40,6 +40,31 @@ class ProductCatalogMapperTests {
     }
 
     @Test
+    void searchProductIdsAndHydrationKeepMySqlAsCurrentFactSource() {
+        List<Long> ids = mapper.searchProductIds("通勤", "外套", 20);
+
+        assertThat(ids).contains(1002L);
+        assertThat(mapper.findSearchItemsBySpuIds(ids))
+                .extracting("spuCode")
+                .contains("JACKET_COMMUTE_001");
+    }
+
+    @Test
+    void findAllSearchIndexRowsProjectsMultiValueSearchFacts() {
+        var rows = mapper.findAllSearchIndexRows();
+
+        assertThat(rows).isNotEmpty();
+        assertThat(rows)
+                .filteredOn(row -> "JACKET_COMMUTE_001".equals(row.spuCode()))
+                .first()
+                .satisfies(row -> {
+                    assertThat(row.materials()).isNotBlank();
+                    assertThat(row.seasons()).contains("autumn");
+                    assertThat(row.status()).isEqualTo("on_sale");
+                });
+    }
+
+    @Test
     void findSkuReturnsBlackLargeTshirt() {
         var sku = mapper.findSku(1001L, "黑色", "L");
 
