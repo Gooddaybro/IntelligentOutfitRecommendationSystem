@@ -12,6 +12,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.product.search.P
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchIndexRow;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchIndexService;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchUnavailableException;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.cache.ProductSearchCacheVersionService;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.sync.ProductSearchRebuildCompensator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,8 +28,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -45,6 +48,8 @@ class ProductSearchIndexServiceTests {
     private ProductSearchIndexLifecycleService lifecycleService;
     @Mock
     private ProductSearchRebuildCompensator rebuildCompensator;
+    @Mock
+    private ProductSearchCacheVersionService cacheVersionService;
 
     private ProductSearchIndexService service;
 
@@ -54,7 +59,8 @@ class ProductSearchIndexServiceTests {
         properties.setIndexPrefix("product_");
         properties.setIndexAlias("product_current");
         properties.setBulkBatchSize(200);
-        service = new ProductSearchIndexService(client, productMapper, properties, lifecycleService);
+        service = new ProductSearchIndexService(
+                client, productMapper, properties, lifecycleService, cacheVersionService);
     }
 
     @Test
@@ -110,13 +116,47 @@ class ProductSearchIndexServiceTests {
     @Test
     void compensatesEventsCreatedDuringFullRebuild() throws IOException {
         service = new ProductSearchIndexService(
-                client, productMapper, properties(), lifecycleService, Optional.of(rebuildCompensator));
+                client, productMapper, properties(), lifecycleService,
+                Optional.of(rebuildCompensator), cacheVersionService);
         when(rebuildCompensator.captureWatermark()).thenReturn(10L);
         prepareSuccessfulRebuild();
 
         service.rebuild();
 
         verify(rebuildCompensator).compensateAfter(10L);
+    }
+
+    @Test
+    void advancesCacheVersionAfterCompensationAndBeforeHistoryPruning() throws IOException {
+        service = new ProductSearchIndexService(
+                client, productMapper, properties(), lifecycleService,
+                Optional.of(rebuildCompensator), cacheVersionService);
+        when(rebuildCompensator.captureWatermark()).thenReturn(10L);
+        prepareSuccessfulRebuild();
+
+        service.rebuild();
+
+        var order = inOrder(
+                indicesClient, rebuildCompensator, cacheVersionService, lifecycleService);
+        order.verify(indicesClient).updateAliases(any(java.util.function.Function.class));
+        order.verify(rebuildCompensator).compensateAfter(10L);
+        order.verify(cacheVersionService, times(1)).incrementVersion();
+        order.verify(lifecycleService).pruneHistory();
+    }
+
+    @Test
+    void propagatesVersionFailureAndDelegatesSafeCleanup() throws IOException {
+        prepareSuccessfulRebuild();
+        doThrow(new IllegalStateException("version failed"))
+                .when(cacheVersionService).incrementVersion();
+
+        assertThatThrownBy(service::rebuild)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("version failed");
+
+        // 别名可能已经切换成功，生命周期服务会重新读取别名并保护当前索引。
+        verify(lifecycleService).deleteFailedIndex(org.mockito.ArgumentMatchers.startsWith("product_"));
+        verify(lifecycleService, never()).pruneHistory();
     }
 
     private void prepareRowsAndCreatedIndex() throws IOException {

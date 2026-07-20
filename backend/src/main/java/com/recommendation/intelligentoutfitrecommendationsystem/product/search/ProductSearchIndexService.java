@@ -5,6 +5,7 @@ import co.elastic.clients.elasticsearch.core.BulkRequest;
 import co.elastic.clients.elasticsearch.core.BulkResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.mapper.ProductMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.cache.ProductSearchCacheVersionService;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.sync.ProductSearchRebuildCompensator;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,6 +42,7 @@ public class ProductSearchIndexService {
     private final ElasticsearchSearchProperties properties;
     private final ProductSearchIndexLifecycleService lifecycleService;
     private final Optional<ProductSearchRebuildCompensator> rebuildCompensator;
+    private final ProductSearchCacheVersionService cacheVersionService;
     private final Clock clock;
     private final AtomicBoolean rebuilding = new AtomicBoolean();
 
@@ -50,18 +52,22 @@ public class ProductSearchIndexService {
             ProductMapper productMapper,
             ElasticsearchSearchProperties properties,
             ProductSearchIndexLifecycleService lifecycleService,
-            Optional<ProductSearchRebuildCompensator> rebuildCompensator
+            Optional<ProductSearchRebuildCompensator> rebuildCompensator,
+            ProductSearchCacheVersionService cacheVersionService
     ) {
-        this(client, productMapper, properties, lifecycleService, rebuildCompensator, Clock.systemUTC());
+        this(client, productMapper, properties, lifecycleService,
+                rebuildCompensator, cacheVersionService, Clock.systemUTC());
     }
 
     public ProductSearchIndexService(
             ElasticsearchClient client,
             ProductMapper productMapper,
             ElasticsearchSearchProperties properties,
-            ProductSearchIndexLifecycleService lifecycleService
+            ProductSearchIndexLifecycleService lifecycleService,
+            ProductSearchCacheVersionService cacheVersionService
     ) {
-        this(client, productMapper, properties, lifecycleService, Optional.empty(), Clock.systemUTC());
+        this(client, productMapper, properties, lifecycleService,
+                Optional.empty(), cacheVersionService, Clock.systemUTC());
     }
 
     ProductSearchIndexService(
@@ -69,9 +75,11 @@ public class ProductSearchIndexService {
             ProductMapper productMapper,
             ElasticsearchSearchProperties properties,
             ProductSearchIndexLifecycleService lifecycleService,
+            ProductSearchCacheVersionService cacheVersionService,
             Clock clock
     ) {
-        this(client, productMapper, properties, lifecycleService, Optional.empty(), clock);
+        this(client, productMapper, properties, lifecycleService,
+                Optional.empty(), cacheVersionService, clock);
     }
 
     ProductSearchIndexService(
@@ -80,6 +88,7 @@ public class ProductSearchIndexService {
             ElasticsearchSearchProperties properties,
             ProductSearchIndexLifecycleService lifecycleService,
             Optional<ProductSearchRebuildCompensator> rebuildCompensator,
+            ProductSearchCacheVersionService cacheVersionService,
             Clock clock
     ) {
         this.client = client;
@@ -87,6 +96,7 @@ public class ProductSearchIndexService {
         this.properties = properties;
         this.lifecycleService = lifecycleService;
         this.rebuildCompensator = rebuildCompensator;
+        this.cacheVersionService = cacheVersionService;
         this.clock = clock;
     }
 
@@ -119,6 +129,7 @@ public class ProductSearchIndexService {
             }
             switchAlias(indexName);
             rebuildCompensator.ifPresent(compensator -> compensator.compensateAfter(startWatermark));
+            cacheVersionService.incrementVersion();
             pruneHistoryWithoutBreakingRebuild();
             return new ProductSearchRebuildResult(indexName, actualCount, properties.getIndexAlias());
         } catch (IOException exception) {
