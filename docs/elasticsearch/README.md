@@ -32,15 +32,23 @@ docker compose ps elasticsearch kibana
 $health = Invoke-RestMethod http://localhost:9200/_cluster/health
 $health | Select-Object cluster_name, status, number_of_nodes
 
+$productHealth = Invoke-RestMethod http://localhost:9200/_cluster/health/product_v1
+$productHealth | Select-Object status, active_primary_shards, unassigned_shards
+
 $plugins = Invoke-RestMethod 'http://localhost:9200/_cat/plugins?format=json'
 $plugins | Select-Object name, component, version
+
+$kibana = Invoke-WebRequest -UseBasicParsing -TimeoutSec 10 http://localhost:5601/api/status
+$kibana.StatusCode
 ```
 
 预期结果：
 
-- 集群状态为 `green`；
+- `product_v1` 商品实验索引状态为 `green`；
+- Kibana 创建的部分系统索引在单节点上可能保留未分配副本，因此整体集群允许为 `yellow`；
 - 节点数为 1；
 - 插件列表包含 `analysis-smartcn`；
+- Kibana 状态接口返回 HTTP 200；
 - Elasticsearch 与 Kibana 使用同一个 `ELASTIC_STACK_VERSION`。
 
 ## 创建索引
@@ -67,8 +75,8 @@ $seed = Get-Content -Raw -Encoding UTF8 docs/elasticsearch/product-v1-seed.ndjso
 $bulk = Invoke-RestMethod `
     -Method Post `
     -Uri 'http://localhost:9200/_bulk?refresh=true' `
-    -ContentType application/x-ndjson `
-    -Body $seed
+    -ContentType 'application/x-ndjson; charset=utf-8' `
+    -Body ([Text.Encoding]::UTF8.GetBytes($seed))
 
 if ($bulk.errors) {
     $bulk.items | ConvertTo-Json -Depth 10
@@ -79,6 +87,8 @@ Invoke-RestMethod http://localhost:9200/product_current/_count
 ```
 
 文档数应为 10。每件商品都使用 SPU ID 作为 `_id`，重复执行 Bulk 请求后文档数仍应为 10。
+
+这里显式转换为 UTF-8 字节，是为了避免 Windows PowerShell 把中文请求体按系统默认编码发送成问号。
 
 ## 搜索实验
 
@@ -133,8 +143,8 @@ $seed = Get-Content -Raw -Encoding UTF8 docs/elasticsearch/product-v1-seed.ndjso
 $bulk = Invoke-RestMethod `
     -Method Post `
     -Uri 'http://localhost:9200/_bulk?refresh=true' `
-    -ContentType application/x-ndjson `
-    -Body $seed
+    -ContentType 'application/x-ndjson; charset=utf-8' `
+    -Body ([Text.Encoding]::UTF8.GetBytes($seed))
 
 if ($bulk.errors) { throw '重建后的 Bulk 写入包含失败项' }
 ```
@@ -184,13 +194,13 @@ docker compose logs --tail 200 elasticsearch
 
 确认挂载了 `docker/elasticsearch/elasticsearch-plugins.yml`，并确认 SmartCN 与 Elasticsearch 使用相同版本。
 
-### 集群状态为 yellow
+### 整体集群状态为 yellow
 
 ```powershell
 Invoke-RestMethod http://localhost:9200/product_v1/_settings
 ```
 
-单节点实验索引的 `number_of_replicas` 必须为 0；否则副本无法分配。
+先检查 `product_v1` 是否为 `green`。单节点实验索引的 `number_of_replicas` 必须为 0；否则副本无法分配。Kibana 自己创建的系统索引可能带有副本，使整体集群保持 `yellow`，这不代表 `product_v1` 不可用。
 
 ### Bulk API 报错
 

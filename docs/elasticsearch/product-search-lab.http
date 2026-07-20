@@ -1,5 +1,8 @@
-### 集群健康状态：单节点实验索引将副本设为 0，因此应达到 green。
+### 集群健康状态：Kibana 系统索引可能让单节点集群显示 yellow。
 GET http://localhost:9200/_cluster/health
+
+### 商品实验索引没有副本，应单独达到 green。
+GET http://localhost:9200/_cluster/health/product_v1
 
 ### 插件清单：应包含 analysis-smartcn。
 GET http://localhost:9200/_cat/plugins?v

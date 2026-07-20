@@ -500,7 +500,7 @@ Invoke-RestMethod http://localhost:9200/_cluster/health
 Invoke-RestMethod http://localhost:9200/_cat/plugins?format=json
 ```
 
-集群应为 `green`，插件列表应包含 `analysis-smartcn`。
+`product_v1` 应为 `green`；Kibana 系统索引可能使单节点整体集群为 `yellow`。插件列表应包含 `analysis-smartcn`。
 
 ## 创建索引
 
@@ -514,7 +514,7 @@ Invoke-RestMethod http://localhost:9200/_alias/product_current
 
 ```powershell
 $seed = Get-Content -Raw -Encoding UTF8 docs/elasticsearch/product-v1-seed.ndjson
-Invoke-RestMethod -Method Post -Uri 'http://localhost:9200/_bulk?refresh=true' -ContentType application/x-ndjson -Body $seed
+Invoke-RestMethod -Method Post -Uri 'http://localhost:9200/_bulk?refresh=true' -ContentType 'application/x-ndjson; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($seed))
 Invoke-RestMethod http://localhost:9200/product_current/_count
 ```
 
@@ -542,7 +542,7 @@ Invoke-RestMethod -Method Delete http://localhost:9200/product_v1
 $body = Get-Content -Raw -Encoding UTF8 docs/elasticsearch/product-v1-index.json
 Invoke-RestMethod -Method Put -Uri http://localhost:9200/product_v1 -ContentType application/json -Body $body
 $seed = Get-Content -Raw -Encoding UTF8 docs/elasticsearch/product-v1-seed.ndjson
-Invoke-RestMethod -Method Post -Uri 'http://localhost:9200/_bulk?refresh=true' -ContentType application/x-ndjson -Body $seed
+Invoke-RestMethod -Method Post -Uri 'http://localhost:9200/_bulk?refresh=true' -ContentType 'application/x-ndjson; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($seed))
 ```
 
 ## 完全清理
@@ -628,8 +628,8 @@ Expected: Elasticsearch becomes healthy and Kibana remains running.
 Run:
 
 ```powershell
-$health = Invoke-RestMethod http://localhost:9200/_cluster/health
-if ($health.status -ne 'green') { throw "Expected green cluster, got $($health.status)" }
+$health = Invoke-RestMethod http://localhost:9200/_cluster/health/product_v1
+if ($health.status -ne 'green') { throw "Expected green product_v1 index, got $($health.status)" }
 $plugins = Invoke-RestMethod 'http://localhost:9200/_cat/plugins?format=json'
 if ('analysis-smartcn' -notin $plugins.component) { throw 'SmartCN plugin is not installed' }
 ```
@@ -645,7 +645,7 @@ $indexBody = Get-Content -Raw -Encoding UTF8 docs/elasticsearch/product-v1-index
 Invoke-RestMethod -Method Put -Uri http://localhost:9200/product_v1 -ContentType application/json -Body $indexBody | Out-Null
 $seed = Get-Content -Raw -Encoding UTF8 docs/elasticsearch/product-v1-seed.ndjson
 1..2 | ForEach-Object {
-    $bulk = Invoke-RestMethod -Method Post -Uri 'http://localhost:9200/_bulk?refresh=true' -ContentType application/x-ndjson -Body $seed
+    $bulk = Invoke-RestMethod -Method Post -Uri 'http://localhost:9200/_bulk?refresh=true' -ContentType 'application/x-ndjson; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($seed))
     if ($bulk.errors) { throw 'Bulk indexing returned errors' }
 }
 $count = Invoke-RestMethod http://localhost:9200/product_current/_count
@@ -659,8 +659,10 @@ Expected: both Bulk calls succeed and count remains 10.
 Run:
 
 ```powershell
-$standard = Invoke-RestMethod -Method Post -Uri http://localhost:9200/_analyze -ContentType application/json -Body '{"analyzer":"standard","text":"冬季通勤外套"}'
-$smartcn = Invoke-RestMethod -Method Post -Uri http://localhost:9200/_analyze -ContentType application/json -Body '{"analyzer":"smartcn","text":"冬季通勤外套"}'
+$standardBody = '{"analyzer":"standard","text":"冬季通勤外套"}'
+$smartcnBody = '{"analyzer":"smartcn","text":"冬季通勤外套"}'
+$standard = Invoke-RestMethod -Method Post -Uri http://localhost:9200/_analyze -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($standardBody))
+$smartcn = Invoke-RestMethod -Method Post -Uri http://localhost:9200/_analyze -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($smartcnBody))
 $standardTokens = @($standard.tokens.token)
 $smartcnTokens = @($smartcn.tokens.token)
 if ($standardTokens.Count -eq 0 -or $smartcnTokens.Count -eq 0) { throw 'Analyzer returned no tokens' }
@@ -678,7 +680,7 @@ Run the weighted request from `product-search-lab.http` and assert:
 $query = @'
 {"query":{"bool":{"must":[{"multi_match":{"query":"冬季通勤外套","fields":["name.smartcn^5","styles.search^3","category.search^2","scenes.search^2","materials.search^1.5","description.smartcn"]}}],"filter":[{"term":{"status":"on_sale"}}]}},"highlight":{"fields":{"name.smartcn":{},"description.smartcn":{}}}}
 '@
-$result = Invoke-RestMethod -Method Post -Uri http://localhost:9200/product_current/_search -ContentType application/json -Body $query
+$result = Invoke-RestMethod -Method Post -Uri http://localhost:9200/product_current/_search -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($query))
 if ($result.hits.total.value -lt 1) { throw 'Expected at least one search hit' }
 if (-not $result.hits.hits[0]._score) { throw 'Expected a relevance score' }
 if (-not $result.hits.hits[0].highlight) { throw 'Expected a highlight fragment on the top hit' }
