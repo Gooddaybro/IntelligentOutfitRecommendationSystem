@@ -8,6 +8,8 @@ import com.recommendation.intelligentoutfitrecommendationsystem.product.mapper.P
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -28,12 +30,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @ConditionalOnProperty(prefix = "app.elasticsearch", name = "enabled", havingValue = "true")
 public class ProductSearchIndexService {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(ProductSearchIndexService.class);
     private static final DateTimeFormatter INDEX_TIME =
             DateTimeFormatter.ofPattern("yyyyMMddHHmmss").withZone(ZoneOffset.UTC);
 
     private final ElasticsearchClient client;
     private final ProductMapper productMapper;
     private final ElasticsearchSearchProperties properties;
+    private final ProductSearchIndexLifecycleService lifecycleService;
     private final Clock clock;
     private final AtomicBoolean rebuilding = new AtomicBoolean();
 
@@ -41,20 +45,23 @@ public class ProductSearchIndexService {
     public ProductSearchIndexService(
             ElasticsearchClient client,
             ProductMapper productMapper,
-            ElasticsearchSearchProperties properties
+            ElasticsearchSearchProperties properties,
+            ProductSearchIndexLifecycleService lifecycleService
     ) {
-        this(client, productMapper, properties, Clock.systemUTC());
+        this(client, productMapper, properties, lifecycleService, Clock.systemUTC());
     }
 
     ProductSearchIndexService(
             ElasticsearchClient client,
             ProductMapper productMapper,
             ElasticsearchSearchProperties properties,
+            ProductSearchIndexLifecycleService lifecycleService,
             Clock clock
     ) {
         this.client = client;
         this.productMapper = productMapper;
         this.properties = properties;
+        this.lifecycleService = lifecycleService;
         this.clock = clock;
     }
 
@@ -70,9 +77,11 @@ public class ProductSearchIndexService {
 
         Instant rebuiltAt = clock.instant();
         String indexName = properties.getIndexPrefix() + INDEX_TIME.format(rebuiltAt);
+        boolean indexCreated = false;
         try {
             List<ProductSearchIndexRow> rows = productMapper.findAllSearchIndexRows();
             createIndex(indexName);
+            indexCreated = true;
             bulkIndex(indexName, rows, rebuiltAt);
             client.indices().refresh(request -> request.index(indexName));
             long actualCount = client.count(request -> request.index(indexName)).count();
@@ -81,11 +90,40 @@ public class ProductSearchIndexService {
                         "商品索引文档数量不一致，预期 " + rows.size() + "，实际 " + actualCount);
             }
             switchAlias(indexName);
+            pruneHistoryWithoutBreakingRebuild();
             return new ProductSearchRebuildResult(indexName, actualCount, properties.getIndexAlias());
         } catch (IOException exception) {
-            throw new ProductSearchUnavailableException("商品搜索索引重建失败", exception);
+            ProductSearchUnavailableException failure =
+                    new ProductSearchUnavailableException("商品搜索索引重建失败", exception);
+            cleanupFailedIndex(indexName, indexCreated, failure);
+            throw failure;
+        } catch (RuntimeException exception) {
+            cleanupFailedIndex(indexName, indexCreated, exception);
+            throw exception;
         } finally {
             rebuilding.set(false);
+        }
+    }
+
+    private void cleanupFailedIndex(String indexName, boolean indexCreated, RuntimeException failure) {
+        if (!indexCreated) {
+            return;
+        }
+        try {
+            lifecycleService.deleteFailedIndex(indexName);
+        } catch (RuntimeException cleanupException) {
+            // 二次清理失败不能覆盖 Bulk、数量校验等真正的重建失败原因。
+            failure.addSuppressed(cleanupException);
+            LOGGER.warn("商品索引重建失败后无法删除半成品索引 {}", indexName, cleanupException);
+        }
+    }
+
+    private void pruneHistoryWithoutBreakingRebuild() {
+        try {
+            lifecycleService.pruneHistory();
+        } catch (RuntimeException cleanupException) {
+            // 此时别名已成功切换；清理失败只影响磁盘回收，不应把成功重建报告为失败。
+            LOGGER.warn("商品索引已切换，但历史索引清理失败", cleanupException);
         }
     }
 
