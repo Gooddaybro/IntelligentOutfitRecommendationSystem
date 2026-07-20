@@ -50,12 +50,14 @@ Redis 计数器实现较轻，但 Redis 故障时版本递增可能丢失。Redi
 
 ```sql
 CREATE TABLE product_search_cache_state (
-    id BIGINT NOT NULL,
-    generation BIGINT NOT NULL,
-    updated_at DATETIME(6) NOT NULL,
-    PRIMARY KEY (id)
+    id BIGINT PRIMARY KEY,
+    generation BIGINT NOT NULL CHECK (generation > 0),
+    updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
 );
 ```
+
+该定义与 V25 迁移一致：`updated_at` 在初始化 INSERT 未显式传值时使用微秒精度的当前时间；迁移没有声明
+`ON UPDATE`，版本递增 SQL 会显式执行 `updated_at = CURRENT_TIMESTAMP(6)`。
 
 迁移同时插入唯一状态行：
 
