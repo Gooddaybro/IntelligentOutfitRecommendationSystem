@@ -410,7 +410,7 @@ docker compose config --quiet
 
 Expected: Maven BUILD SUCCESS、0 Checkstyle violations、Git whitespace 检查和 Compose 配置检查均成功。
 
-实际结果：`mvnw.cmd verify` 运行 402 项测试，0 失败、0 错误、4 跳过；Checkstyle 0 违规；
+实际结果：最终审查修复后重新执行 `mvnw.cmd verify`，运行 404 项测试，0 失败、0 错误、4 跳过；Checkstyle 0 违规；
 `git diff --check` 与 `docker compose config --quiet` 均成功。
 
 - [x] **Step 6：中文提交文档与验收记录**
