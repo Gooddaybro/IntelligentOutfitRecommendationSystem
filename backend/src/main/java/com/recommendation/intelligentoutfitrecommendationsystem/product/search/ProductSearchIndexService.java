@@ -5,6 +5,7 @@ import co.elastic.clients.elasticsearch.core.BulkRequest;
 import co.elastic.clients.elasticsearch.core.BulkResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.mapper.ProductMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.sync.ProductSearchRebuildCompensator;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
@@ -19,6 +20,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -38,6 +40,7 @@ public class ProductSearchIndexService {
     private final ProductMapper productMapper;
     private final ElasticsearchSearchProperties properties;
     private final ProductSearchIndexLifecycleService lifecycleService;
+    private final Optional<ProductSearchRebuildCompensator> rebuildCompensator;
     private final Clock clock;
     private final AtomicBoolean rebuilding = new AtomicBoolean();
 
@@ -46,9 +49,19 @@ public class ProductSearchIndexService {
             ElasticsearchClient client,
             ProductMapper productMapper,
             ElasticsearchSearchProperties properties,
+            ProductSearchIndexLifecycleService lifecycleService,
+            Optional<ProductSearchRebuildCompensator> rebuildCompensator
+    ) {
+        this(client, productMapper, properties, lifecycleService, rebuildCompensator, Clock.systemUTC());
+    }
+
+    public ProductSearchIndexService(
+            ElasticsearchClient client,
+            ProductMapper productMapper,
+            ElasticsearchSearchProperties properties,
             ProductSearchIndexLifecycleService lifecycleService
     ) {
-        this(client, productMapper, properties, lifecycleService, Clock.systemUTC());
+        this(client, productMapper, properties, lifecycleService, Optional.empty(), Clock.systemUTC());
     }
 
     ProductSearchIndexService(
@@ -58,10 +71,22 @@ public class ProductSearchIndexService {
             ProductSearchIndexLifecycleService lifecycleService,
             Clock clock
     ) {
+        this(client, productMapper, properties, lifecycleService, Optional.empty(), clock);
+    }
+
+    ProductSearchIndexService(
+            ElasticsearchClient client,
+            ProductMapper productMapper,
+            ElasticsearchSearchProperties properties,
+            ProductSearchIndexLifecycleService lifecycleService,
+            Optional<ProductSearchRebuildCompensator> rebuildCompensator,
+            Clock clock
+    ) {
         this.client = client;
         this.productMapper = productMapper;
         this.properties = properties;
         this.lifecycleService = lifecycleService;
+        this.rebuildCompensator = rebuildCompensator;
         this.clock = clock;
     }
 
@@ -79,6 +104,9 @@ public class ProductSearchIndexService {
         String indexName = properties.getIndexPrefix() + INDEX_TIME.format(rebuiltAt);
         boolean indexCreated = false;
         try {
+            long startWatermark = rebuildCompensator
+                    .map(ProductSearchRebuildCompensator::captureWatermark)
+                    .orElse(0L);
             List<ProductSearchIndexRow> rows = productMapper.findAllSearchIndexRows();
             createIndex(indexName);
             indexCreated = true;
@@ -90,6 +118,7 @@ public class ProductSearchIndexService {
                         "商品索引文档数量不一致，预期 " + rows.size() + "，实际 " + actualCount);
             }
             switchAlias(indexName);
+            rebuildCompensator.ifPresent(compensator -> compensator.compensateAfter(startWatermark));
             pruneHistoryWithoutBreakingRebuild();
             return new ProductSearchRebuildResult(indexName, actualCount, properties.getIndexAlias());
         } catch (IOException exception) {

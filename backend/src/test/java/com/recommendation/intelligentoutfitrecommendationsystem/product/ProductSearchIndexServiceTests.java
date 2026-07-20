@@ -12,6 +12,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.product.search.P
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchIndexRow;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchIndexService;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchUnavailableException;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.sync.ProductSearchRebuildCompensator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -41,6 +43,8 @@ class ProductSearchIndexServiceTests {
     private ProductMapper productMapper;
     @Mock
     private ProductSearchIndexLifecycleService lifecycleService;
+    @Mock
+    private ProductSearchRebuildCompensator rebuildCompensator;
 
     private ProductSearchIndexService service;
 
@@ -103,6 +107,18 @@ class ProductSearchIndexServiceTests {
         verify(lifecycleService, never()).deleteFailedIndex(any());
     }
 
+    @Test
+    void compensatesEventsCreatedDuringFullRebuild() throws IOException {
+        service = new ProductSearchIndexService(
+                client, productMapper, properties(), lifecycleService, Optional.of(rebuildCompensator));
+        when(rebuildCompensator.captureWatermark()).thenReturn(10L);
+        prepareSuccessfulRebuild();
+
+        service.rebuild();
+
+        verify(rebuildCompensator).compensateAfter(10L);
+    }
+
     private void prepareRowsAndCreatedIndex() throws IOException {
         when(client.indices()).thenReturn(indicesClient);
         when(productMapper.findAllSearchIndexRows()).thenReturn(List.of(row()));
@@ -124,5 +140,13 @@ class ProductSearchIndexServiceTests {
         return new ProductSearchIndexRow(
                 1001L, "TSHIRT_001", "基础款T恤", "纯棉短袖", "上装", "合身",
                 "纯棉", "casual", "日常", "summer", "on_sale");
+    }
+
+    private ElasticsearchSearchProperties properties() {
+        ElasticsearchSearchProperties properties = new ElasticsearchSearchProperties();
+        properties.setIndexPrefix("product_");
+        properties.setIndexAlias("product_current");
+        properties.setBulkBatchSize(200);
+        return properties;
     }
 }
