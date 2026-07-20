@@ -217,7 +217,17 @@ docker volume rm intelligent_outfit_elasticsearch_data
 
 ### 开启 ES 后仍然返回旧搜索结果
 
-商城搜索沿用现有 Redis 缓存，缓存键不变，默认存在数分钟可接受的一致性窗口。开发验证时可以等待缓存过期，或仅清理对应的 `product:search:*` 键；不要清空整个 Redis。
+先读取 MySQL 中的当前搜索缓存版本：
+
+```sql
+SELECT id, generation, updated_at
+FROM product_search_cache_state
+WHERE id = 1;
+```
+
+正常缓存键应以 `product:search-versioned:v{generation}:` 开头。Worker 只有在 Elasticsearch 投影成功，并与 Inbox
+记录一同提交时才递增版本；全量重建则在别名切换和水位补偿完成后递增一次。不要通过 Redis `KEYS`、`SCAN`
+或通配符删除来修复旧结果。旧版本键不会再被读取，并会在原有搜索缓存 TTL 到期后自然回收。
 
 ### 9200 或 5601 端口被占用
 
@@ -260,55 +270,55 @@ Invoke-RestMethod http://localhost:9200/product_v1/_settings
 
 确认 NDJSON 每个 action 后紧跟一个文档，而且文件最后保留换行。查看 `$bulk.items` 中具体失败项，不要只检查 HTTP 状态码。
 
-## ?????????P2?
+## 商品搜索增量同步（P2）
 
-?????? AI ??????????????????
+商品搜索使用独立链路，不复用 AI 异步任务队列：
 
 ```text
 product_search_outbox
-    ? Product Search Relay
-    ? product.search.reindex.v1
-    ? Product Search Worker
-    ? product_search_inbox
-    ? Elasticsearch product_current
+    → Product Search Relay
+    → product.search.reindex.v1
+    → Product Search Worker
+    → product_search_inbox
+    → Elasticsearch product_current
 ```
 
-### ?????
+### 启动方式
 
-?????????Web ?????? Outbox ??????Worker ????????? ES?
+推荐分开启动 Web 发布器和 Worker 监听器，避免同一进程同时承担 HTTP 与消费职责：
 
 ```powershell
-# Web????????????
+# Web：写业务数据、Outbox 并可靠发布消息
 $env:SPRING_PROFILES_ACTIVE = 'web'
 $env:APP_ELASTICSEARCH_ENABLED = 'true'
 $env:APP_PRODUCT_SEARCH_SYNC_ENABLED = 'true'
 $env:APP_PRODUCT_SEARCH_SYNC_PUBLISHER_ENABLED = 'true'
 
-# Worker???????????????
+# Worker：消费消息并投影到 Elasticsearch
 $env:SPRING_PROFILES_ACTIVE = 'worker'
 $env:APP_ELASTICSEARCH_ENABLED = 'true'
 $env:APP_PRODUCT_SEARCH_SYNC_ENABLED = 'true'
 $env:APP_PRODUCT_SEARCH_SYNC_LISTENER_ENABLED = 'true'
 ```
 
-??????????
+依赖服务可以使用：
 
 ```powershell
 docker compose up -d mysql redis rabbitmq elasticsearch kibana
 ```
 
-RabbitMQ ????? `http://localhost:15672`???????? `app`???? `app-dev-password`?
+RabbitMQ 管理页默认为 `http://localhost:15672`，本地默认账号为 `app`，密码为 `app-dev-password`。
 
-### ????
+### 一致性边界
 
-- ?????????????????????? MySQL ???? `product_search_outbox`??????????????
-- ????? `eventId`?`spuId`?`eventType`?`occurredAt` ? `schemaVersion`?Worker ???? MySQL ?????
-- ?? `_id` ??? SPU ID???????????????????????????? ES ???
-- Worker ???? ES ??? `product_search_inbox`????????????????
-- ???????? 10 ??60 ??300 ????????????? `product.search.reindex.dlq.v1`?????? ES ??? 4xx ?????? DLQ?
-- ???????????? W0???????? W1???? `(W0, W1]` ????? SPU??????????????
+- 商品或分类业务修改与 `product_search_outbox` 写入处于同一个 MySQL 事务；
+- 消息只携带 `eventId`、`spuId`、`eventType`、`occurredAt` 和 `schemaVersion`，Worker 始终读取 MySQL 最新事实；
+- Elasticsearch `_id` 固定为 SPU ID，因此重复和乱序投影保持幂等；
+- Worker 完成 ES 操作后写 `product_search_inbox`，已存在的事件直接确认，不再次处理；
+- 临时故障依次进入 10、60、300 秒重试，最终进入 `product.search.reindex.dlq.v1`；非法消息和不可重试的 ES 4xx 直接进入 DLQ；
+- 全量重建记录 W0、切换别名后记录 W1，并补偿 `(W0, W1]` 内去重后的 SPU，关闭切换窗口。
 
-### ????
+### 排障 SQL
 
 ```sql
 SELECT id, event_id, spu_id, status, publish_attempts, last_error, created_at
@@ -322,8 +332,68 @@ ORDER BY processed_at DESC
 LIMIT 50;
 ```
 
-?? DLQ ???? Mapping???? ES ??????????????????? `product.search.reindex.v1`?????? DLQ ?????????? Inbox ?????????????????????? ID?
+处理 DLQ 前先修复 Mapping、数据或 Elasticsearch 可用性问题，再把消息从 `product.search.reindex.dlq.v1`
+重新发布到主路由。不要手工伪造 Inbox 记录；重放后依靠原 `eventId` 完成幂等判断。
 
-### ????
+## 搜索缓存版本化（P3）
 
-?? Redis ?????????????????????????? TTL ?????????? P3?????????????????????? Redis ????
+### 数据与缓存键
+
+Flyway V25 创建单行状态表：
+
+```sql
+SELECT id, generation, updated_at
+FROM product_search_cache_state
+WHERE id = 1;
+```
+
+该行必须存在且 `generation` 必须为正数。搜索请求规范化关键词和分类后，使用：
+
+```text
+product:search-versioned:v{generation}:{escapedKeyword}:{escapedCategory}
+```
+
+独立的 `product:search-versioned:` 前缀保证新版键不会与历史 `product:search:` 键碰撞。查询条件中的 `%`、`:`
+分别转义为 `%25`、`%3A`，不同关键词/分类组合不会拼出同一个键。
+
+### 版本更新时间
+
+- 增量链路：Worker 先成功投影 Elasticsearch，再在同一个 MySQL 事务内执行 `generation + 1` 和 Inbox INSERT；
+- 重复事件：Inbox 唯一键冲突会回滚整个事务，因此不会多递增一次；
+- 全量重建：原子切换别名并完成 W0/W1 补偿后只递增一次，再执行历史索引清理；
+- Redis 故障：缓存读写继续降级为真实搜索，持久化版本不会随 Redis 重启丢失。
+
+版本递增不删除旧键。新请求自然进入新命名空间，旧键在约 5 分钟的现有 TTL 后自动回收。
+
+### 2026-07-20 真实进程验收
+
+使用 MySQL、Redis、RabbitMQ、Elasticsearch、Web 和 Worker 完成以下验证：
+
+1. generation 为 1 时请求同一条件两次，第一次写入 v1 键，第二次产生 Redis hit；
+2. 合法商品同步事件完成 Outbox、RabbitMQ、ES 和 Inbox 链路后，generation 从 1 恰好变为 2；
+3. 直接重复发布同一 `eventId` 后，generation 仍为 2，Inbox 仍为一条；
+4. 调用全量重建后，`product_current` 从 `product_20260720092350` 切换至 `product_20260720121056`，40 个文档校验通过，generation 恰好变为 3；
+5. 请求相同条件后，v1、v2、v3 三个键曾同时存在，请求使用当前 v3 键。验收结束仅清理了专用测试事件和测试缓存键。
+
+### 排障
+
+如果版本没有递增，依次检查 Outbox、Inbox、Worker 日志和状态行：
+
+```sql
+SELECT generation, updated_at
+FROM product_search_cache_state
+WHERE id = 1;
+
+SELECT event_id, spu_id, status, last_error, updated_at
+FROM product_search_outbox
+ORDER BY id DESC
+LIMIT 20;
+
+SELECT consumer_name, event_id, spu_id, processed_at
+FROM product_search_inbox
+ORDER BY processed_at DESC
+LIMIT 20;
+```
+
+状态行缺失或版本非正数属于数据库状态损坏，应用会明确失败，不会猜测版本或退回旧的无版本缓存键。先查明误删或迁移失败原因，
+再从数据库备份恢复；不要把版本调小，否则可能重新访问仍未过期的旧缓存。

@@ -4,7 +4,7 @@
 
 **Goal:** 使用 MySQL 持久化全局版本构造商品搜索 Redis 缓存键，使增量投影和全量重建完成后不再命中旧搜索缓存。
 
-**Architecture:** 新增单行 `product_search_cache_state` 和窄接口版本服务。搜索请求先读版本再生成 `product:search:v{generation}:...` 键；Worker 在 ES 投影成功后用同一事务递增版本并写 Inbox；全量重建在别名切换和 W0/W1 补偿完成后递增一次版本。
+**Architecture:** 新增单行 `product_search_cache_state` 和窄接口版本服务。搜索请求先读版本再生成 `product:search-versioned:v{generation}:...` 键；Worker 在 ES 投影成功后用同一事务递增版本并写 Inbox；全量重建在别名切换和 W0/W1 补偿完成后递增一次版本。
 
 **Tech Stack:** Java 21、Spring Boot 4、MyBatis、Flyway、MySQL/H2、Spring Transaction、Redis、Elasticsearch Java Client、JUnit 5、Mockito、Maven。
 
@@ -42,7 +42,7 @@
 - Create: `backend/src/main/java/com/recommendation/intelligentoutfitrecommendationsystem/product/search/cache/ProductSearchCacheVersionService.java`
 - Create: `backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/product/ProductSearchCacheVersionPersistenceTests.java`
 
-- [ ] **Step 1：先写失败的持久化测试**
+- [x] **Step 1：先写失败的持久化测试**
 
 测试必须验证初始版本为 1、连续递增不丢失，以及状态行被删除后服务拒绝返回猜测值：
 
@@ -64,7 +64,7 @@ void rejectsMissingStateRow() {
 }
 ```
 
-- [ ] **Step 2：运行测试确认因表和类型缺失而失败**
+- [x] **Step 2：运行测试确认因表和类型缺失而失败**
 
 Run:
 
@@ -75,7 +75,7 @@ cd backend
 
 Expected: 编译失败或 Flyway/Bean 加载失败，明确指出 V25 表或版本类型尚不存在。
 
-- [ ] **Step 3：实现迁移、Mapper 和服务**
+- [x] **Step 3：实现迁移、Mapper 和服务**
 
 迁移核心内容：
 
@@ -124,7 +124,7 @@ public class ProductSearchCacheVersionService {
 }
 ```
 
-- [ ] **Step 4：运行持久化测试并提交**
+- [x] **Step 4：运行持久化测试并提交**
 
 Run: `.\mvnw.cmd -Dtest=ProductSearchCacheVersionPersistenceTests test`
 
@@ -147,15 +147,15 @@ git commit -m "功能：新增商品搜索缓存持久化版本"
 - Modify: `backend/src/main/java/com/recommendation/intelligentoutfitrecommendationsystem/product/service/ProductCatalogService.java`
 - Modify: `backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/product/ProductCatalogServiceTests.java`
 
-- [ ] **Step 1：先写键格式和服务缓存行为的失败测试**
+- [x] **Step 1：先写键格式和服务缓存行为的失败测试**
 
 ```java
 @Test
 void differentVersionsUseDifferentNamespaces() {
     assertThat(factory.create(7, "coat", "外套"))
-            .isEqualTo("product:search:v7:coat:外套");
+            .isEqualTo("product:search-versioned:v7:coat:外套");
     assertThat(factory.create(8, "coat", "外套"))
-            .isEqualTo("product:search:v8:coat:外套");
+            .isEqualTo("product:search-versioned:v8:coat:外套");
 }
 ```
 
@@ -165,10 +165,10 @@ void differentVersionsUseDifferentNamespaces() {
 when(versionService.currentVersion()).thenReturn(7L);
 service.searchProducts(" Coat ", " 外套 ");
 verify(redisCacheService).getList(
-        "product:search:v7:coat:外套", ProductSearchItem.class);
+        "product:search-versioned:v7:coat:外套", ProductSearchItem.class);
 ```
 
-- [ ] **Step 2：运行测试确认旧实现仍生成无版本键**
+- [x] **Step 2：运行测试确认旧实现仍生成无版本键**
 
 Run:
 
@@ -178,7 +178,7 @@ Run:
 
 Expected: FAIL，键缺少 `v7` 或 Key Factory 尚不存在。
 
-- [ ] **Step 3：实现 Key Factory 并接入目录服务**
+- [x] **Step 3：实现 Key Factory 并接入目录服务**
 
 ```java
 @Component
@@ -187,15 +187,16 @@ public class ProductSearchCacheKeyFactory {
         if (version <= 0) {
             throw new IllegalArgumentException("product search cache version must be positive");
         }
-        return "product:search:v" + version + ":"
-                + normalizedKeyword + ":" + normalizedCategory;
+        return "product:search-versioned:v" + version + ":"
+                + escapeQueryPart(normalizedKeyword) + ":"
+                + escapeQueryPart(normalizedCategory);
     }
 }
 ```
 
 `ProductCatalogService.searchProducts` 的顺序固定为：规范化条件、读取版本、生成键、读缓存、真实搜索、写当前版本缓存。不得读取旧 `product:search:{query}` 键，也不得新增 `SCAN`/`KEYS`/通配符删除。
 
-- [ ] **Step 4：运行键和目录服务测试并提交**
+- [x] **Step 4：运行键和目录服务测试并提交**
 
 Run: `.\mvnw.cmd '-Dtest=ProductSearchCacheKeyFactoryTests,ProductCatalogServiceTests' test`
 
@@ -218,7 +219,7 @@ git commit -m "功能：使用版本化商品搜索缓存键"
 - Modify: `backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/product/ProductSearchWorkerTests.java`
 - Modify: `backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/product/ProductSearchCacheVersionPersistenceTests.java`
 
-- [ ] **Step 1：先写 Worker 和事务回滚失败测试**
+- [x] **Step 1：先写 Worker 和事务回滚失败测试**
 
 Worker 成功测试必须验证投影后调用 Recorder，而不是直接插 Inbox：
 
@@ -237,7 +238,7 @@ assertThatThrownBy(() -> recorder.record(message))
 assertThat(versionService.currentVersion()).isEqualTo(before);
 ```
 
-- [ ] **Step 2：运行测试确认 Recorder 尚不存在或版本未回滚**
+- [x] **Step 2：运行测试确认 Recorder 尚不存在或版本未回滚**
 
 Run:
 
@@ -247,7 +248,7 @@ Run:
 
 Expected: FAIL。
 
-- [ ] **Step 3：实现事务 Recorder 并修改 Worker**
+- [x] **Step 3：实现事务 Recorder 并修改 Worker**
 
 ```java
 @Service
@@ -262,7 +263,7 @@ public class ProductSearchConsumptionRecorder {
 
 `CONSUMER_NAME` 必须由 Recorder 暴露为同一个包内可复用常量或由独立常量类集中定义，避免 Worker 重复字符串。Worker 保留消费前的 Inbox 快速检查；成功投影后调用 Recorder。`DuplicateKeyException` 仍 ACK，其他运行时异常沿用三级重试和 DLQ 策略。
 
-- [ ] **Step 4：运行 Worker 和事务测试并提交**
+- [x] **Step 4：运行 Worker 和事务测试并提交**
 
 Run: `.\mvnw.cmd '-Dtest=ProductSearchWorkerTests,ProductSearchCacheVersionPersistenceTests' test`
 
@@ -283,7 +284,7 @@ git commit -m "功能：同步提交搜索版本与消费记录"
 - Modify: `backend/src/main/java/com/recommendation/intelligentoutfitrecommendationsystem/product/search/ProductSearchIndexService.java`
 - Modify: `backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/product/ProductSearchIndexServiceTests.java`
 
-- [ ] **Step 1：先写重建版本递增失败测试**
+- [x] **Step 1：先写重建版本递增失败测试**
 
 在成功重建测试中注入 `ProductSearchCacheVersionService` Mock：
 
@@ -297,13 +298,13 @@ order.verify(lifecycleService).pruneHistory();
 
 再增加失败测试：版本递增抛错时重建向调用方返回该错误，并调用受保护的失败索引清理入口。
 
-- [ ] **Step 2：运行测试确认当前重建不会更新缓存版本**
+- [x] **Step 2：运行测试确认当前重建不会更新缓存版本**
 
 Run: `.\mvnw.cmd -Dtest=ProductSearchIndexServiceTests test`
 
 Expected: FAIL，`incrementVersion()` 未调用。
 
-- [ ] **Step 3：在补偿后、历史清理前递增一次版本**
+- [x] **Step 3：在补偿后、历史清理前递增一次版本**
 
 生产构造器必须注入 `ProductSearchCacheVersionService`。成功路径固定为：
 
@@ -316,7 +317,7 @@ pruneHistoryWithoutBreakingRebuild();
 
 不得在每个补偿 SPU 上递增版本，也不得在别名切换前递增。
 
-- [ ] **Step 4：运行重建与生命周期测试并提交**
+- [x] **Step 4：运行重建与生命周期测试并提交**
 
 Run:
 
@@ -342,7 +343,7 @@ git commit -m "功能：索引重建后切换搜索缓存版本"
 - Modify: `docs/elasticsearch/development-backlog.md`
 - Modify: `docs/superpowers/plans/2026-07-20-product-search-cache-version.md`
 
-- [ ] **Step 1：运行缓存相关回归测试**
+- [x] **Step 1：运行缓存相关回归测试**
 
 Run:
 
@@ -353,7 +354,7 @@ cd backend
 
 Expected: 全部 PASS。
 
-- [ ] **Step 2：静态确认没有 Redis 模糊删除**
+- [x] **Step 2：静态确认没有 Redis 模糊删除**
 
 Run:
 
@@ -364,7 +365,10 @@ Get-ChildItem src/main/java -Recurse -Filter *.java |
 
 Expected: 生产代码无匹配。
 
-- [ ] **Step 3：执行真实进程验收**
+实际结果：没有 Redis `SCAN`、`KEYS` 命令、`.scan(...)` / `.keys(...)` 调用或
+`product:search:*` 通配删除。唯一的大写 `KEYS[1]` 来自限流 Lua 脚本的入参数组，不是 Redis `KEYS` 命令。
+
+- [x] **Step 3：执行真实进程验收**
 
 启动 MySQL、Redis、RabbitMQ、Elasticsearch、Web 和 Worker。先记录：
 
@@ -374,11 +378,15 @@ SELECT generation FROM product_search_cache_state WHERE id = 1;
 
 请求同一搜索条件两次，确认 Redis 存在当前版本键。修改商品并等待 Inbox 后，再读取版本，必须恰好增加 1；相同搜索条件必须创建新版本键。随后执行一次 `/internal/search/products/rebuild`，确认版本再次恰好增加 1，旧键仍存在但不再被读取。
 
-- [ ] **Step 4：更新文档并修复 P2 状态乱码**
+实际结果：generation 1 下首次请求写入 v1 键，第二次请求使 Redis hit 计数增加；合法事件完成
+`NEW → PUBLISHED → Inbox` 后 generation 恰好变为 2；重复发布同一 `eventId` 后仍为 2；重建切换别名、
+校验 40 个文档后恰好变为 3。相同查询的 v1、v2、v3 键曾同时存在，当前请求只创建/读取 v3 键。
+
+- [x] **Step 4：更新文档并修复 P2 状态乱码**
 
 README 必须说明版本表、键格式、更新时机、旧键 TTL 回收和排障 SQL。Backlog 把 P3 标记为“已完成”，同时恢复 P2 已交付范围和验收记录的可读中文，不保留问号乱码。
 
-- [ ] **Step 5：运行完整验证**
+- [x] **Step 5：运行完整验证**
 
 Run:
 
@@ -390,7 +398,10 @@ docker compose config --quiet
 
 Expected: Maven BUILD SUCCESS、0 Checkstyle violations、Git whitespace 检查和 Compose 配置检查均成功。
 
-- [ ] **Step 6：中文提交文档与验收记录**
+实际结果：`mvnw.cmd verify` 运行 402 项测试，0 失败、0 错误、4 跳过；Checkstyle 0 违规；
+`git diff --check` 与 `docker compose config --quiet` 均成功。
+
+- [x] **Step 6：中文提交文档与验收记录**
 
 ```powershell
 git add docs/elasticsearch/README.md docs/elasticsearch/development-backlog.md docs/superpowers/plans/2026-07-20-product-search-cache-version.md
