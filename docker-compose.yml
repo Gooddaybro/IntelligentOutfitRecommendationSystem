@@ -34,7 +34,44 @@ services:
     volumes:
       - langgraph_postgres_data:/var/lib/postgresql/data
 
+  # 本地商品搜索实验节点。关闭安全认证仅为了降低学习环境复杂度，禁止直接用于生产。
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_STACK_VERSION:-9.4.3}
+    container_name: intelligent_outfit_elasticsearch
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms1g -Xmx1g
+    ports:
+      - "${ELASTICSEARCH_HOST_PORT:-9200}:9200"
+    volumes:
+      - intelligent_outfit_elasticsearch_data:/usr/share/elasticsearch/data
+      # 插件声明随项目版本化，避免开发者各自在运行中的容器里手工安装。
+      - ./docker/elasticsearch/elasticsearch-plugins.yml:/usr/share/elasticsearch/config/elasticsearch-plugins.yml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:9200/_cluster/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+    mem_limit: 2g
+
+  # Kibana 只承担本地索引观察和查询实验，不进入商城运行时调用链。
+  kibana:
+    image: docker.elastic.co/kibana/kibana:${ELASTIC_STACK_VERSION:-9.4.3}
+    container_name: intelligent_outfit_kibana
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    ports:
+      - "${KIBANA_HOST_PORT:-5601}:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    mem_limit: 1g
+
 volumes:
   intelligent_outfit_mysql_data:
   intelligent_outfit_redis_data:
   langgraph_postgres_data:
+  intelligent_outfit_elasticsearch_data:
+    name: intelligent_outfit_elasticsearch_data
