@@ -11,6 +11,8 @@ import com.recommendation.intelligentoutfitrecommendationsystem.product.model.Pr
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.ProductSearchItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.SkuSearchItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchService;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.cache.ProductSearchCacheKeyFactory;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.cache.ProductSearchCacheVersionService;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
@@ -28,17 +30,23 @@ public class ProductCatalogService {
     private final ProductSearchService productSearchService;
     private final RedisCacheService redisCacheService;
     private final CacheTtlProperties cacheTtlProperties;
+    private final ProductSearchCacheVersionService productSearchCacheVersionService;
+    private final ProductSearchCacheKeyFactory productSearchCacheKeyFactory;
 
     public ProductCatalogService(
             ProductMapper productMapper,
             ProductSearchService productSearchService,
             RedisCacheService redisCacheService,
-            CacheTtlProperties cacheTtlProperties
+            CacheTtlProperties cacheTtlProperties,
+            ProductSearchCacheVersionService productSearchCacheVersionService,
+            ProductSearchCacheKeyFactory productSearchCacheKeyFactory
     ) {
         this.productMapper = productMapper;
         this.productSearchService = productSearchService;
         this.redisCacheService = redisCacheService;
         this.cacheTtlProperties = cacheTtlProperties;
+        this.productSearchCacheVersionService = productSearchCacheVersionService;
+        this.productSearchCacheKeyFactory = productSearchCacheKeyFactory;
     }
 
     /**
@@ -53,8 +61,9 @@ public class ProductCatalogService {
         String normalizedCategory = normalizeQueryPart(category);
         String mapperCategory = category == null ? null : category.trim();
 
-        String cacheKey = CacheKeyConstants.productSearch(
-                normalizedKeyword + ":" + normalizedCategory);
+        long cacheVersion = productSearchCacheVersionService.currentVersion();
+        String cacheKey = productSearchCacheKeyFactory.create(
+                cacheVersion, normalizedKeyword, normalizedCategory);
         var cachedProducts = redisCacheService.getList(cacheKey, ProductSearchItem.class);
         if (cachedProducts.isPresent()) {
             return cachedProducts.get();
