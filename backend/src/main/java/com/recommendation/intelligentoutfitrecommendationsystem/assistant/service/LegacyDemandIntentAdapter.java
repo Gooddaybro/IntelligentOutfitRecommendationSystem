@@ -89,8 +89,10 @@ public class LegacyDemandIntentAdapter {
         }
         String semantic = field + "|" + String.join(",", values) + "|" + strength + "|" + origin;
         String id = "legacy-" + UUID.nameUUIDFromBytes(semantic.getBytes(StandardCharsets.UTF_8));
-        target.add(new IntentConstraint(id, field,
-                strength == ConstraintStrength.HARD ? ConstraintOperator.EQUALS : ConstraintOperator.CONTAINS,
+        ConstraintOperator operator = strength == ConstraintStrength.HARD
+                ? ("budgetMax".equals(field) ? ConstraintOperator.MAX : ConstraintOperator.EQUALS)
+                : ConstraintOperator.CONTAINS;
+        target.add(new IntentConstraint(id, field, operator,
                 values, strength, origin, null, null, "ACTIVE_DEMAND", null));
     }
 

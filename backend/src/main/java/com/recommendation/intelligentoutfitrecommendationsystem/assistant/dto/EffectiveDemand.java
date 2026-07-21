@@ -1,7 +1,9 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Stream;
 
 /**
@@ -58,23 +60,60 @@ public record EffectiveDemand(
                 .findFirst();
     }
 
-    /** 仅从硬约束中读取标量值，避免软偏好意外进入数据库筛选。 */
+    /** 解析硬 EQUALS 约束的唯一交集值；冲突或歧义时拒绝放宽查询。 */
     public Optional<String> hardValue(String field) {
-        return hardFilters.stream()
+        List<IntentConstraint> matching = hardFilters.stream()
                 .filter(constraint -> constraint.field().equals(field))
-                .flatMap(constraint -> constraint.values().stream())
-                .findFirst();
+                .toList();
+        if (matching.isEmpty()) {
+            return Optional.empty();
+        }
+        if (matching.stream().anyMatch(constraint -> constraint.operator() != ConstraintOperator.EQUALS)) {
+            throw new IllegalStateException("hard field " + field + " requires EQUALS constraints");
+        }
+        Set<String> intersection = new LinkedHashSet<>(matching.getFirst().values());
+        if (intersection.stream().anyMatch(value -> value == null || value.isBlank())) {
+            throw new IllegalStateException("hard field " + field + " contains a blank canonical value");
+        }
+        matching.stream().skip(1).forEach(constraint -> intersection.retainAll(constraint.values()));
+        if (intersection.isEmpty()) {
+            throw new IllegalStateException("conflicting hard EQUALS constraints for field " + field);
+        }
+        if (intersection.size() != 1) {
+            throw new IllegalStateException("ambiguous hard EQUALS constraints for field " + field);
+        }
+        return Optional.of(intersection.iterator().next());
     }
 
-    /** 仅解析硬约束中的整数；无值、非法数字和溢出都视为未设置。 */
+    /** 解析所有硬 MAX 值并取最严格的非负整数上限；非法约束直接拒绝查询。 */
     public Optional<Integer> hardInteger(String field) {
-        return hardValue(field).flatMap(value -> {
-            try {
-                return Optional.of(Integer.valueOf(value));
-            } catch (NumberFormatException ignored) {
-                return Optional.empty();
+        List<IntentConstraint> matching = hardFilters.stream()
+                .filter(constraint -> constraint.field().equals(field))
+                .toList();
+        if (matching.isEmpty()) {
+            return Optional.empty();
+        }
+        if (matching.stream().anyMatch(constraint -> constraint.operator() != ConstraintOperator.MAX)) {
+            throw new IllegalStateException("hard integer field " + field + " requires MAX constraints");
+        }
+        int strictest = Integer.MAX_VALUE;
+        for (IntentConstraint constraint : matching) {
+            for (String value : constraint.values()) {
+                final int parsed;
+                try {
+                    parsed = Integer.parseInt(value);
+                } catch (NumberFormatException exception) {
+                    throw new IllegalStateException(
+                            "hard integer field " + field + " contains an invalid value", exception);
+                }
+                if (parsed < 0) {
+                    throw new IllegalStateException(
+                            "hard integer field " + field + " requires a non-negative value");
+                }
+                strictest = Math.min(strictest, parsed);
             }
-        });
+        }
+        return Optional.of(strictest);
     }
 
     /** Creates a new snapshot after derived-preference recalculation without mutating this one. */

@@ -55,7 +55,7 @@ class IntentConstraintTests {
     }
 
     @Test
-    void hardLookupsNeverReadSoftPreferences() {
+    void hardValueReturnsTheOnlyEqualsValueAndNeverReadsSoftPreferences() {
         EffectiveDemand demand = EffectiveDemand.v3(
                 "daily casual", "OUTFIT_ADVICE", List.of(),
                 List.of(hardSeason("SUMMER")), List.of(softStyle("CASUAL")), null);
@@ -65,18 +65,72 @@ class IntentConstraintTests {
     }
 
     @Test
-    void hardIntegerAcceptsValidMaxAndSafelyRejectsInvalidNumbers() {
-        IntentConstraint validBudget = hardConstraint(
-                "budget-valid", "budgetMax", ConstraintOperator.MAX, "500");
-        IntentConstraint invalidBudget = hardConstraint(
-                "budget-invalid", "invalidBudget", ConstraintOperator.MAX, "not-a-number");
+    void hardValueIntersectsEqualsConstraintsToOneCanonicalValue() {
         EffectiveDemand demand = EffectiveDemand.v3(
-                "budget", "OUTFIT_ADVICE", List.of(),
-                List.of(validBudget, invalidBudget), List.of(), null);
+                "summer", "OUTFIT_ADVICE", List.of(), List.of(
+                hardConstraint("season-options", "season", ConstraintOperator.EQUALS,
+                        "SUMMER", "WINTER"),
+                hardConstraint("season-confirmed", "season", ConstraintOperator.EQUALS,
+                        "SUMMER")), List.of(), null);
 
-        assertThat(demand.hardInteger("budgetMax")).contains(500);
-        assertThat(demand.hardInteger("invalidBudget")).isEmpty();
-        assertThat(demand.hardInteger("season")).isEmpty();
+        assertThat(demand.hardValue("season")).contains("SUMMER");
+    }
+
+    @Test
+    void hardValueRejectsAmbiguousConflictingAndNonEqualsConstraints() {
+        EffectiveDemand ambiguous = EffectiveDemand.v3(
+                "season", "OUTFIT_ADVICE", List.of(),
+                List.of(hardConstraint("season", "season", ConstraintOperator.EQUALS,
+                        "SUMMER", "WINTER")), List.of(), null);
+        EffectiveDemand conflicting = EffectiveDemand.v3(
+                "season", "OUTFIT_ADVICE", List.of(), List.of(
+                hardConstraint("summer", "season", ConstraintOperator.EQUALS, "SUMMER"),
+                hardConstraint("winter", "season", ConstraintOperator.EQUALS, "WINTER")), List.of(), null);
+        EffectiveDemand wrongOperator = EffectiveDemand.v3(
+                "season", "OUTFIT_ADVICE", List.of(),
+                List.of(hardConstraint("season", "season", ConstraintOperator.CONTAINS,
+                        "SUMMER")), List.of(), null);
+
+        assertThatThrownBy(() -> ambiguous.hardValue("season"))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("ambiguous");
+        assertThatThrownBy(() -> conflicting.hardValue("season"))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("conflicting");
+        assertThatThrownBy(() -> wrongOperator.hardValue("season"))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("EQUALS");
+    }
+
+    @Test
+    void hardIntegerUsesTheLowestMaxRegardlessOfConstraintOrder() {
+        EffectiveDemand firstOrder = budgetDemand(
+                hardConstraint("budget-500", "budgetMax", ConstraintOperator.MAX, "500"),
+                hardConstraint("budget-300", "budgetMax", ConstraintOperator.MAX, "300", "450"));
+        EffectiveDemand reversed = budgetDemand(
+                hardConstraint("budget-300", "budgetMax", ConstraintOperator.MAX, "300", "450"),
+                hardConstraint("budget-500", "budgetMax", ConstraintOperator.MAX, "500"));
+
+        assertThat(firstOrder.hardInteger("budgetMax")).contains(300);
+        assertThat(reversed.hardInteger("budgetMax")).contains(300);
+    }
+
+    @Test
+    void hardIntegerRejectsInvalidNegativeOverflowAndNonMaxConstraints() {
+        EffectiveDemand invalid = budgetDemand(
+                hardConstraint("budget-invalid", "budgetMax", ConstraintOperator.MAX, "not-a-number"));
+        EffectiveDemand blank = budgetDemand(
+                hardConstraint("budget-blank", "budgetMax", ConstraintOperator.MAX, " "));
+        EffectiveDemand negative = budgetDemand(
+                hardConstraint("budget-negative", "budgetMax", ConstraintOperator.MAX, "-1"));
+        EffectiveDemand overflow = budgetDemand(
+                hardConstraint("budget-overflow", "budgetMax", ConstraintOperator.MAX, "2147483648"));
+        EffectiveDemand wrongOperator = budgetDemand(
+                hardConstraint("budget-equals", "budgetMax", ConstraintOperator.EQUALS, "500"));
+
+        assertThatThrownBy(() -> invalid.hardInteger("budgetMax")).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> blank.hardInteger("budgetMax")).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> negative.hardInteger("budgetMax")).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> overflow.hardInteger("budgetMax")).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> wrongOperator.hardInteger("budgetMax"))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("MAX");
     }
 
     @Test
@@ -154,12 +208,17 @@ class IntentConstraintTests {
             String id,
             String field,
             ConstraintOperator operator,
-            String value
+            String... values
     ) {
         return new IntentConstraint(
-                id, field, operator, List.of(value),
+                id, field, operator, List.of(values),
                 ConstraintStrength.HARD, ConstraintOrigin.USER_EXPLICIT,
                 "turn-4", null, "ACTIVE_DEMAND", null);
+    }
+
+    private EffectiveDemand budgetDemand(IntentConstraint... constraints) {
+        return EffectiveDemand.v3(
+                "budget", "OUTFIT_ADVICE", List.of(), List.of(constraints), List.of(), null);
     }
 
     private IntentConstraint constraint(

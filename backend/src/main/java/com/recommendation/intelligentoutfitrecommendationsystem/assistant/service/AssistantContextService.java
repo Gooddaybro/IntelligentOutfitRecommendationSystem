@@ -167,13 +167,14 @@ public class AssistantContextService {
             demandIntent = persistedIntent == null ? initialIntent : persistedIntent;
             effectiveDemand = legacyDemandIntentAdapter.adapt(demandIntent);
         }
-        // Java SQL 仅消费 v3 硬约束；软偏好完整保留在上下文中交给 Python 排序。
+        // Java SQL 消费 v3 硬约束；仅 style/material/fit 可由本次明确的 UI 过滤字段补充。
+        // 软偏好完整保留在上下文中交给 Python 排序，绝不隐式转成 SQL 条件。
         RecommendationCandidateQuery query = new RecommendationCandidateQuery(
                 effectiveDemand.hardValue("category").orElse(null),
-                explicitFilter(request.style()),
+                explicitCodeFilter(request.style()),
                 lowerCanonical(effectiveDemand.hardValue("season").orElse(null)),
                 explicitFilter(request.material()),
-                explicitFilter(request.fit()),
+                explicitCodeFilter(request.fit()),
                 effectiveDemand.hardInteger("budgetMax").orElse(null),
                 lowerCanonical(effectiveDemand.hardValue("targetGender").orElse(null))
         );
@@ -192,6 +193,11 @@ public class AssistantContextService {
 
     private String explicitFilter(String value) {
         return hasText(value) ? value.trim() : null;
+    }
+
+    private String explicitCodeFilter(String value) {
+        String filter = explicitFilter(value);
+        return filter == null ? null : filter.toLowerCase(Locale.ROOT);
     }
 
     private String lowerCanonical(String value) {

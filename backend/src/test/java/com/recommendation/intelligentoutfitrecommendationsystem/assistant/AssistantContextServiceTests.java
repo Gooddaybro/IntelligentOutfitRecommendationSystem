@@ -104,14 +104,35 @@ class AssistantContextServiceTests {
 
         service.buildContext(10L, "thread-explicit-style",
                 new AssistantChatRequest("thread-explicit-style", "show options",
-                        null, "casual", null, "cotton", "loose", null, null));
+                        null, " CaSuAl ", null, " CotTon ", " LoOsE ", null, null));
 
         ArgumentCaptor<RecommendationCandidateQuery> query =
                 ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
         verify(candidates).findCandidates(query.capture());
         assertThat(query.getValue().getStyle()).isEqualTo("casual");
-        assertThat(query.getValue().getMaterial()).isEqualTo("cotton");
+        assertThat(query.getValue().getMaterial()).isEqualTo("CotTon");
         assertThat(query.getValue().getFit()).isEqualTo("loose");
+    }
+
+    @Test
+    void blankExplicitFiltersAreNotAddedToCandidateQuery() {
+        UserProfileService profiles = mock(UserProfileService.class);
+        RecommendationCandidateQueryService candidates = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversations = mock(ConversationApplicationService.class);
+        AssistantContextService service = new AssistantContextService(profiles, candidates, conversations);
+        when(conversations.getMessages(anyLong(), anyString())).thenReturn(List.of());
+        when(candidates.findCandidates(any())).thenReturn(List.of());
+
+        service.buildContext(10L, "thread-blank-filters",
+                new AssistantChatRequest("thread-blank-filters", "show options",
+                        null, "   ", null, "  ", "\t", null, null));
+
+        ArgumentCaptor<RecommendationCandidateQuery> query =
+                ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
+        verify(candidates).findCandidates(query.capture());
+        assertThat(query.getValue().getStyle()).isNull();
+        assertThat(query.getValue().getMaterial()).isNull();
+        assertThat(query.getValue().getFit()).isNull();
     }
 
     @Test
