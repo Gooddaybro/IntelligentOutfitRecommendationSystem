@@ -101,4 +101,57 @@ class ApplicationMetricsTests {
                 .allSatisfy(meter -> assertThat(meter.getId().getTags())
                         .noneMatch(tag -> tag.getKey().toLowerCase().contains("id")));
     }
+
+    @Test
+    void recordsProductSearchMetricsWithOnlyFixedCardinalityTags() {
+        metrics.recordProductSearchEngine("ELASTICSEARCH", "success", Duration.ofMillis(12));
+        metrics.recordProductSearchFallback("unavailable");
+        metrics.recordProductSearchSyncConsume("retry", Duration.ofMillis(30));
+        metrics.recordProductSearchSyncRetry("2");
+        metrics.recordProductSearchRebuild("success", Duration.ofSeconds(3));
+        metrics.recordProductSearchRebuildBulkFailures(4);
+        metrics.recordProductSearchRebuildDocumentDrift(6);
+
+        metrics.recordProductSearchEngine("keyword-user-controlled", "event-123", Duration.ZERO);
+        metrics.recordProductSearchSyncConsume("event-123", Duration.ZERO);
+        metrics.recordProductSearchRebuild("product_20260721000000", Duration.ZERO);
+
+        assertThat(registry.get("app.product.search.engine.requests")
+                .tags("engine", "elasticsearch", "outcome", "success").counter().count())
+                .isEqualTo(1);
+        assertThat(registry.get("app.product.search.engine.duration")
+                .tags("engine", "elasticsearch", "outcome", "success").timer().count())
+                .isEqualTo(1);
+        assertThat(registry.get("app.product.search.fallbacks")
+                .tag("reason", "unavailable").counter().count())
+                .isEqualTo(1);
+        assertThat(registry.get("app.product.search.sync.consume")
+                .tag("outcome", "retry").counter().count())
+                .isEqualTo(1);
+        assertThat(registry.get("app.product.search.sync.consume.duration")
+                .tag("outcome", "retry").timer().count())
+                .isEqualTo(1);
+        assertThat(registry.get("app.product.search.sync.retries")
+                .tag("stage", "2").counter().count())
+                .isEqualTo(1);
+        assertThat(registry.get("app.product.search.rebuild.executions")
+                .tag("outcome", "success").counter().count())
+                .isEqualTo(1);
+        assertThat(registry.get("app.product.search.rebuild.duration")
+                .tag("outcome", "success").timer().count())
+                .isEqualTo(1);
+        assertThat(registry.get("app.product.search.rebuild.bulk.failures").counter().count())
+                .isEqualTo(4);
+        assertThat(registry.get("app.product.search.rebuild.document.drift").summary().totalAmount())
+                .isEqualTo(6);
+        assertThat(registry.get("app.product.search.engine.requests")
+                .tags("engine", "other", "outcome", "other").counter().count())
+                .isEqualTo(1);
+        assertThat(registry.get("app.product.search.sync.consume")
+                .tag("outcome", "other").counter().count())
+                .isEqualTo(1);
+        assertThat(registry.get("app.product.search.rebuild.executions")
+                .tag("outcome", "other").counter().count())
+                .isEqualTo(1);
+    }
 }

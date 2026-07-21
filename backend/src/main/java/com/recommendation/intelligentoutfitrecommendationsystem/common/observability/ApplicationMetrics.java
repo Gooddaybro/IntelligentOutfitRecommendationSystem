@@ -37,6 +37,14 @@ public class ApplicationMetrics {
     private static final Set<String> AI_TASK_CONSUME_OUTCOMES = Set.of(
             "success", "duplicate", "retry", "dlq", "error");
     private static final Set<String> AI_TASK_RETRY_STAGES = Set.of("1", "2", "3");
+    private static final Set<String> PRODUCT_SEARCH_ENGINES = Set.of("elasticsearch", "mysql");
+    private static final Set<String> PRODUCT_SEARCH_ENGINE_OUTCOMES = Set.of(
+            "success", "unavailable", "error");
+    private static final Set<String> PRODUCT_SEARCH_FALLBACK_REASONS = Set.of("unavailable");
+    private static final Set<String> PRODUCT_SEARCH_SYNC_OUTCOMES = Set.of(
+            "success", "duplicate", "retry", "dlq", "error");
+    private static final Set<String> PRODUCT_SEARCH_SYNC_RETRY_STAGES = Set.of("1", "2", "3");
+    private static final Set<String> PRODUCT_SEARCH_REBUILD_OUTCOMES = Set.of("success", "error");
 
     private final MeterRegistry registry;
     private final DistributionSummary candidateSummary;
@@ -139,6 +147,63 @@ public class ApplicationMetrics {
                 "app.ai.task.retries",
                 "stage", bounded(stage, AI_TASK_RETRY_STAGES)
         ).increment();
+    }
+
+    public void recordProductSearchEngine(String engine, String outcome, Duration duration) {
+        String safeEngine = bounded(normalize(engine), PRODUCT_SEARCH_ENGINES);
+        String safeOutcome = bounded(normalize(outcome), PRODUCT_SEARCH_ENGINE_OUTCOMES);
+        registry.counter(
+                "app.product.search.engine.requests",
+                "engine", safeEngine,
+                "outcome", safeOutcome
+        ).increment();
+        registry.timer(
+                "app.product.search.engine.duration",
+                "engine", safeEngine,
+                "outcome", safeOutcome
+        ).record(nonNegative(duration));
+    }
+
+    public void recordProductSearchFallback(String reason) {
+        registry.counter(
+                "app.product.search.fallbacks",
+                "reason", bounded(normalize(reason), PRODUCT_SEARCH_FALLBACK_REASONS)
+        ).increment();
+    }
+
+    public void recordProductSearchSyncConsume(String outcome, Duration duration) {
+        String safeOutcome = bounded(normalize(outcome), PRODUCT_SEARCH_SYNC_OUTCOMES);
+        registry.counter("app.product.search.sync.consume", "outcome", safeOutcome).increment();
+        registry.timer("app.product.search.sync.consume.duration", "outcome", safeOutcome)
+                .record(nonNegative(duration));
+    }
+
+    public void recordProductSearchSyncRetry(String stage) {
+        registry.counter(
+                "app.product.search.sync.retries",
+                "stage", bounded(stage, PRODUCT_SEARCH_SYNC_RETRY_STAGES)
+        ).increment();
+    }
+
+    public void recordProductSearchRebuild(String outcome, Duration duration) {
+        String safeOutcome = bounded(normalize(outcome), PRODUCT_SEARCH_REBUILD_OUTCOMES);
+        registry.counter("app.product.search.rebuild.executions", "outcome", safeOutcome).increment();
+        registry.timer("app.product.search.rebuild.duration", "outcome", safeOutcome)
+                .record(nonNegative(duration));
+    }
+
+    public void recordProductSearchRebuildBulkFailures(long count) {
+        long safeCount = Math.max(0L, count);
+        if (safeCount > 0L) {
+            registry.counter("app.product.search.rebuild.bulk.failures").increment(safeCount);
+        }
+    }
+
+    public void recordProductSearchRebuildDocumentDrift(long drift) {
+        long safeDrift = Math.max(0L, drift);
+        if (safeDrift > 0L) {
+            registry.summary("app.product.search.rebuild.document.drift").record(safeDrift);
+        }
     }
 
     private String bounded(String value, Set<String> allowed) {
