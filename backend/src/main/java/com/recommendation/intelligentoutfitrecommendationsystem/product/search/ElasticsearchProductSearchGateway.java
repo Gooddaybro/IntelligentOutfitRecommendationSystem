@@ -6,10 +6,12 @@ import co.elastic.clients.elasticsearch._types.SortOrder;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import co.elastic.clients.elasticsearch.core.SearchRequest;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -22,28 +24,39 @@ public class ElasticsearchProductSearchGateway implements ProductSearchGateway {
 
     private final ElasticsearchClient client;
     private final ElasticsearchSearchProperties properties;
+    private final ApplicationMetrics metrics;
 
     public ElasticsearchProductSearchGateway(
             ElasticsearchClient client,
-            ElasticsearchSearchProperties properties
+            ElasticsearchSearchProperties properties,
+            ApplicationMetrics metrics
     ) {
         this.client = client;
         this.properties = properties;
+        this.metrics = metrics;
     }
 
     @Override
     public List<Long> search(ProductSearchCriteria criteria) {
+        long startedNanos = System.nanoTime();
         SearchRequest request = buildRequest(criteria);
         try {
             SearchResponse<Void> response = client.search(request, Void.class);
+            metrics.recordProductSearchEngine("elasticsearch", "success", elapsed(startedNanos));
             return response.hits().hits().stream().map(hit -> parseSpuId(hit.id())).toList();
         } catch (IOException exception) {
+            metrics.recordProductSearchEngine("elasticsearch", "unavailable", elapsed(startedNanos));
             throw new ProductSearchUnavailableException("Elasticsearch 连接不可用", exception);
         } catch (ElasticsearchException exception) {
             // 节点故障和索引尚未创建允许降级；400 类查询错误必须暴露，避免掩盖映射缺陷。
             if (exception.status() == 404 || exception.status() >= 500) {
+                metrics.recordProductSearchEngine("elasticsearch", "unavailable", elapsed(startedNanos));
                 throw new ProductSearchUnavailableException("Elasticsearch 查询暂时不可用", exception);
             }
+            metrics.recordProductSearchEngine("elasticsearch", "error", elapsed(startedNanos));
+            throw exception;
+        } catch (RuntimeException exception) {
+            metrics.recordProductSearchEngine("elasticsearch", "error", elapsed(startedNanos));
             throw exception;
         }
     }
@@ -89,5 +102,9 @@ public class ElasticsearchProductSearchGateway implements ProductSearchGateway {
         } catch (NumberFormatException exception) {
             throw new IllegalStateException("商品索引文档 ID 必须是数字 SPU ID: " + hitId, exception);
         }
+    }
+
+    private Duration elapsed(long startedNanos) {
+        return Duration.ofNanos(System.nanoTime() - startedNanos);
     }
 }

@@ -1,5 +1,6 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.product.search;
 
+import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.mapper.ProductMapper;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
@@ -16,10 +17,12 @@ public class ProductSearchServiceConfiguration {
             MySqlProductSearchGateway mysqlGateway,
             ObjectProvider<ElasticsearchProductSearchGateway> elasticsearchGateway,
             ProductMapper productMapper,
-            ElasticsearchSearchProperties properties
+            ElasticsearchSearchProperties properties,
+            ApplicationMetrics metrics
     ) {
         ElasticsearchProductSearchGateway availableGateway = elasticsearchGateway.getIfAvailable();
         ProductSearchGateway primaryGateway = availableGateway == null ? mysqlGateway : availableGateway;
-        return new ProductSearchService(primaryGateway, mysqlGateway, productMapper, properties.getSearchLimit());
+        return new ProductSearchService(
+                primaryGateway, mysqlGateway, productMapper, properties.getSearchLimit(), metrics);
     }
 }

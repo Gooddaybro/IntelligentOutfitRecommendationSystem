@@ -1,11 +1,13 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.product;
 
+import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.mapper.ProductMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.ProductSearchItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchCriteria;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchGateway;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchService;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchUnavailableException;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,11 +33,13 @@ class ProductSearchServiceTests {
     @Mock
     private ProductMapper productMapper;
 
+    private final SimpleMeterRegistry registry = new SimpleMeterRegistry();
+    private final ApplicationMetrics metrics = new ApplicationMetrics(registry);
     private ProductSearchService service;
 
     @BeforeEach
     void setUp() {
-        service = new ProductSearchService(primaryGateway, fallbackGateway, productMapper, 500);
+        service = new ProductSearchService(primaryGateway, fallbackGateway, productMapper, 500, metrics);
     }
 
     @Test
@@ -61,6 +65,9 @@ class ProductSearchServiceTests {
         List<ProductSearchItem> result = service.search("通勤", null);
 
         assertThat(result).extracting(ProductSearchItem::getSpuId).containsExactly(1002L);
+        assertThat(registry.get("app.product.search.fallbacks")
+                .tag("reason", "unavailable").counter().count())
+                .isEqualTo(1);
     }
 
     @Test
@@ -72,6 +79,7 @@ class ProductSearchServiceTests {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("bad query");
         verify(fallbackGateway, never()).search(criteria);
+        assertThat(registry.find("app.product.search.fallbacks").counter()).isNull();
     }
 
     @Test

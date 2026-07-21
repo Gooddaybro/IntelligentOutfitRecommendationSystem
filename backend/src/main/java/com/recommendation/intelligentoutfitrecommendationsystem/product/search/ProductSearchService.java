@@ -1,5 +1,6 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.product.search;
 
+import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.mapper.ProductMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.ProductSearchItem;
 import org.slf4j.Logger;
@@ -21,17 +22,20 @@ public class ProductSearchService {
     private final ProductSearchGateway fallbackGateway;
     private final ProductMapper productMapper;
     private final int searchLimit;
+    private final ApplicationMetrics metrics;
 
     public ProductSearchService(
             ProductSearchGateway primaryGateway,
             ProductSearchGateway fallbackGateway,
             ProductMapper productMapper,
-            int searchLimit
+            int searchLimit,
+            ApplicationMetrics metrics
     ) {
         this.primaryGateway = primaryGateway;
         this.fallbackGateway = fallbackGateway;
         this.productMapper = productMapper;
         this.searchLimit = searchLimit;
+        this.metrics = metrics;
     }
 
     /**
@@ -48,6 +52,7 @@ public class ProductSearchService {
             orderedSpuIds = primaryGateway.search(criteria);
         } catch (ProductSearchUnavailableException exception) {
             LOGGER.warn("主商品搜索不可用，回退到 MySQL 搜索: {}", exception.getMessage());
+            metrics.recordProductSearchFallback("unavailable");
             orderedSpuIds = fallbackGateway.search(criteria);
         }
 
