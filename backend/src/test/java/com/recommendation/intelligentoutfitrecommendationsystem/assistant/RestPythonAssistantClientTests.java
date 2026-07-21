@@ -23,6 +23,8 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -148,41 +150,47 @@ class RestPythonAssistantClientTests {
                         "fits the requested commute style"
                 ));
         JsonNode requestJson = new ObjectMapper().readTree(requestBody.get());
-        assertThat(requestJson.size()).isEqualTo(9);
-        assertThat(requestJson.has("demand_intent")).isTrue();
-        assertThat(requestJson.has("hardFilters")).isFalse();
-        assertThat(requestJson.path("demand_intent").size()).isEqualTo(6);
-        assertThat(requestJson.path("demand_intent").has("rawQuery")).isFalse();
-        JsonNode hardFilters = requestJson.path("demand_intent").path("hardFilters");
+        assertThat(fieldNames(requestJson)).isEqualTo(Set.of(
+                "request_id", "session_id", "thread_id", "query", "chat_history", "user_context",
+                "candidates", "demand_intent", "debug"
+        ));
+        JsonNode demandIntent = requestJson.path("demand_intent");
+        assertThat(fieldNames(demandIntent)).isEqualTo(Set.of(
+                "version", "requestType", "requestedCapabilities", "hardFilters", "softPreferences",
+                "subjectMeasurements"
+        ));
+        JsonNode hardFilters = demandIntent.path("hardFilters");
         assertThat(hardFilters.size()).isEqualTo(1);
         JsonNode seasonFilter = hardFilters.get(0);
+        assertThat(fieldNames(seasonFilter)).isEqualTo(Set.of(
+                "id", "field", "operator", "values", "strength", "origin", "originTurnId",
+                "derivedFromConstraintId", "scope", "weight"
+        ));
         assertThat(seasonFilter.path("field").asText()).isEqualTo("season");
         assertThat(seasonFilter.path("values").size()).isEqualTo(1);
         assertThat(seasonFilter.path("values").get(0).asText()).isEqualTo("SUMMER");
         assertThat(seasonFilter.path("strength").asText()).isEqualTo("HARD");
-        assertThat(requestBody.get())
-                .contains("\"request_id\":\"req-client-test\"")
-                .contains("\"session_id\":\"th_client_001\"")
-                .contains("\"thread_id\":\"th_client_001\"")
-                .contains("\"query\":\"hello\"")
-                .contains("\"chat_history\"")
-                .contains("\"user_query\":\"上一轮的问题\"")
-                .contains("\"assistant_answer\":\"上一轮的回答\"")
-                .contains("\"user_context\"")
-                .contains("\"height_cm\":175.5")
-                .contains("\"preferred_styles\":[\"commute\"]")
-                .contains("\"budget_max\":800.0")
-                .contains("\"candidates\"")
-                .contains("\"demand_intent\"")
-                .contains("\"category\":\"外套\"")
-                .contains("\"spu_id\":123")
-                .contains("\"sku_id\":456")
-                .contains("\"sale_price\":299.0")
-                .contains("\"stock_status\":\"in_stock\"")
-                .contains("\"season\":[\"autumn\"]")
-                .doesNotContain("\"message\"")
-                .doesNotContain("\"requestId\"")
-                .doesNotContain("\"chatHistory\"");
+        assertThat(requestJson.path("request_id").asText()).isEqualTo("req-client-test");
+        assertThat(requestJson.path("session_id").asText()).isEqualTo("th_client_001");
+        assertThat(requestJson.path("thread_id").asText()).isEqualTo("th_client_001");
+        assertThat(requestJson.path("query").asText()).isEqualTo("hello");
+        assertThat(requestJson.path("chat_history").get(0).path("user_query").asText())
+                .isEqualTo("上一轮的问题");
+        assertThat(requestJson.path("chat_history").get(0).path("assistant_answer").asText())
+                .isEqualTo("上一轮的回答");
+        assertThat(requestJson.path("user_context").path("height_cm").decimalValue())
+                .isEqualByComparingTo("175.5");
+        assertThat(requestJson.path("user_context").path("preferred_styles").get(0).asText())
+                .isEqualTo("commute");
+        assertThat(requestJson.path("user_context").path("budget_max").decimalValue())
+                .isEqualByComparingTo("800.0");
+        JsonNode candidate = requestJson.path("candidates").get(0);
+        assertThat(candidate.path("category").asText()).isEqualTo("外套");
+        assertThat(candidate.path("spu_id").asLong()).isEqualTo(123L);
+        assertThat(candidate.path("sku_id").asLong()).isEqualTo(456L);
+        assertThat(candidate.path("sale_price").decimalValue()).isEqualByComparingTo("299.0");
+        assertThat(candidate.path("stock_status").asText()).isEqualTo("in_stock");
+        assertThat(candidate.path("season").get(0).asText()).isEqualTo("autumn");
     }
 
     @Test
@@ -258,6 +266,12 @@ class RestPythonAssistantClientTests {
                 List.of(),
                 false
         );
+    }
+
+    private Set<String> fieldNames(JsonNode node) {
+        Set<String> names = new TreeSet<>();
+        node.fieldNames().forEachRemaining(names::add);
+        return names;
     }
 
     private static class CapturingStreamHandler implements PythonAssistantStreamHandler {
