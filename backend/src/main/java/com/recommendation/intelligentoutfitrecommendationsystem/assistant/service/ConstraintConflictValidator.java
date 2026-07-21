@@ -2,12 +2,14 @@ package com.recommendation.intelligentoutfitrecommendationsystem.assistant.servi
 
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintConflictResult;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintConflictStatus;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintOperator;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintOrigin;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.EffectiveDemand;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.IntentConstraint;
 
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -16,8 +18,8 @@ import java.util.Set;
  */
 public class ConstraintConflictValidator {
 
-    private static final Set<String> SCALAR_FIELDS =
-            Set.of("targetGender", "category", "season", "budgetMax");
+    private static final List<String> SCALAR_FIELDS =
+            List.of("targetGender", "category", "season", "budgetMax");
 
     /**
      * Evaluates observable effective constraints, preserving all values for later clarification or recommendation logic.
@@ -33,23 +35,15 @@ public class ConstraintConflictValidator {
         Set<String> priorityResolved = new LinkedHashSet<>();
         for (String field : SCALAR_FIELDS) {
             List<IntentConstraint> constraints = demand.hardFilters().stream()
-                    .filter(item -> item.field().equals(field))
+                    .filter(item -> item.field().equals(field) && item.operator() == ConstraintOperator.EQUALS)
                     .toList();
             if (constraints.size() < 2) {
                 continue;
             }
-            long distinctValues = constraints.stream().flatMap(item -> item.values().stream()).distinct().count();
-            if (distinctValues < 2) {
-                continue;
-            }
-            boolean sameTurnConflict = constraints.stream()
-                    .filter(item -> item.originTurnId() != null && !item.originTurnId().isBlank())
-                    .collect(java.util.stream.Collectors.groupingBy(IntentConstraint::originTurnId))
-                    .values().stream()
-                    .anyMatch(this::containsDifferentConstraints);
-            if (sameTurnConflict) {
+            ConflictKind conflictKind = classifyEqualsConflicts(constraints);
+            if (conflictKind == ConflictKind.UNRESOLVED) {
                 unresolved.add(field);
-            } else {
+            } else if (conflictKind == ConflictKind.CROSS_TURN) {
                 priorityResolved.add(field);
             }
         }
@@ -79,14 +73,32 @@ public class ConstraintConflictValidator {
         return summer && explicitWarm;
     }
 
-    private boolean containsDifferentConstraints(List<IntentConstraint> constraints) {
+    private ConflictKind classifyEqualsConflicts(List<IntentConstraint> constraints) {
+        boolean crossTurnConflict = false;
         for (int left = 0; left < constraints.size(); left++) {
             for (int right = left + 1; right < constraints.size(); right++) {
-                if (!constraints.get(left).values().equals(constraints.get(right).values())) {
-                    return true;
+                IntentConstraint first = constraints.get(left);
+                IntentConstraint second = constraints.get(right);
+                if (first.values().stream().anyMatch(second.values()::contains)) {
+                    continue;
                 }
+                if (isBlank(first.originTurnId()) || isBlank(second.originTurnId())
+                        || Objects.equals(first.originTurnId(), second.originTurnId())) {
+                    return ConflictKind.UNRESOLVED;
+                }
+                crossTurnConflict = true;
             }
         }
-        return false;
+        return crossTurnConflict ? ConflictKind.CROSS_TURN : ConflictKind.NONE;
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private enum ConflictKind {
+        NONE,
+        CROSS_TURN,
+        UNRESOLVED
     }
 }

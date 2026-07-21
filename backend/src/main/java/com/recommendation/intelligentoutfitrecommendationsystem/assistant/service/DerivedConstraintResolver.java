@@ -27,8 +27,10 @@ public class DerivedConstraintResolver {
     );
 
     /**
-     * Removes orphaned or stale system derivations and then rebuilds the active season's preferences.
-     * Semantic deduplication makes repeated resolution idempotent and favors existing explicit values.
+     * Removes orphaned, unsupported, or stale system derivations and then rebuilds the active season's preferences.
+     * Semantic deduplication makes repeated resolution idempotent and favors existing explicit values. Because this
+     * contract models only positive constraints, an active season always rebuilds its positive derivations; persistent
+     * negative exclusions require a future, separate constraint contract.
      *
      * @param demand merged effective demand
      * @return a snapshot with current parent-linked derived preferences
@@ -59,7 +61,7 @@ public class DerivedConstraintResolver {
             return false;
         }
         if (!parent.get().field().equals("season")) {
-            return true;
+            return false;
         }
         return parent.get().values().stream()
                 .flatMap(value -> SEASON_DERIVATIONS.getOrDefault(value, List.of()).stream())

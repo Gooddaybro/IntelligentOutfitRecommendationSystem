@@ -96,6 +96,19 @@ class IntentConstraintLifecycleTests {
     }
 
     @Test
+    void currentExplicitDuplicateKeepsCurrentTurnProvenanceOverHistoricalExplicitValue() {
+        IntentConstraint historical = soft(
+                "c-scene-turn-1", "scene", "COMMUTE", "turn-1");
+        IntentConstraint current = soft(
+                "c-scene-turn-2", "scene", "COMMUTE", "turn-2");
+
+        EffectiveDemand merged = merger.merge(demand(List.of(), List.of(historical)),
+                turn("turn-2", Map.of(), List.of(current), List.of(), Set.of()));
+
+        assertThat(merged.constraints("scene")).containsExactly(current);
+    }
+
+    @Test
     void hardExplicitSummerWarmthIsAnUncommonValidCombination() {
         EffectiveDemand input = demand(List.of(
                 hard("c-season-turn-5", "season", "SUMMER", "turn-5"),
@@ -171,6 +184,69 @@ class IntentConstraintLifecycleTests {
                 .isEqualTo(ConstraintConflictStatus.VALID);
     }
 
+    @Test
+    void overlappingOrReorderedEqualsSetsRemainSatisfiable() {
+        EffectiveDemand overlapping = demand(List.of(
+                hardValues("c-category-a", "category", List.of("COAT", "JACKET"), "turn-7"),
+                hardValues("c-category-b", "category", List.of("JACKET", "SHIRT"), "turn-7")), List.of());
+        EffectiveDemand reordered = demand(List.of(
+                hardValues("c-season-a", "season", List.of("SUMMER", "WINTER"), "turn-7"),
+                hardValues("c-season-b", "season", List.of("WINTER", "SUMMER"), "turn-7")), List.of());
+
+        assertThat(validator.validate(overlapping).status()).isEqualTo(ConstraintConflictStatus.VALID);
+        assertThat(validator.validate(reordered).status()).isEqualTo(ConstraintConflictStatus.VALID);
+    }
+
+    @Test
+    void maxConstraintsUseTheStricterBoundWithoutReportingAnUnresolvedConflict() {
+        EffectiveDemand input = demand(List.of(
+                hardWithOperator("c-budget-a", "budgetMax", ConstraintOperator.MAX, List.of("800"), "turn-8"),
+                hardWithOperator("c-budget-b", "budgetMax", ConstraintOperator.MAX, List.of("500"), "turn-8")),
+                List.of());
+
+        assertThat(validator.validate(input).status()).isEqualTo(ConstraintConflictStatus.VALID);
+    }
+
+    @Test
+    void missingTurnIdentityCannotClaimThatPriorityResolvedAConflict() {
+        EffectiveDemand input = demand(List.of(
+                hard("c-season-a", "season", "SUMMER", null),
+                hard("c-season-b", "season", "WINTER", " ")), List.of());
+
+        assertThat(validator.validate(input).status())
+                .isEqualTo(ConstraintConflictStatus.UNRESOLVED_HARD_CONFLICT);
+    }
+
+    @Test
+    void unknownNonSeasonDerivedConstraintIsRemovedEvenWhenItsParentIsActive() {
+        IntentConstraint category = hard("c-category", "category", "COAT", "turn-9");
+        IntentConstraint unknownDerived = derived(
+                "c-unknown-derived", "thermal", "WARM", "turn-9", category.id());
+
+        EffectiveDemand resolved = resolver.resolve(demand(List.of(category), List.of(unknownDerived)));
+
+        assertThat(resolved.softPreferences()).doesNotContain(unknownDerived);
+    }
+
+    @Test
+    void scalarMergeAndConflictDiagnosticsUseStableFieldOrder() {
+        IntentConstraint gender = hard("c-gender", "targetGender", "FEMALE", "turn-10");
+        IntentConstraint season = hard("c-season", "season", "SUMMER", "turn-10");
+        EffectiveDemand merged = merger.merge(null,
+                turn("turn-10", Map.of("season", season, "targetGender", gender),
+                        List.of(), List.of(), Set.of()));
+        EffectiveDemand conflicts = demand(List.of(
+                hard("c-season-a", "season", "SUMMER", null),
+                hard("c-season-b", "season", "WINTER", null),
+                hard("c-gender-a", "targetGender", "FEMALE", null),
+                hard("c-gender-b", "targetGender", "MALE", null)), List.of());
+
+        assertThat(merged.hardFilters()).extracting(IntentConstraint::field)
+                .containsExactly("targetGender", "season");
+        assertThat(validator.validate(conflicts).conflictingFields())
+                .containsExactly("targetGender", "season");
+    }
+
     private List<String> values(EffectiveDemand demand, String field) {
         return demand.constraints(field).stream().flatMap(item -> item.values().stream()).toList();
     }
@@ -191,7 +267,21 @@ class IntentConstraintLifecycleTests {
     }
 
     private IntentConstraint hard(String id, String field, String value, String turnId) {
-        return new IntentConstraint(id, field, ConstraintOperator.EQUALS, List.of(value),
+        return hardValues(id, field, List.of(value), turnId);
+    }
+
+    private IntentConstraint hardValues(String id, String field, List<String> values, String turnId) {
+        return hardWithOperator(id, field, ConstraintOperator.EQUALS, values, turnId);
+    }
+
+    private IntentConstraint hardWithOperator(
+            String id,
+            String field,
+            ConstraintOperator operator,
+            List<String> values,
+            String turnId
+    ) {
+        return new IntentConstraint(id, field, operator, values,
                 ConstraintStrength.HARD, ConstraintOrigin.USER_EXPLICIT,
                 turnId, null, "ACTIVE_DEMAND", null);
     }

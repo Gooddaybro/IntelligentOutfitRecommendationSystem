@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -18,8 +19,8 @@ import java.util.Set;
  */
 public class IntentConstraintMerger {
 
-    private static final Set<String> SCALAR_FIELDS =
-            Set.of("targetGender", "category", "season", "budgetMax");
+    private static final List<String> SCALAR_FIELDS =
+            List.of("targetGender", "category", "season", "budgetMax");
     private static final Set<String> REPLACE_LIST_FIELDS = Set.of("style", "fitPreferences");
     private static final Set<String> APPEND_LIST_FIELDS = Set.of("scene", "attributes", "thermal");
 
@@ -44,12 +45,17 @@ public class IntentConstraintMerger {
         turn.clearFields().forEach(field -> removeField(hard, soft, field));
         turn.explicitRemovals().forEach(removal -> removeSemanticMatch(hard, soft, removal));
 
-        for (Map.Entry<String, IntentConstraint> replacement : turn.scalarReplacements().entrySet()) {
-            if (!SCALAR_FIELDS.contains(replacement.getKey())) {
-                throw new IllegalArgumentException("unsupported scalar field: " + replacement.getKey());
+        for (String field : turn.scalarReplacements().keySet()) {
+            if (!SCALAR_FIELDS.contains(field)) {
+                throw new IllegalArgumentException("unsupported scalar field: " + field);
             }
-            removeField(hard, soft, replacement.getKey());
-            addByStrength(hard, soft, replacement.getValue());
+        }
+        for (String field : SCALAR_FIELDS) {
+            IntentConstraint replacement = turn.scalarReplacements().get(field);
+            if (replacement != null) {
+                removeField(hard, soft, field);
+                addByStrength(hard, soft, replacement);
+            }
         }
 
         Set<String> replacedFields = turn.explicitAdditions().stream()
@@ -72,7 +78,7 @@ public class IntentConstraintMerger {
                 ? null
                 : turn.subjectMeasurements() == null ? base.subjectMeasurements() : turn.subjectMeasurements();
         return EffectiveDemand.v3(turn.rawQuery(), requestType, capabilities,
-                deduplicate(hard), deduplicate(soft), measurements);
+                deduplicate(hard, turn.turnId()), deduplicate(soft, turn.turnId()), measurements);
     }
 
     private void removeField(List<IntentConstraint> hard, List<IntentConstraint> soft, String field) {
@@ -106,18 +112,33 @@ public class IntentConstraintMerger {
         }
     }
 
-    private List<IntentConstraint> deduplicate(List<IntentConstraint> constraints) {
+    private List<IntentConstraint> deduplicate(List<IntentConstraint> constraints, String currentTurnId) {
         Map<String, IntentConstraint> unique = new LinkedHashMap<>();
-        constraints.forEach(item -> unique.merge(semanticKey(item), item, this::preferExplicit));
+        constraints.forEach(item -> unique.merge(semanticKey(item), item,
+                (existing, candidate) -> preferByPriority(existing, candidate, currentTurnId)));
         return List.copyOf(unique.values());
     }
 
-    private IntentConstraint preferExplicit(IntentConstraint existing, IntentConstraint candidate) {
-        if (candidate.origin() == ConstraintOrigin.USER_EXPLICIT
-                && existing.origin() != ConstraintOrigin.USER_EXPLICIT) {
-            return candidate;
+    private IntentConstraint preferByPriority(
+            IntentConstraint existing,
+            IntentConstraint candidate,
+            String currentTurnId
+    ) {
+        return priority(candidate, currentTurnId) > priority(existing, currentTurnId) ? candidate : existing;
+    }
+
+    private int priority(IntentConstraint constraint, String currentTurnId) {
+        if (constraint.origin() == ConstraintOrigin.USER_EXPLICIT) {
+            boolean belongsToCurrentTurn = currentTurnId != null && !currentTurnId.isBlank()
+                    && Objects.equals(currentTurnId, constraint.originTurnId());
+            return belongsToCurrentTurn ? 5 : 4;
         }
-        return existing;
+        return switch (constraint.origin()) {
+            case PROFILE -> 3;
+            case SYSTEM_DERIVED -> 2;
+            case LEGACY_UNPROVENANCED -> 1;
+            case USER_EXPLICIT -> throw new IllegalStateException("explicit priority handled above");
+        };
     }
 
     private String semanticKey(IntentConstraint constraint) {
