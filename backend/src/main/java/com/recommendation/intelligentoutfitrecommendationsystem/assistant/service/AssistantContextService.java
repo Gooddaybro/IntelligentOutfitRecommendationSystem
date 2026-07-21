@@ -25,6 +25,7 @@ import org.slf4j.MDC;
 
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
@@ -166,16 +167,15 @@ public class AssistantContextService {
             demandIntent = persistedIntent == null ? initialIntent : persistedIntent;
             effectiveDemand = legacyDemandIntentAdapter.adapt(demandIntent);
         }
-        // Java 只执行 DemandIntent 中的硬过滤；候选池内的排序解释仍由 Python AI 服务完成。
-        String deterministicStyle = detailedStyle(request, demandIntent);
+        // Java SQL 仅消费 v3 硬约束；软偏好完整保留在上下文中交给 Python 排序。
         RecommendationCandidateQuery query = new RecommendationCandidateQuery(
-                demandIntent.category(),
-                deterministicStyle,
-                seasonFilter(request, demandIntent),
-                request.material(),
-                request.fit(),
-                demandIntent.budgetMax(),
-                demandIntent.targetGender()
+                effectiveDemand.hardValue("category").orElse(null),
+                explicitFilter(request.style()),
+                lowerCanonical(effectiveDemand.hardValue("season").orElse(null)),
+                explicitFilter(request.material()),
+                explicitFilter(request.fit()),
+                effectiveDemand.hardInteger("budgetMax").orElse(null),
+                lowerCanonical(effectiveDemand.hardValue("targetGender").orElse(null))
         );
         return new AssistantContext(
                 profile,
@@ -190,15 +190,12 @@ public class AssistantContextService {
         );
     }
 
-    private String detailedStyle(AssistantChatRequest request, DemandIntent demandIntent) {
-        if (hasText(request.style())) {
-            return request.style().trim();
-        }
-        DeterministicDemandParseResult parsed = demandIntentResolver.resolveDetailed(request);
-        if (!parsed.lockedSlots().contains("style") || demandIntent.style().isEmpty()) {
-            return null;
-        }
-        return demandIntent.style().getFirst();
+    private String explicitFilter(String value) {
+        return hasText(value) ? value.trim() : null;
+    }
+
+    private String lowerCanonical(String value) {
+        return value == null ? null : value.toLowerCase(Locale.ROOT);
     }
 
     private DemandIntentPatch patchFromPending(PendingClarification pending) {
@@ -268,13 +265,6 @@ public class AssistantContextService {
         return containsAny(message, "\u8ba2\u5355", "\u7269\u6d41", "\u53d1\u8d27", "\u9000\u6b3e", "\u9000\u8d27", "\u552e\u540e", "\u5e93\u5b58", "\u4ef7\u683c", "\u591a\u5c11\u94b1");
     }
 
-    private String seasonFilter(AssistantChatRequest request, DemandIntent demandIntent) {
-        if (hasText(request.season())) {
-            return request.season().trim();
-        }
-        return demandIntent.season();
-    }
-
     private boolean containsAny(String text, String... signals) {
         if (!hasText(text)) {
             return false;
@@ -291,10 +281,4 @@ public class AssistantContextService {
         return value != null && !value.isBlank();
     }
 
-    private String first(List<String> values) {
-        if (values == null || values.isEmpty()) {
-            return null;
-        }
-        return values.get(0);
-    }
 }

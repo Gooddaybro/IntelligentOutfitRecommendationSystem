@@ -12,6 +12,11 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.Ll
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PendingClarification;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.LlmDemandSlots;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.SlotEvidence;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintOperator;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintOrigin;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintStrength;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.EffectiveDemand;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.IntentConstraint;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.dto.BehaviorSummaryResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorSummaryService;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.MessageResponse;
@@ -40,6 +45,74 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 
 class AssistantContextServiceTests {
+
+    @Test
+    void candidateQueryUsesOnlyHardEffectiveDemandAndKeepsSoftStyleForPython() {
+        UserProfileService profiles = mock(UserProfileService.class);
+        RecommendationCandidateQueryService candidates = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversations = mock(ConversationApplicationService.class);
+        DemandIntentStateService states = mock(DemandIntentStateService.class);
+        DemandIntentParseClient parser = mock(DemandIntentParseClient.class);
+        AssistantContextService service = new AssistantContextService(
+                profiles, candidates, conversations, mock(BehaviorSummaryService.class), states, parser);
+        EffectiveDemand effective = EffectiveDemand.v3(
+                "\u65e5\u5e38\u4f11\u95f2", "OUTFIT_ADVICE", List.of("PRODUCT_SELECTION"),
+                List.of(
+                        constraint("gender", "targetGender", ConstraintOperator.EQUALS,
+                                "FEMALE", ConstraintStrength.HARD),
+                        constraint("season", "season", ConstraintOperator.EQUALS,
+                                "SUMMER", ConstraintStrength.HARD)),
+                List.of(
+                        constraint("style", "style", ConstraintOperator.CONTAINS,
+                                "CASUAL", ConstraintStrength.SOFT),
+                        constraint("material", "material", ConstraintOperator.CONTAINS,
+                                "COTTON", ConstraintStrength.SOFT),
+                        constraint("fit", "fit", ConstraintOperator.CONTAINS,
+                                "LOOSE", ConstraintStrength.SOFT)), null);
+        when(conversations.getMessages(anyLong(), anyString())).thenReturn(List.of());
+        when(states.applyResolution(anyLong(), anyString(), anyString(), any(), anyString(),
+                any(), any(), any(), any()))
+                .thenReturn(new DemandIntentStateSnapshot(effective, null));
+        when(parser.parse(any())).thenReturn(Optional.empty());
+        when(candidates.findCandidates(any())).thenReturn(List.of());
+
+        AssistantContext context = service.buildContext(10L, "thread-hard-only",
+                new AssistantChatRequest("thread-hard-only", "\u65e5\u5e38\u4f11\u95f2",
+                        null, null, null, null, null, null, null));
+
+        ArgumentCaptor<RecommendationCandidateQuery> query =
+                ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
+        verify(candidates).findCandidates(query.capture());
+        assertThat(query.getValue().getGender()).isEqualTo("female");
+        assertThat(query.getValue().getSeason()).isEqualTo("summer");
+        assertThat(query.getValue().getStyle()).isNull();
+        assertThat(query.getValue().getMaterial()).isNull();
+        assertThat(query.getValue().getFit()).isNull();
+        assertThat(context.effectiveDemand()).isEqualTo(effective);
+        assertThat(context.effectiveDemand().softPreferences())
+                .extracting(IntentConstraint::field).contains("style");
+    }
+
+    @Test
+    void explicitRequestStyleRemainsAnExactCandidateFilter() {
+        UserProfileService profiles = mock(UserProfileService.class);
+        RecommendationCandidateQueryService candidates = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversations = mock(ConversationApplicationService.class);
+        AssistantContextService service = new AssistantContextService(profiles, candidates, conversations);
+        when(conversations.getMessages(anyLong(), anyString())).thenReturn(List.of());
+        when(candidates.findCandidates(any())).thenReturn(List.of());
+
+        service.buildContext(10L, "thread-explicit-style",
+                new AssistantChatRequest("thread-explicit-style", "show options",
+                        null, "casual", null, "cotton", "loose", null, null));
+
+        ArgumentCaptor<RecommendationCandidateQuery> query =
+                ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
+        verify(candidates).findCandidates(query.capture());
+        assertThat(query.getValue().getStyle()).isEqualTo("casual");
+        assertThat(query.getValue().getMaterial()).isEqualTo("cotton");
+        assertThat(query.getValue().getFit()).isEqualTo("loose");
+    }
 
     @Test
     void semanticParserFillsOnlyValidatedUnresolvedStyle() {
@@ -355,7 +428,7 @@ class AssistantContextServiceTests {
     }
 
     @Test
-    void demandIntentExtractsCommuteSceneStyleAndBudget() {
+    void naturalLanguageCommuteStyleStaysOutOfExactCandidateFilter() {
         UserProfileService userProfileService = mock(UserProfileService.class);
         RecommendationCandidateQueryService recommendationCandidateQueryService = mock(RecommendationCandidateQueryService.class);
         ConversationApplicationService conversationService = mock(ConversationApplicationService.class);
@@ -382,7 +455,7 @@ class AssistantContextServiceTests {
         ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
         verify(recommendationCandidateQueryService).findCandidates(captor.capture());
         assertThat(captor.getValue().getGender()).isEqualTo("female");
-        assertThat(captor.getValue().getStyle()).isEqualTo("commute");
+        assertThat(captor.getValue().getStyle()).isNull();
         assertThat(captor.getValue().getBudgetMax()).isEqualTo(500);
         assertThat(context.demandIntent().targetGender()).isEqualTo("female");
         assertThat(context.demandIntent().scene()).containsExactly("commute");
@@ -453,7 +526,7 @@ class AssistantContextServiceTests {
     }
 
     @Test
-    void versatileDemandUsesExistingStyleCodeInsteadOfBasic() {
+    void naturalLanguageVersatileStyleStaysOutOfExactCandidateFilter() {
         UserProfileService userProfileService = mock(UserProfileService.class);
         RecommendationCandidateQueryService recommendationCandidateQueryService = mock(RecommendationCandidateQueryService.class);
         ConversationApplicationService conversationService = mock(ConversationApplicationService.class);
@@ -479,7 +552,7 @@ class AssistantContextServiceTests {
 
         ArgumentCaptor<RecommendationCandidateQuery> captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
         verify(recommendationCandidateQueryService).findCandidates(captor.capture());
-        assertThat(captor.getValue().getStyle()).isEqualTo("minimal");
+        assertThat(captor.getValue().getStyle()).isNull();
         assertThat(context.demandIntent().style()).contains("minimal").doesNotContain("basic");
     }
 
@@ -799,6 +872,19 @@ class AssistantContextServiceTests {
     private DemandIntentStateSnapshot snapshot(DemandIntent intent, PendingClarification pending) {
         return new DemandIntentStateSnapshot(new com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.LegacyDemandIntentAdapter()
                 .adapt(intent), pending);
+    }
+
+    private IntentConstraint constraint(
+            String id,
+            String field,
+            ConstraintOperator operator,
+            String value,
+            ConstraintStrength strength
+    ) {
+        return new IntentConstraint(
+                "test-" + id, field, operator, List.of(value), strength,
+                ConstraintOrigin.USER_EXPLICIT, "turn-test", null, "ACTIVE_DEMAND",
+                strength == ConstraintStrength.SOFT ? BigDecimal.ONE : null);
     }
     private DemandIntent emptyIntent(String rawQuery) {
         return new DemandIntent(DemandIntent.VERSION, DemandIntent.SOURCE_JAVA_RULE, rawQuery,

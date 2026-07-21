@@ -58,6 +58,25 @@ public record EffectiveDemand(
                 .findFirst();
     }
 
+    /** 仅从硬约束中读取标量值，避免软偏好意外进入数据库筛选。 */
+    public Optional<String> hardValue(String field) {
+        return hardFilters.stream()
+                .filter(constraint -> constraint.field().equals(field))
+                .flatMap(constraint -> constraint.values().stream())
+                .findFirst();
+    }
+
+    /** 仅解析硬约束中的整数；无值、非法数字和溢出都视为未设置。 */
+    public Optional<Integer> hardInteger(String field) {
+        return hardValue(field).flatMap(value -> {
+            try {
+                return Optional.of(Integer.valueOf(value));
+            } catch (NumberFormatException ignored) {
+                return Optional.empty();
+            }
+        });
+    }
+
     /** Creates a new snapshot after derived-preference recalculation without mutating this one. */
     public EffectiveDemand withSoftPreferences(List<IntentConstraint> preferences) {
         return new EffectiveDemand(version, rawQuery, requestType, requestedCapabilities,

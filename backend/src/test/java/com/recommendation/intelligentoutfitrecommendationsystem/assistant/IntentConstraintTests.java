@@ -55,6 +55,31 @@ class IntentConstraintTests {
     }
 
     @Test
+    void hardLookupsNeverReadSoftPreferences() {
+        EffectiveDemand demand = EffectiveDemand.v3(
+                "daily casual", "OUTFIT_ADVICE", List.of(),
+                List.of(hardSeason("SUMMER")), List.of(softStyle("CASUAL")), null);
+
+        assertThat(demand.hardValue("season")).contains("SUMMER");
+        assertThat(demand.hardValue("style")).isEmpty();
+    }
+
+    @Test
+    void hardIntegerAcceptsValidMaxAndSafelyRejectsInvalidNumbers() {
+        IntentConstraint validBudget = hardConstraint(
+                "budget-valid", "budgetMax", ConstraintOperator.MAX, "500");
+        IntentConstraint invalidBudget = hardConstraint(
+                "budget-invalid", "invalidBudget", ConstraintOperator.MAX, "not-a-number");
+        EffectiveDemand demand = EffectiveDemand.v3(
+                "budget", "OUTFIT_ADVICE", List.of(),
+                List.of(validBudget, invalidBudget), List.of(), null);
+
+        assertThat(demand.hardInteger("budgetMax")).contains(500);
+        assertThat(demand.hardInteger("invalidBudget")).isEmpty();
+        assertThat(demand.hardInteger("season")).isEmpty();
+    }
+
+    @Test
     void constraintRequiresItsCoreEnumMetadata() {
         assertThatThrownBy(() -> constraint(null, ConstraintStrength.SOFT, ConstraintOrigin.USER_EXPLICIT, null))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -122,6 +147,18 @@ class IntentConstraintTests {
         return new IntentConstraint(
                 "c-style-turn-4", "style", ConstraintOperator.CONTAINS, List.of(value),
                 ConstraintStrength.SOFT, ConstraintOrigin.USER_EXPLICIT,
+                "turn-4", null, "ACTIVE_DEMAND", null);
+    }
+
+    private IntentConstraint hardConstraint(
+            String id,
+            String field,
+            ConstraintOperator operator,
+            String value
+    ) {
+        return new IntentConstraint(
+                id, field, operator, List.of(value),
+                ConstraintStrength.HARD, ConstraintOrigin.USER_EXPLICIT,
                 "turn-4", null, "ACTIVE_DEMAND", null);
     }
 
