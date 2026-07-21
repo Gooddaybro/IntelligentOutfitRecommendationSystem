@@ -63,6 +63,12 @@ class RestPythonAssistantClientTests {
                           "outfit_role": "TOP"
                         }
                       ],
+                      "rejected_reasons": {
+                        "HARD_FILTER_MISMATCH": 2,
+                        "SIZE_MISMATCH": 1,
+                        "LOW_STYLE_SCORE": 3,
+                        "MISSING_REQUIRED_EVIDENCE": 4
+                      },
                       "suggested_actions": []
                     }
                     """.getBytes(StandardCharsets.UTF_8);
@@ -141,6 +147,12 @@ class RestPythonAssistantClientTests {
         assertThat(response.intent()).isEqualTo("recommendation");
         assertThat(response.productRefs()).singleElement().satisfies(ref ->
                 assertThat(ref.outfitRole()).isEqualTo("TOP"));
+        assertThat(response.rejectedReasons()).containsExactlyInAnyOrderEntriesOf(java.util.Map.of(
+                "HARD_FILTER_MISMATCH", 2,
+                "SIZE_MISMATCH", 1,
+                "LOW_STYLE_SCORE", 3,
+                "MISSING_REQUIRED_EVIDENCE", 4
+        ));
         assertThat(internalTokenHeader.get()).isEqualTo("test-internal-token");
         assertThat(response.productRefs())
                 .extracting("spuId", "skuId", "reason")
@@ -209,7 +221,7 @@ class RestPythonAssistantClientTests {
                     data: {"content":"我建议"}
 
                     event: done
-                    data: {"request_id":"req-stream-test","answer":"我建议您穿 L 码。","intent":"size_recommendation","product_refs":[{"spu_id":1001,"sku_id":2001,"reason":"尺码匹配","rank_score":0.93}]}
+                    data: {"request_id":"req-stream-test","answer":"我建议您穿 L 码。","intent":"size_recommendation","product_refs":[{"spu_id":1001,"sku_id":2001,"reason":"尺码匹配","rank_score":0.93}],"rejected_reasons":{"HARD_FILTER_MISMATCH":2,"SIZE_MISMATCH":1,"LOW_STYLE_SCORE":3,"MISSING_REQUIRED_EVIDENCE":4}}
 
                     """.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "text/event-stream; charset=utf-8");
@@ -241,6 +253,12 @@ class RestPythonAssistantClientTests {
         assertThat(handler.done.productRefs())
                 .extracting("spuId", "skuId", "reason")
                 .containsExactly(org.assertj.core.api.Assertions.tuple(1001L, 2001L, "尺码匹配"));
+        assertThat(handler.done.rejectedReasons()).containsExactlyInAnyOrderEntriesOf(java.util.Map.of(
+                "HARD_FILTER_MISMATCH", 2,
+                "SIZE_MISMATCH", 1,
+                "LOW_STYLE_SCORE", 3,
+                "MISSING_REQUIRED_EVIDENCE", 4
+        ));
         assertThat(handler.errors).isEmpty();
     }
 
