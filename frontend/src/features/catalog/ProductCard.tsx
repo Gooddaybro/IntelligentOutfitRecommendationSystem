@@ -28,7 +28,7 @@ type ProductCardProps = {
 };
 
 export function ProductCard({ candidate, onAction, actionMetadata, position, onBehaviorEvent, variant = "standard", recommendationStatus, isAttributed = false }: ProductCardProps) {
-  const shouldShowAiFacts = recommendationStatus === "STRONG_MATCH" && isAttributed;
+  const shouldShowAiFacts = (recommendationStatus === "STRONG_MATCH" || recommendationStatus === "PARTIAL_MATCH") && isAttributed;
 
   return (
     <article
@@ -66,7 +66,7 @@ export function ProductCard({ candidate, onAction, actionMetadata, position, onB
           <strong>￥{candidate.salePrice}</strong>
           <span>{candidate.stockStatus || "库存以结算为准"}</span>
         </div>
-        {candidate.recommendationReason && (
+        {shouldShowAiFacts && candidate.recommendationReason && (
           <p className="recommendation-reason" data-testid="recommendation-reason">
             <strong>推荐理由</strong>
             {candidate.recommendationReason}

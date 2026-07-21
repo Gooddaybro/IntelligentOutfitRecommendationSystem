@@ -18,8 +18,7 @@ describe("assistant shopping state", () => {
     const withRecommendations = assistantShoppingReducer(initialAssistantShoppingState, {
       type: "setRecommendationMeta",
       value: {
-        hasAiResult: true,
-        hasStrongMatch: true,
+        recommendationStatus: "PARTIAL_MATCH",
         recommendedItems: [{ spuId: 1002, skuId: 2101, reason: "预算匹配", rankScore: 0.9 }]
       }
     });
@@ -41,5 +40,28 @@ describe("assistant shopping state", () => {
 
     expect(stale.recommendationRequestId).toBe("req-new");
     expect(stale.recommendationStatus).toBe("LOADING");
+  });
+
+  it("stores the typed partial and failed completion statuses", () => {
+    const partialLoading = assistantShoppingReducer(initialAssistantShoppingState, {
+      type: "recommendationStarted",
+      requestId: "req-partial"
+    });
+    const partial = assistantShoppingReducer(partialLoading, {
+      type: "recommendationCompleted",
+      requestId: "req-partial",
+      status: "PARTIAL_MATCH"
+    });
+    const failedLoading = assistantShoppingReducer(partial, {
+      type: "recommendationStarted",
+      requestId: "req-failed"
+    });
+
+    expect(partial.recommendationStatus).toBe("PARTIAL_MATCH");
+    expect(assistantShoppingReducer(failedLoading, {
+      type: "recommendationCompleted",
+      requestId: "req-failed",
+      status: "FAILED"
+    }).recommendationStatus).toBe("FAILED");
   });
 });

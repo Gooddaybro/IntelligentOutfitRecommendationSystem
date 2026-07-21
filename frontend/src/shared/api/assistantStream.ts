@@ -19,6 +19,16 @@ export type AssistantStreamEvent =
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
+function normalizeLegacyRecommendationStatus(status: unknown): RecommendationStatus | undefined {
+  if (status === "WEAK_FALLBACK") return "BROWSE_FALLBACK";
+  if (status === "ERROR") return "FAILED";
+  if (status === "STRONG_MATCH" || status === "PARTIAL_MATCH" || status === "BROWSE_FALLBACK"
+      || status === "EMPTY" || status === "FAILED") {
+    return status;
+  }
+  return undefined;
+}
+
 function normalizeRecommendedItems(payload: unknown): RecommendedItem[] {
   const source =
     (payload as { recommendedItems?: unknown }).recommendedItems ??
@@ -137,8 +147,8 @@ export function parseSseEventBlock(block: string): AssistantStreamEvent | null {
       resolved_intent?: DemandIntent;
       recommendationId?: string;
       recommendation_id?: string;
-      recommendationStatus?: RecommendationStatus;
-      recommendation_status?: RecommendationStatus;
+      recommendationStatus?: unknown;
+      recommendation_status?: unknown;
     };
     const recommendedItems = normalizeRecommendedItems(donePayload);
     const ids = donePayload.recommendedSpuIds ?? donePayload.recommended_spu_ids ?? recommendedItems.map((item) => item.spuId);
@@ -150,7 +160,9 @@ export function parseSseEventBlock(block: string): AssistantStreamEvent | null {
       recommendedItems,
       resolvedIntent: donePayload.resolvedIntent ?? donePayload.resolved_intent,
       recommendationId: donePayload.recommendationId ?? donePayload.recommendation_id,
-      recommendationStatus: donePayload.recommendationStatus ?? donePayload.recommendation_status
+      recommendationStatus: normalizeLegacyRecommendationStatus(
+        donePayload.recommendationStatus ?? donePayload.recommendation_status
+      )
     };
   }
 

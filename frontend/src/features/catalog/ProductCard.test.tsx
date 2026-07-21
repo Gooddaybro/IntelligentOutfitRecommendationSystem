@@ -36,7 +36,7 @@ describe("ProductCard", () => {
   it("does not generate AI labels for weak candidates", () => {
     const candidateWithoutAiFacts = { ...candidate, rankScore: undefined };
     const { container, rerender } = render(
-      <MemoryRouter><ProductCard candidate={candidateWithoutAiFacts} onAction={vi.fn()} variant="supporting" recommendationStatus="WEAK_FALLBACK" /></MemoryRouter>
+      <MemoryRouter><ProductCard candidate={candidateWithoutAiFacts} onAction={vi.fn()} variant="supporting" recommendationStatus="BROWSE_FALLBACK" /></MemoryRouter>
     );
 
     expect(container.querySelector(".ai-match-badge")).not.toBeInTheDocument();

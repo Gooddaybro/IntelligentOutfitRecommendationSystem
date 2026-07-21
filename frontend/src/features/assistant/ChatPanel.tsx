@@ -34,11 +34,9 @@ export type ChatPanelState = {
 };
 
 export type RecommendationResultMeta = {
-  hasAiResult: boolean;
-  hasStrongMatch: boolean;
   recommendedItems?: RecommendedItem[];
   recommendationId?: string;
-  recommendationStatus?: RecommendationStatus;
+  recommendationStatus: RecommendationStatus;
   resolvedIntent?: DemandIntent;
 };
 
@@ -186,7 +184,7 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
     spuIds: number[],
     recommendedItems: RecommendedItem[] = [],
     recommendationId?: string,
-    recommendationStatus: RecommendationStatus = "WEAK_FALLBACK",
+    recommendationStatus: RecommendationStatus = "BROWSE_FALLBACK",
     intentSnapshot?: DemandIntent,
     localRequestId?: number
   ) {
@@ -196,8 +194,6 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
         : await api.recommendationCandidates(requestFilters);
       if (localRequestId !== undefined && localRequestId !== requestSequenceRef.current) return;
       onRecommendations(orderCandidatesByRecommendations(candidates, spuIds, recommendedItems), {
-        hasAiResult: true,
-        hasStrongMatch: recommendationStatus === "STRONG_MATCH",
         recommendedItems,
         recommendationId,
         recommendationStatus,
@@ -207,11 +203,9 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
       if (localRequestId !== undefined && localRequestId !== requestSequenceRef.current) return;
       setError("候选快照读取失败，请重试");
       onRecommendations([], {
-        hasAiResult: true,
-        hasStrongMatch: false,
         recommendedItems: [],
         recommendationId,
-        recommendationStatus: "ERROR",
+        recommendationStatus: "FAILED",
         resolvedIntent: intentSnapshot
       });
     }
@@ -268,7 +262,7 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
               event.spuIds,
               event.recommendedItems,
               event.recommendationId,
-              event.recommendationStatus ?? "WEAK_FALLBACK",
+              event.recommendationStatus ?? "BROWSE_FALLBACK",
               event.resolvedIntent,
               localRequestId
             );
@@ -303,7 +297,7 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
         fallback.recommendedSpuIds,
         fallback.recommendedItems ?? [],
         fallback.recommendationId,
-        fallback.recommendationStatus ?? "WEAK_FALLBACK",
+        fallback.recommendationStatus ?? "BROWSE_FALLBACK",
         fallback.resolvedIntent,
         localRequestId
       );

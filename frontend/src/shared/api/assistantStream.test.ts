@@ -56,4 +56,16 @@ describe("parseSseEventBlock", () => {
       recommendedItems: []
     });
   });
+
+  it.each([
+    ["WEAK_FALLBACK", "BROWSE_FALLBACK"],
+    ["ERROR", "FAILED"]
+  ])("normalizes legacy %s done status to %s at the SSE boundary", (legacy, current) => {
+    expect(parseSseEventBlock(
+      `event: done\ndata: {"thread_id":"th-legacy","recommendation_status":"${legacy}"}`
+    )).toMatchObject({
+      type: "done",
+      recommendationStatus: current
+    });
+  });
 });
