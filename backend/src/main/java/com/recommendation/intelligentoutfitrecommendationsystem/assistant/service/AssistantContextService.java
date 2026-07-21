@@ -129,7 +129,8 @@ public class AssistantContextService {
                 var parsed = demandIntentParseClient.parse(new LlmDemandParseRequest(
                         "1.0", requestId, threadId, request.message(),
                         demandIntentNormalizer.toCanonicalDemand(
-                                current == null ? initialIntent : current.effectiveIntent()),
+                                current == null ? initialIntent
+                                        : DemandIntentStateSnapshot.toLegacyIntent(current.effectiveDemand())),
                         detailed.deterministicPatch(),
                         detailed.lockedSlots(), detailed.matchedFragments(), detailed.unresolvedText(),
                         recentHistory(history), pending));
@@ -149,7 +150,7 @@ public class AssistantContextService {
             DemandIntentStateSnapshot resolved = demandIntentStateService.applyResolution(
                     userId, threadId, requestId, null, transitionAction, deterministicPatch, semanticPatch,
                     nextPending, initialIntent);
-            demandIntent = resolved.effectiveIntent();
+            demandIntent = DemandIntentStateSnapshot.toLegacyIntent(resolved.effectiveDemand());
             if (resolved.pendingClarification() != null) {
                 clarificationQuestion = resolved.pendingClarification().question();
             }

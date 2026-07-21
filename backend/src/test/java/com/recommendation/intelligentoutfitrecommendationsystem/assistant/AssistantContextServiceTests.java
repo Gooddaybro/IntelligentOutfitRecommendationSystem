@@ -69,7 +69,7 @@ class AssistantContextServiceTests {
         when(parser.parse(any())).thenReturn(Optional.of(response));
         when(states.applyResolution(anyLong(), anyString(), any(), any(), anyString(),
                 any(), any(), any(), any()))
-                .thenReturn(new DemandIntentStateSnapshot(effective, null));
+                .thenReturn(snapshot(effective, null));
         when(candidates.findCandidates(any())).thenReturn(List.of());
 
         AssistantContext context = service.buildContext(10L, "thread-semantic", request);
@@ -107,7 +107,7 @@ class AssistantContextServiceTests {
         when(parser.parse(any())).thenReturn(Optional.of(response));
         when(states.applyResolution(anyLong(), anyString(), any(), any(), anyString(),
                 any(), any(), any(), any()))
-                .thenReturn(new DemandIntentStateSnapshot(effective, pending));
+                .thenReturn(snapshot(effective, pending));
         when(candidates.findCandidates(any())).thenReturn(List.of());
 
         AssistantContext context = service.buildContext(10L, "thread-object", request);
@@ -138,11 +138,11 @@ class AssistantContextServiceTests {
                 List.of(), List.of(), null, List.of(), List.of("targetGender", "category"), List.of(),
                 new BigDecimal("0.80"), List.of());
         when(states.read(10L, "thread-object"))
-                .thenReturn(new DemandIntentStateSnapshot(emptyIntent("给对象买外套"), pending));
+                .thenReturn(snapshot(emptyIntent("给对象买外套"), pending));
         when(conversations.getMessages(anyLong(), anyString())).thenReturn(List.of());
         when(states.applyResolution(anyLong(), anyString(), any(), any(), anyString(),
                 any(), any(), any(), any()))
-                .thenReturn(new DemandIntentStateSnapshot(effective, null));
+                .thenReturn(snapshot(effective, null));
         when(candidates.findCandidates(any())).thenReturn(List.of());
 
         AssistantContext context = service.buildContext(10L, "thread-object",
@@ -178,7 +178,7 @@ class AssistantContextServiceTests {
         when(parser.parse(any())).thenReturn(Optional.empty());
         when(states.applyResolution(anyLong(), anyString(), any(), any(), anyString(),
                 any(), any(), any(), any()))
-                .thenReturn(new DemandIntentStateSnapshot(effective, null));
+                .thenReturn(snapshot(effective, null));
         when(candidates.findCandidates(any())).thenReturn(List.of());
 
         AssistantContext context = service.buildContext(10L, "thread-movie", request);
@@ -683,17 +683,19 @@ class AssistantContextServiceTests {
         PendingClarification pending = new PendingClarification(
                 "targetGender", "MALE", new BigDecimal("0.70"), "\u4f60\u662f\u60f3\u7b5b\u9009\u7537\u88c5\u5417\uff1f", "\u7537\u6027", "req-old");
         when(states.read(10L, "thread-pending"))
-                .thenReturn(new DemandIntentStateSnapshot(effective, pending));
+                .thenReturn(snapshot(effective, pending));
         when(states.applyResolution(anyLong(), anyString(), any(), any(), anyString(),
                 any(), any(), any(), any()))
-                .thenReturn(new DemandIntentStateSnapshot(effective, null));
+                .thenReturn(snapshot(effective, null));
         when(conversations.getMessages(anyLong(), anyString())).thenReturn(List.of());
         when(candidates.findCandidates(any())).thenReturn(List.of());
 
         AssistantContext result = service.buildContext(10L, "thread-pending",
                 new AssistantChatRequest("thread-pending", "\u4ef7\u683c\u662f\u591a\u5c11", null, null, null, null, null, null, null));
 
-        assertThat(result.demandIntent()).isEqualTo(effective);
+        assertThat(result.demandIntent().rawQuery()).isEqualTo(effective.rawQuery());
+        assertThat(result.demandIntent().hardFilters()).isEqualTo(effective.hardFilters());
+        assertThat(result.demandIntent().softPreferences()).isEqualTo(effective.softPreferences());
         verify(parser, never()).parse(any());
         verify(states).applyResolution(anyLong(), anyString(), any(), any(),
                 org.mockito.ArgumentMatchers.eq("cancel_clarify"), any(), any(), any(), any());
@@ -717,7 +719,7 @@ class AssistantContextServiceTests {
         when(parser.parse(any())).thenReturn(Optional.empty());
         DemandIntent effective = emptyIntent("\u7537\u6027");
         when(states.applyResolution(anyLong(), anyString(), any(), any(), anyString(),
-                any(), any(), any(), any())).thenReturn(new DemandIntentStateSnapshot(effective, null));
+                any(), any(), any(), any())).thenReturn(snapshot(effective, null));
         when(candidates.findCandidates(any())).thenReturn(List.of());
 
         service.buildContext(10L, "thread-history",
@@ -731,6 +733,10 @@ class AssistantContextServiceTests {
         assertThat(characters).isLessThanOrEqualTo(4000);
     }
 
+    private DemandIntentStateSnapshot snapshot(DemandIntent intent, PendingClarification pending) {
+        return new DemandIntentStateSnapshot(new com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.LegacyDemandIntentAdapter()
+                .adapt(intent), pending);
+    }
     private DemandIntent emptyIntent(String rawQuery) {
         return new DemandIntent(DemandIntent.VERSION, DemandIntent.SOURCE_JAVA_RULE, rawQuery,
                 null, null, List.of(), List.of(), null, List.of(), List.of(), List.of(),

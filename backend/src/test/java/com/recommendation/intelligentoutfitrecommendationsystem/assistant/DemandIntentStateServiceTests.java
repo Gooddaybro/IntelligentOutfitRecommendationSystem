@@ -2,8 +2,15 @@ package com.recommendation.intelligentoutfitrecommendationsystem.assistant;
 
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntent;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntentPatch;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PendingClarification;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintOrigin;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintStrength;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.EffectiveDemand;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.DemandIntentStateService;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.DemandIntentResolver;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.LegacyDemandIntentAdapter;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.TurnIntentAdapter;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.ConversationDemandStateSnapshot;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationDemandStateStore;
 import org.junit.jupiter.api.Test;
@@ -19,6 +26,130 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class DemandIntentStateServiceTests {
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void consecutiveParserPatchesReplaceScalarsAndExpireWinterWarmth() throws Exception {
+        ConversationDemandStateStore store = mock(ConversationDemandStateStore.class);
+        AtomicReference<ConversationDemandStateSnapshot> persisted = new AtomicReference<>();
+        when(store.transition(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    UnaryOperator<ConversationDemandStateSnapshot> mutation = invocation.getArgument(7);
+                    ConversationDemandStateSnapshot base = persisted.get();
+                    if (base == null) {
+                        base = new ConversationDemandStateSnapshot(invocation.getArgument(6), null);
+                    }
+                    ConversationDemandStateSnapshot next = mutation.apply(base);
+                    persisted.set(next);
+                    return next;
+                });
+        when(store.read(1L, "thread-multi")).thenAnswer(invocation -> persisted.get());
+        DemandIntentStateService service = new DemandIntentStateService(store);
+        DemandIntentResolver parser = new DemandIntentResolver();
+        List<String> messages = List.of(
+                "177 130 男性 冬天该怎么穿？",
+                "女性呢？",
+                "夏天呢？",
+                "日常休闲"
+        );
+
+        for (int index = 0; index < messages.size(); index++) {
+            String message = messages.get(index);
+            DemandIntent initial = DemandIntent.empty(message);
+            service.applyResolution(1L, "thread-multi", "turn-" + index, null,
+                    parser.resolvePatch(new AssistantChatRequest(
+                            "thread-multi", message, null, null, null, null, null, null, null)),
+                    null, null, initial);
+        }
+
+        EffectiveDemand effective = service.read(1L, "thread-multi").effectiveDemand();
+        assertThat(effective.value("targetGender")).contains("FEMALE");
+        assertThat(effective.value("season")).contains("SUMMER");
+        assertThat(effective.constraints("style")).flatExtracting(item -> item.values()).contains("CASUAL");
+        assertThat(effective.constraints("thermal")).noneMatch(item ->
+                item.origin() == ConstraintOrigin.SYSTEM_DERIVED && item.values().contains("WARM"));
+        assertThat(new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(persisted.get().effectiveIntentJson()).get("version").asText())
+                .isEqualTo(EffectiveDemand.VERSION);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void legacyWarmAttributeIsSoftUnprovenancedAndExpiresAfterSummerTurn() throws Exception {
+        ConversationDemandStateStore store = mock(ConversationDemandStateStore.class);
+        DemandIntent legacy = new DemandIntent(
+                DemandIntent.VERSION, DemandIntent.SOURCE_JAVA_RULE, "保暖外套",
+                null, null, List.of(), List.of(), null, List.of("保暖"),
+                List.of(), List.of("attributes"), BigDecimal.ONE, List.of());
+        AtomicReference<ConversationDemandStateSnapshot> persisted = new AtomicReference<>(
+                new ConversationDemandStateSnapshot(
+                        new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(legacy), null));
+        when(store.read(1L, "thread-legacy")).thenAnswer(invocation -> persisted.get());
+        when(store.transition(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    UnaryOperator<ConversationDemandStateSnapshot> mutation = invocation.getArgument(7);
+                    ConversationDemandStateSnapshot next = mutation.apply(persisted.get());
+                    persisted.set(next);
+                    return next;
+                });
+        DemandIntentStateService service = new DemandIntentStateService(store);
+
+        var migrated = service.read(1L, "thread-legacy").effectiveDemand().constraints("thermal");
+        assertThat(migrated).singleElement().satisfies(item -> {
+            assertThat(item.values()).containsExactly("WARM");
+            assertThat(item.origin()).isEqualTo(ConstraintOrigin.LEGACY_UNPROVENANCED);
+            assertThat(item.strength()).isEqualTo(ConstraintStrength.SOFT);
+        });
+
+        String summer = "夏天呢？";
+        service.applyResolution(1L, "thread-legacy", "turn-summer", null,
+                new DemandIntentResolver().resolvePatch(new AssistantChatRequest(
+                        "thread-legacy", summer, null, null, null, null, null, null, null)),
+                null, null, DemandIntent.empty(summer));
+
+        assertThat(service.read(1L, "thread-legacy").effectiveDemand().constraints("thermal"))
+                .noneMatch(item -> item.values().contains("WARM"));
+    }
+
+    @Test
+    void adaptersAreCurrentTurnOnlyAndLegacyMigrationIsIdempotent() {
+        DemandIntentPatch patch = new DemandIntentPatch(
+                "clear", "女性日常", "OUTFIT_ADVICE", List.of("OUTFIT_PLAN"),
+                "female", true, null, "summer", List.of("daily"), List.of("casual"),
+                List.of(), null, List.of(), null, true);
+
+        var turn = new TurnIntentAdapter().adapt("turn-adapter", patch);
+
+        assertThat(turn.scalarReplacements()).containsOnlyKeys("targetGender", "season");
+        assertThat(turn.explicitAdditions()).extracting(item -> item.field())
+                .containsExactlyInAnyOrder("scene", "style");
+        assertThat(turn.explicitRemovals()).isEmpty();
+        assertThat(turn.clearFields()).contains("targetGender", "subjectMeasurements");
+        assertThat(turn.requestType()).isEqualTo("OUTFIT_ADVICE");
+        assertThat(turn.requestedCapabilities()).containsExactly("OUTFIT_PLAN");
+        assertThat(turn.rawQuery()).isEqualTo("女性日常");
+        assertThat(turn.explicitAdditions()).allMatch(item ->
+                item.origin() == ConstraintOrigin.USER_EXPLICIT && item.originTurnId().equals("turn-adapter"));
+
+        LegacyDemandIntentAdapter legacyAdapter = new LegacyDemandIntentAdapter();
+        DemandIntent legacy = new DemandIntent(
+                DemandIntent.VERSION, "profile", "legacy", "male", null,
+                List.of("daily"), List.of("casual"), null, List.of("保暖"),
+                List.of("targetGender"), List.of("scene", "style", "attributes"),
+                BigDecimal.ONE, List.of());
+        EffectiveDemand first = legacyAdapter.adapt(legacy);
+        EffectiveDemand second = legacyAdapter.adapt(legacy);
+
+        assertThat(second).isEqualTo(first);
+        assertThat(first.constraints("targetGender")).singleElement()
+                .satisfies(item -> {
+                    assertThat(item.strength()).isEqualTo(ConstraintStrength.HARD);
+                    assertThat(item.origin()).isEqualTo(ConstraintOrigin.PROFILE);
+                });
+        assertThat(first.softPreferences()).allMatch(item ->
+                item.origin() == ConstraintOrigin.LEGACY_UNPROVENANCED
+                        && item.strength() == ConstraintStrength.SOFT);
+    }
 
     @SuppressWarnings("unchecked")
     @Test
