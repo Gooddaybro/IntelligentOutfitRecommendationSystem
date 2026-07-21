@@ -15,6 +15,13 @@ class ApplicationMetricsTests {
     private final ApplicationMetrics metrics = new ApplicationMetrics(registry);
 
     @Test
+    void aiSelectionRequiresTheRecommendationStatusType() throws Exception {
+        assertThat(ApplicationMetrics.class.getDeclaredMethod(
+                "recordAiSelection", int.class, int.class, int.class, RecommendationStatus.class))
+                .isNotNull();
+    }
+
+    @Test
     void recordsAiOutcomeLatencyFallbackAndCandidateQuality() {
         metrics.recordAiRequest("sync", "success", Duration.ofMillis(25));
         metrics.recordAiFallback("sync");

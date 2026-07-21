@@ -174,11 +174,10 @@ public class AssistantService {
             return emitter;
         }
 
+        ForwardingStreamHandler handler =
+                new ForwardingStreamHandler(userId, threadId, requestId, context, emitter, active);
         try {
-            assistantStreamingExecutor.execute(() -> streamToPython(
-                    pythonRequest,
-                    new ForwardingStreamHandler(userId, threadId, requestId, context, emitter, active)
-            ));
+            assistantStreamingExecutor.execute(() -> streamToPython(pythonRequest, handler));
         } catch (RejectedExecutionException exception) {
             sendEvent(
                     emitter,
@@ -186,7 +185,8 @@ public class AssistantService {
                     "error",
                     new AssistantStreamErrorEvent("assistant_stream_busy", "AI assistant stream is busy")
             );
-            emitter.complete();
+            metrics.recordAiFallback("stream");
+            handler.complete(assistantFallbackService.streamFallbackResponse(requestId), true);
         }
         return emitter;
     }
@@ -590,6 +590,7 @@ public class AssistantService {
                     result.diagnostics()
             );
             if (sendEvent(emitter, active, "done", done)) {
+                active.set(false);
                 emitter.complete();
             }
         }

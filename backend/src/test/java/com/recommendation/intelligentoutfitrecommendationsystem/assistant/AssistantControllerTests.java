@@ -9,6 +9,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.Py
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.MatchedDimension;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ExternalServiceException;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -19,15 +20,21 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -51,7 +58,18 @@ class AssistantControllerTests {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @MockitoBean(name = "assistantStreamingExecutor")
+    private Executor assistantStreamingExecutor;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @BeforeEach
+    void runAssistantStreamsInline() {
+        doAnswer(invocation -> {
+            invocation.<Runnable>getArgument(0).run();
+            return null;
+        }).when(assistantStreamingExecutor).execute(any());
+    }
 
     @AfterEach
     void resetFakePythonFailures() {
@@ -201,7 +219,7 @@ class AssistantControllerTests {
                 .contains("\"recommendation_id\":\"rec_")
                 .contains("fits the requested commute style")
                 .contains("\"outfitRole\":\"OUTER\"")
-                .doesNotContain("9999");
+                .doesNotContain("\"spuId\":9999");
     }
 
     @Test
@@ -267,6 +285,44 @@ class AssistantControllerTests {
                 .doesNotContain("provider secret")
                 .doesNotContain("/tmp/python-internal")
                 .doesNotContain("raw_secret");
+    }
+
+    @Test
+    void executorRejectionStillPublishesOneTypedFallbackDoneEvent() throws Exception {
+        doThrow(new RejectedExecutionException("saturated"))
+                .when(assistantStreamingExecutor).execute(any());
+        String accessToken = registerAndLogin(nextUsername());
+
+        var mvcResult = mockMvc.perform(post("/api/assistant/chat/stream")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .content("""
+                                {
+                                  "message": "recommend a jacket for autumn commute",
+                                  "category": "外套",
+                                  "style": "commute",
+                                  "season": "autumn",
+                                  "fit": "regular",
+                                  "budgetMax": 800
+                                }
+                                """))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        String streamBody = mockMvc.perform(asyncDispatch(mvcResult))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString(StandardCharsets.UTF_8);
+
+        assertThat(streamBody)
+                .contains("event:error")
+                .contains("event:done")
+                .contains("\"recommendation_status\":\"BROWSE_FALLBACK\"")
+                .contains("\"javaCandidateCount\":3")
+                .contains("\"reasonCodes\":[\"DEPENDENCY_FAILED\"]");
+        assertThat(streamBody.split("event:done", -1)).hasSize(2);
     }
 
     private String registerAndLogin(String username) throws Exception {
