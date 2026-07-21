@@ -1,11 +1,14 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.product;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch._types.ErrorCause;
 import co.elastic.clients.elasticsearch.core.BulkRequest;
 import co.elastic.clients.elasticsearch.core.BulkResponse;
 import co.elastic.clients.elasticsearch.core.CountResponse;
+import co.elastic.clients.elasticsearch.core.bulk.BulkResponseItem;
 import co.elastic.clients.elasticsearch.indices.CreateIndexResponse;
 import co.elastic.clients.elasticsearch.indices.ElasticsearchIndicesClient;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.mapper.ProductMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ElasticsearchSearchProperties;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchIndexLifecycleService;
@@ -14,6 +17,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.product.search.P
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchUnavailableException;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.cache.ProductSearchCacheVersionService;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.sync.ProductSearchRebuildCompensator;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -51,6 +55,8 @@ class ProductSearchIndexServiceTests {
     @Mock
     private ProductSearchCacheVersionService cacheVersionService;
 
+    private final SimpleMeterRegistry registry = new SimpleMeterRegistry();
+    private final ApplicationMetrics metrics = new ApplicationMetrics(registry);
     private ProductSearchIndexService service;
 
     @BeforeEach
@@ -60,7 +66,7 @@ class ProductSearchIndexServiceTests {
         properties.setIndexAlias("product_current");
         properties.setBulkBatchSize(200);
         service = new ProductSearchIndexService(
-                client, productMapper, properties, lifecycleService, cacheVersionService);
+                client, productMapper, properties, lifecycleService, cacheVersionService, metrics);
     }
 
     @Test
@@ -72,6 +78,8 @@ class ProductSearchIndexServiceTests {
 
         verify(lifecycleService).deleteFailedIndex(org.mockito.ArgumentMatchers.startsWith("product_"));
         verify(lifecycleService, never()).pruneHistory();
+        assertThat(registry.get("app.product.search.rebuild.executions")
+                .tag("outcome", "error").counter().count()).isEqualTo(1);
     }
 
     @Test
@@ -111,13 +119,17 @@ class ProductSearchIndexServiceTests {
         assertThat(result.documentCount()).isEqualTo(1);
         verify(lifecycleService).pruneHistory();
         verify(lifecycleService, never()).deleteFailedIndex(any());
+        assertThat(registry.get("app.product.search.rebuild.executions")
+                .tag("outcome", "success").counter().count()).isEqualTo(1);
+        assertThat(registry.get("app.product.search.rebuild.duration")
+                .tag("outcome", "success").timer().count()).isEqualTo(1);
     }
 
     @Test
     void compensatesEventsCreatedDuringFullRebuild() throws IOException {
         service = new ProductSearchIndexService(
                 client, productMapper, properties(), lifecycleService,
-                Optional.of(rebuildCompensator), cacheVersionService);
+                Optional.of(rebuildCompensator), cacheVersionService, metrics);
         when(rebuildCompensator.captureWatermark()).thenReturn(10L);
         prepareSuccessfulRebuild();
 
@@ -130,7 +142,7 @@ class ProductSearchIndexServiceTests {
     void advancesCacheVersionAfterCompensationAndBeforeHistoryPruning() throws IOException {
         service = new ProductSearchIndexService(
                 client, productMapper, properties(), lifecycleService,
-                Optional.of(rebuildCompensator), cacheVersionService);
+                Optional.of(rebuildCompensator), cacheVersionService, metrics);
         when(rebuildCompensator.captureWatermark()).thenReturn(10L);
         prepareSuccessfulRebuild();
 
@@ -157,6 +169,46 @@ class ProductSearchIndexServiceTests {
         // 别名可能已经切换成功，生命周期服务会重新读取别名并保护当前索引。
         verify(lifecycleService).deleteFailedIndex(org.mockito.ArgumentMatchers.startsWith("product_"));
         verify(lifecycleService, never()).pruneHistory();
+    }
+
+    @Test
+    void recordsBulkItemFailuresBeforeFailingRebuild() throws IOException {
+        prepareRowsAndCreatedIndex();
+        BulkResponse bulkResponse = mock(BulkResponse.class);
+        BulkResponseItem failedItem = mock(BulkResponseItem.class);
+        ErrorCause error = mock(ErrorCause.class);
+        when(error.reason()).thenReturn("mapping rejected");
+        when(failedItem.error()).thenReturn(error);
+        when(bulkResponse.errors()).thenReturn(true);
+        when(bulkResponse.items()).thenReturn(List.of(failedItem));
+        when(client.bulk(any(BulkRequest.class))).thenReturn(bulkResponse);
+
+        assertThatThrownBy(service::rebuild)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("商品索引批量写入失败");
+
+        assertThat(registry.get("app.product.search.rebuild.bulk.failures").counter().count())
+                .isEqualTo(1);
+        assertThat(registry.get("app.product.search.rebuild.executions")
+                .tag("outcome", "error").counter().count()).isEqualTo(1);
+    }
+
+    @Test
+    void recordsDocumentDriftBeforeFailingRebuild() throws IOException {
+        prepareRowsAndCreatedIndex();
+        BulkResponse bulkResponse = mock(BulkResponse.class);
+        when(bulkResponse.errors()).thenReturn(false);
+        when(client.bulk(any(BulkRequest.class))).thenReturn(bulkResponse);
+        when(client.count(any(java.util.function.Function.class)))
+                .thenReturn(CountResponse.of(builder -> builder.count(3).shards(shards -> shards
+                        .failed(0).successful(1).total(1))));
+
+        assertThatThrownBy(service::rebuild)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("商品索引文档数量不一致");
+
+        assertThat(registry.get("app.product.search.rebuild.document.drift").summary().totalAmount())
+                .isEqualTo(2);
     }
 
     private void prepareRowsAndCreatedIndex() throws IOException {

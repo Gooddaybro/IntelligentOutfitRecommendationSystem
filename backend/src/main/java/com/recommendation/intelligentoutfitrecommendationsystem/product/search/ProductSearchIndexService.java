@@ -4,6 +4,7 @@ import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch.core.BulkRequest;
 import co.elastic.clients.elasticsearch.core.BulkResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.mapper.ProductMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.cache.ProductSearchCacheVersionService;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.sync.ProductSearchRebuildCompensator;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -43,6 +45,7 @@ public class ProductSearchIndexService {
     private final ProductSearchIndexLifecycleService lifecycleService;
     private final Optional<ProductSearchRebuildCompensator> rebuildCompensator;
     private final ProductSearchCacheVersionService cacheVersionService;
+    private final ApplicationMetrics metrics;
     private final Clock clock;
     private final AtomicBoolean rebuilding = new AtomicBoolean();
 
@@ -53,10 +56,11 @@ public class ProductSearchIndexService {
             ElasticsearchSearchProperties properties,
             ProductSearchIndexLifecycleService lifecycleService,
             Optional<ProductSearchRebuildCompensator> rebuildCompensator,
-            ProductSearchCacheVersionService cacheVersionService
+            ProductSearchCacheVersionService cacheVersionService,
+            ApplicationMetrics metrics
     ) {
         this(client, productMapper, properties, lifecycleService,
-                rebuildCompensator, cacheVersionService, Clock.systemUTC());
+                rebuildCompensator, cacheVersionService, metrics, Clock.systemUTC());
     }
 
     public ProductSearchIndexService(
@@ -64,10 +68,11 @@ public class ProductSearchIndexService {
             ProductMapper productMapper,
             ElasticsearchSearchProperties properties,
             ProductSearchIndexLifecycleService lifecycleService,
-            ProductSearchCacheVersionService cacheVersionService
+            ProductSearchCacheVersionService cacheVersionService,
+            ApplicationMetrics metrics
     ) {
         this(client, productMapper, properties, lifecycleService,
-                Optional.empty(), cacheVersionService, Clock.systemUTC());
+                Optional.empty(), cacheVersionService, metrics, Clock.systemUTC());
     }
 
     ProductSearchIndexService(
@@ -76,10 +81,11 @@ public class ProductSearchIndexService {
             ElasticsearchSearchProperties properties,
             ProductSearchIndexLifecycleService lifecycleService,
             ProductSearchCacheVersionService cacheVersionService,
+            ApplicationMetrics metrics,
             Clock clock
     ) {
         this(client, productMapper, properties, lifecycleService,
-                Optional.empty(), cacheVersionService, clock);
+                Optional.empty(), cacheVersionService, metrics, clock);
     }
 
     ProductSearchIndexService(
@@ -89,6 +95,7 @@ public class ProductSearchIndexService {
             ProductSearchIndexLifecycleService lifecycleService,
             Optional<ProductSearchRebuildCompensator> rebuildCompensator,
             ProductSearchCacheVersionService cacheVersionService,
+            ApplicationMetrics metrics,
             Clock clock
     ) {
         this.client = client;
@@ -97,6 +104,7 @@ public class ProductSearchIndexService {
         this.lifecycleService = lifecycleService;
         this.rebuildCompensator = rebuildCompensator;
         this.cacheVersionService = cacheVersionService;
+        this.metrics = metrics;
         this.clock = clock;
     }
 
@@ -106,7 +114,10 @@ public class ProductSearchIndexService {
      * @return 新索引、文档数量和别名
      */
     public ProductSearchRebuildResult rebuild() {
+        long startedNanos = System.nanoTime();
+        String outcome = "error";
         if (!rebuilding.compareAndSet(false, true)) {
+            metrics.recordProductSearchRebuild(outcome, elapsed(startedNanos));
             throw new BadRequestException("商品搜索索引正在重建，请勿重复提交");
         }
 
@@ -124,6 +135,7 @@ public class ProductSearchIndexService {
             client.indices().refresh(request -> request.index(indexName));
             long actualCount = client.count(request -> request.index(indexName)).count();
             if (actualCount != rows.size()) {
+                metrics.recordProductSearchRebuildDocumentDrift(Math.abs(actualCount - rows.size()));
                 throw new IllegalStateException(
                         "商品索引文档数量不一致，预期 " + rows.size() + "，实际 " + actualCount);
             }
@@ -131,7 +143,10 @@ public class ProductSearchIndexService {
             rebuildCompensator.ifPresent(compensator -> compensator.compensateAfter(startWatermark));
             cacheVersionService.incrementVersion();
             pruneHistoryWithoutBreakingRebuild();
-            return new ProductSearchRebuildResult(indexName, actualCount, properties.getIndexAlias());
+            ProductSearchRebuildResult result =
+                    new ProductSearchRebuildResult(indexName, actualCount, properties.getIndexAlias());
+            outcome = "success";
+            return result;
         } catch (IOException exception) {
             ProductSearchUnavailableException failure =
                     new ProductSearchUnavailableException("商品搜索索引重建失败", exception);
@@ -141,6 +156,7 @@ public class ProductSearchIndexService {
             cleanupFailedIndex(indexName, indexCreated, exception);
             throw exception;
         } finally {
+            metrics.recordProductSearchRebuild(outcome, elapsed(startedNanos));
             rebuilding.set(false);
         }
     }
@@ -189,6 +205,10 @@ public class ProductSearchIndexService {
             }
             BulkResponse response = client.bulk(request.build());
             if (response.errors()) {
+                long failedItems = response.items().stream()
+                        .filter(item -> item.error() != null)
+                        .count();
+                metrics.recordProductSearchRebuildBulkFailures(failedItems);
                 String reason = response.items().stream()
                         .filter(item -> item.error() != null)
                         .map(item -> item.error().reason())
@@ -211,5 +231,9 @@ public class ProductSearchIndexService {
                         .index(indexName)
                         .alias(alias)
                         .isWriteIndex(true))));
+    }
+
+    private Duration elapsed(long startedNanos) {
+        return Duration.ofNanos(System.nanoTime() - startedNanos);
     }
 }
