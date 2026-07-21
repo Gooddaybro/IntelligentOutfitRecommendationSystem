@@ -37,7 +37,10 @@ public record DemandIntentStateSnapshot(
         return toLegacyIntent(effectiveDemand);
     }
 
-    /** Converts an effective v3 snapshot at an explicit legacy output boundary. */
+    /**
+     * Converts v3 at an explicit legacy output boundary. This projection is intentionally lossy: provenance and
+     * derived fields that v2 cannot represent are omitted rather than mislabeled as Java-rule evidence.
+     */
     public static DemandIntent toLegacyIntent(EffectiveDemand effectiveDemand) {
         String gender = firstValue(effectiveDemand, "targetGender");
         String category = firstValue(effectiveDemand, "category");
@@ -55,16 +58,28 @@ public record DemandIntentStateSnapshot(
                 .flatMap(item -> item.values().stream())
                 .filter("THICK"::equals)
                 .findFirst().ifPresent(ignored -> attributes.add("\u539a\u6b3e"));
-        List<String> hardFields = effectiveDemand.hardFilters().stream()
-                .map(IntentConstraint::field).distinct().toList();
-        List<String> softFields = effectiveDemand.softPreferences().stream()
-                .map(IntentConstraint::field).distinct().toList();
+        LinkedHashSet<String> hardFields = new LinkedHashSet<>();
+        addFieldWhenPresent(hardFields, "targetGender", gender);
+        addFieldWhenPresent(hardFields, "category", category);
+        addFieldWhenPresent(hardFields, "season", season);
+        addFieldWhenPresent(hardFields, "budgetMax", budget);
+        LinkedHashSet<String> softFields = new LinkedHashSet<>();
+        addFieldWhenPresent(softFields, "scene", scene);
+        addFieldWhenPresent(softFields, "style", style);
+        addFieldWhenPresent(softFields, "fitPreferences", fit);
+        addFieldWhenPresent(softFields, "attributes", attributes);
         return new DemandIntent(
-                DemandIntent.VERSION, DemandIntent.SOURCE_JAVA_RULE, effectiveDemand.rawQuery(),
+                DemandIntent.VERSION, "v3-projection", effectiveDemand.rawQuery(),
                 effectiveDemand.requestType(), effectiveDemand.requestedCapabilities(),
                 lower(gender), category, lower(season), scene, style, fit, budget, List.copyOf(attributes),
-                effectiveDemand.subjectMeasurements(), hardFields, softFields,
+                effectiveDemand.subjectMeasurements(), List.copyOf(hardFields), List.copyOf(softFields),
                 hardFields.isEmpty() && softFields.isEmpty() ? BigDecimal.ZERO : new BigDecimal("0.80"), List.of());
+    }
+
+    private static void addFieldWhenPresent(LinkedHashSet<String> fields, String field, Object value) {
+        if (value instanceof java.util.Collection<?> collection ? !collection.isEmpty() : value != null) {
+            fields.add(field);
+        }
     }
 
     private static String firstValue(EffectiveDemand effectiveDemand, String field) {

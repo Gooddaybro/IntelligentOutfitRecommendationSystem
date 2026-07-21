@@ -1,7 +1,6 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.assistant.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintConflictResult;
@@ -11,7 +10,6 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.De
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntentStateSnapshot;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.EffectiveDemand;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PendingClarification;
-import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.IntentConstraint;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.TurnIntent;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.ConversationDemandStateSnapshot;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationDemandStateStore;
@@ -29,7 +27,7 @@ import java.util.Set;
 public class DemandIntentStateService {
 
     private final ConversationDemandStateStore stateStore;
-    private final ObjectMapper objectMapper = createObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper();
     private final TurnIntentAdapter turnAdapter = new TurnIntentAdapter();
     private final LegacyDemandIntentAdapter legacyAdapter = new LegacyDemandIntentAdapter();
     private final IntentConstraintMerger merger = new IntentConstraintMerger();
@@ -112,7 +110,7 @@ public class DemandIntentStateService {
         EffectiveDemand initial = legacyAdapter.adapt(initialIntent);
         ConversationDemandStateSnapshot stored = stateStore.transition(
                 userId, threadId, requestId, messageId, action,
-                writeJson(semanticPatch == null ? deterministicPatch : semanticPatch),
+                writeJson(new AuditPatch(deterministicPatch, semanticPatch)),
                 writeJson(initial),
                 current -> {
                     EffectiveDemand effective = readEffective(current.effectiveIntentJson());
@@ -206,20 +204,15 @@ public class DemandIntentStateService {
         return messageId == null ? "unidentified-current-turn" : "message-" + messageId;
     }
 
-    private static ObjectMapper createObjectMapper() {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.addMixIn(IntentConstraint.class, IntentConstraintJsonMixin.class);
-        return mapper;
-    }
-
-    private abstract static class IntentConstraintJsonMixin {
-        @JsonIgnore
-        abstract boolean isDerived();
-    }
-
     private record WorkflowState(
             PendingClarification pendingClarification,
             ConstraintConflictResult conflictResult
+    ) {
+    }
+
+    private record AuditPatch(
+            DemandIntentPatch deterministicPatch,
+            DemandIntentPatch semanticPatch
     ) {
     }
 }

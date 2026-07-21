@@ -29,6 +29,20 @@ class IntentConstraintTests {
     }
 
     @Test
+    void ordinaryObjectMapperDoesNotSerializeDerivedConvenienceProperty() throws Exception {
+        IntentConstraint constraint = new IntentConstraint(
+                "c-thermal-turn-1", "thermal", ConstraintOperator.EQUALS, List.of("WARM"),
+                ConstraintStrength.SOFT, ConstraintOrigin.SYSTEM_DERIVED,
+                "turn-1", "c-season-turn-1", "ACTIVE_DEMAND", null);
+
+        var json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+                new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(constraint));
+
+        assertThat(json.has("derived")).isFalse();
+        assertThat(json.path("derivedFromConstraintId").asText()).isEqualTo("c-season-turn-1");
+    }
+
+    @Test
     void effectiveDemandSeparatesHardAndSoftConstraints() {
         EffectiveDemand demand = EffectiveDemand.v3(
                 "日常休闲", "OUTFIT_ADVICE", List.of("OUTFIT_PLAN", "PRODUCT_SELECTION"),

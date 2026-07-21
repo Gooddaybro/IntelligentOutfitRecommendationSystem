@@ -733,6 +733,69 @@ class AssistantContextServiceTests {
         assertThat(characters).isLessThanOrEqualTo(4000);
     }
 
+    @Test
+    void parserMissKeepsExistingPendingClarification() {
+        UserProfileService profiles = mock(UserProfileService.class);
+        RecommendationCandidateQueryService candidates = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversations = mock(ConversationApplicationService.class);
+        DemandIntentStateService states = mock(DemandIntentStateService.class);
+        DemandIntentParseClient parser = mock(DemandIntentParseClient.class);
+        AssistantContextService service = new AssistantContextService(
+                profiles, candidates, conversations, mock(BehaviorSummaryService.class), states, parser);
+        PendingClarification pending = new PendingClarification(
+                "targetGender", "FEMALE", new BigDecimal("0.70"), "\u662f\u7ed9\u5973\u6027\u9009\u8d2d\u5417\uff1f",
+                "\u7ed9\u5bf9\u8c61\u4e70\u5916\u5957", "req-old");
+        DemandIntent effective = emptyIntent("\u7ed9\u5bf9\u8c61\u4e70\u5916\u5957");
+        when(states.read(10L, "thread-pending-miss")).thenReturn(snapshot(effective, pending));
+        when(conversations.getMessages(anyLong(), anyString())).thenReturn(List.of());
+        when(parser.parse(any())).thenReturn(Optional.empty());
+        when(states.applyResolution(anyLong(), anyString(), any(), any(), anyString(),
+                any(), any(), any(), any())).thenAnswer(invocation ->
+                snapshot(effective, invocation.getArgument(7)));
+        when(candidates.findCandidates(any())).thenReturn(List.of());
+
+        AssistantContext result = service.buildContext(10L, "thread-pending-miss",
+                new AssistantChatRequest("thread-pending-miss", "\u518d\u770b\u770b\u522b\u7684",
+                        null, null, null, null, null, null, null));
+
+        assertThat(result.clarificationQuestion()).isEqualTo(pending.question());
+        verify(states).applyResolution(anyLong(), anyString(), any(), any(), anyString(),
+                any(), any(), org.mockito.ArgumentMatchers.eq(pending), any());
+    }
+
+    @Test
+    void rejectedParserResultKeepsExistingPendingClarification() {
+        UserProfileService profiles = mock(UserProfileService.class);
+        RecommendationCandidateQueryService candidates = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversations = mock(ConversationApplicationService.class);
+        DemandIntentStateService states = mock(DemandIntentStateService.class);
+        DemandIntentParseClient parser = mock(DemandIntentParseClient.class);
+        AssistantContextService service = new AssistantContextService(
+                profiles, candidates, conversations, mock(BehaviorSummaryService.class), states, parser);
+        PendingClarification pending = new PendingClarification(
+                "targetGender", "FEMALE", new BigDecimal("0.70"), "\u662f\u7ed9\u5973\u6027\u9009\u8d2d\u5417\uff1f",
+                "\u7ed9\u5bf9\u8c61\u4e70\u5916\u5957", "req-old");
+        DemandIntent effective = emptyIntent("\u7ed9\u5bf9\u8c61\u4e70\u5916\u5957");
+        LlmDemandParseResponse rejected = new LlmDemandParseResponse(
+                "1.0", "MERGE", new LlmDemandSlots(null, null, null, null, null, null),
+                Map.of(), Map.of(), false, null, null, null);
+        when(states.read(10L, "thread-pending-rejected")).thenReturn(snapshot(effective, pending));
+        when(conversations.getMessages(anyLong(), anyString())).thenReturn(List.of());
+        when(parser.parse(any())).thenReturn(Optional.of(rejected));
+        when(states.applyResolution(anyLong(), anyString(), any(), any(), anyString(),
+                any(), any(), any(), any())).thenAnswer(invocation ->
+                snapshot(effective, invocation.getArgument(7)));
+        when(candidates.findCandidates(any())).thenReturn(List.of());
+
+        AssistantContext result = service.buildContext(10L, "thread-pending-rejected",
+                new AssistantChatRequest("thread-pending-rejected", "\u518d\u770b\u770b\u522b\u7684",
+                        null, null, null, null, null, null, null));
+
+        assertThat(result.clarificationQuestion()).isEqualTo(pending.question());
+        verify(states).applyResolution(anyLong(), anyString(), any(), any(), anyString(),
+                any(), any(), org.mockito.ArgumentMatchers.eq(pending), any());
+    }
+
     private DemandIntentStateSnapshot snapshot(DemandIntent intent, PendingClarification pending) {
         return new DemandIntentStateSnapshot(new com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.LegacyDemandIntentAdapter()
                 .adapt(intent), pending);

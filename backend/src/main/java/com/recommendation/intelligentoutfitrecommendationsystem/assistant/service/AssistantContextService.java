@@ -111,7 +111,7 @@ public class AssistantContextService {
             boolean hasDeterministicChanges = !detailed.lockedSlots().isEmpty();
             DemandIntentPatch deterministicPatch = hasDeterministicChanges ? detailed.deterministicPatch() : null;
             DemandIntentPatch semanticPatch = null;
-            PendingClarification nextPending = null;
+            PendingClarification nextPending = pending;
             String transitionAction = "merge";
             boolean cancelPending = pending != null
                     && (isCancellation(request.message()) || isNonShoppingInterrupt(request.message()));
@@ -119,12 +119,15 @@ public class AssistantContextService {
                 transitionAction = "confirm";
                 deterministicPatch = null;
                 semanticPatch = patchFromPending(pending);
+                nextPending = null;
             } else if (cancelPending) {
                 transitionAction = "cancel_clarify";
                 deterministicPatch = null;
+                nextPending = null;
             } else if (pending != null && hasDeterministicChanges) {
                 // A complete new demand is an explicit topic switch: merge it and discard the old question.
                 transitionAction = "merge";
+                nextPending = null;
             } else if (demandIntentParseTrigger.shouldParse(detailed, pending != null)) {
                 var parsed = demandIntentParseClient.parse(new LlmDemandParseRequest(
                         "1.0", requestId, threadId, request.message(),
@@ -138,12 +141,11 @@ public class AssistantContextService {
                     ValidatedDemandParseResult validated = llmDemandIntentValidator.validate(
                             parsed.get(), request.message(), Set.copyOf(detailed.lockedSlots()), pending);
                     semanticPatch = validated.patch();
-                    nextPending = validated.pendingClarification();
-                    if (nextPending != null) {
-                        nextPending = nextPending.withSourceRequestId(requestId);
+                    if (validated.pendingClarification() != null) {
+                        nextPending = validated.pendingClarification().withSourceRequestId(requestId);
                         transitionAction = "clarify";
                     }
-                } else if (!hasDeterministicChanges) {
+                } else if (!hasDeterministicChanges && pending == null) {
                     clarificationQuestion = "\u6211\u8fd8\u4e0d\u80fd\u786e\u5b9a\u4f60\u60f3\u7b5b\u9009\u54ea\u7c7b\u7a7f\u642d\uff0c\u53ef\u4ee5\u8865\u5145\u5bf9\u8c61\u3001\u54c1\u7c7b\u6216\u573a\u666f\u5417\uff1f";
                 }
             }

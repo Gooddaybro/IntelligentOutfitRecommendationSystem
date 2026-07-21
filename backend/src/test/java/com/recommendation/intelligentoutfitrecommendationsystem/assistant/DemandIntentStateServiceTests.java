@@ -7,6 +7,9 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.Pe
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintOrigin;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintStrength;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.EffectiveDemand;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntentStateSnapshot;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.DerivedConstraintResolver;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.IntentConstraintMerger;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.DemandIntentStateService;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.DemandIntentResolver;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.LegacyDemandIntentAdapter;
@@ -188,6 +191,50 @@ class DemandIntentStateServiceTests {
                         && item.strength() == ConstraintStrength.SOFT);
     }
 
+    @Test
+    void summerDerivedFieldsAreOmittedFromLossyV2Projection() {
+        DemandIntentPatch patch = new DemandIntentPatch(
+                "merge", "\u590f\u5929\u600e\u4e48\u7a7f", "OUTFIT_ADVICE", List.of("OUTFIT_PLAN"),
+                null, false, null, "summer", List.of(), List.of(), List.of(), null, List.of(), null, false);
+        EffectiveDemand effective = new DerivedConstraintResolver().resolve(
+                new IntentConstraintMerger().merge(null, new TurnIntentAdapter().adapt("turn-summer", patch)));
+
+        DemandIntent projected = DemandIntentStateSnapshot.toLegacyIntent(effective);
+
+        assertThat(projected.source()).isEqualTo("v3-projection");
+        assertThat(projected.season()).isEqualTo("summer");
+        assertThat(projected.hardFilters()).containsExactly("season");
+        assertThat(projected.softPreferences()).isEmpty();
+        assertThat(projected.attributes()).isEmpty();
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void auditPatchEnvelopePreservesDeterministicAndSemanticInputs() throws Exception {
+        ConversationDemandStateStore store = mock(ConversationDemandStateStore.class);
+        AtomicReference<String> auditJson = new AtomicReference<>();
+        when(store.transition(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    auditJson.set(invocation.getArgument(5));
+                    UnaryOperator<ConversationDemandStateSnapshot> mutation = invocation.getArgument(7);
+                    return mutation.apply(new ConversationDemandStateSnapshot(invocation.getArgument(6), null));
+                });
+        DemandIntentPatch deterministic = new DemandIntentPatch(
+                "merge", "\u5973\u6027\u4f11\u95f2", null, List.of(), "female", false, null, null,
+                List.of(), List.of(), List.of(), null, List.of(), null, false);
+        DemandIntentPatch semantic = new DemandIntentPatch(
+                "merge", "\u5973\u6027\u4f11\u95f2", null, List.of(), null, false, null, null,
+                List.of(), List.of("casual"), List.of(), null, List.of(), null, false);
+
+        new DemandIntentStateService(store).applyResolution(
+                1L, "thread-audit", "turn-audit", null, deterministic, semantic, null,
+                DemandIntent.empty("\u5973\u6027\u4f11\u95f2"));
+
+        var audit = new com.fasterxml.jackson.databind.ObjectMapper().readTree(auditJson.get());
+        assertThat(audit.path("deterministicPatch").path("targetGender").asText()).isEqualTo("female");
+        assertThat(audit.path("semanticPatch").path("style").get(0).asText()).isEqualTo("casual");
+    }
+
     @SuppressWarnings("unchecked")
     @Test
     void clarificationDoesNotEnterEffectiveIntent() {
@@ -233,7 +280,10 @@ class DemandIntentStateServiceTests {
                 "cancel_clarify", null, null, null, previous);
 
         assertThat(action.get()).isEqualTo("cancel_clarify");
-        assertThat(result.effectiveIntent()).isEqualTo(previous);
+        assertThat(result.effectiveIntent().source()).isEqualTo("v3-projection");
+        assertThat(result.effectiveIntent().targetGender()).isEqualTo(previous.targetGender());
+        assertThat(result.effectiveIntent().category()).isEqualTo(previous.category());
+        assertThat(result.effectiveIntent().hardFilters()).isEqualTo(previous.hardFilters());
         assertThat(result.pendingClarification()).isNull();
     }
 }

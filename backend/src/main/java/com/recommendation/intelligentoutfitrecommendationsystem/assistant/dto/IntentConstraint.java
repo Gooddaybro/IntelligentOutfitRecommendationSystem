@@ -1,5 +1,7 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import java.math.BigDecimal;
 import java.util.List;
 
@@ -40,6 +42,7 @@ public record IntentConstraint(
     }
 
     /** Returns whether this condition must be removed or recalculated with its parent condition. */
+    @JsonIgnore
     public boolean isDerived() {
         return origin == ConstraintOrigin.SYSTEM_DERIVED;
     }
