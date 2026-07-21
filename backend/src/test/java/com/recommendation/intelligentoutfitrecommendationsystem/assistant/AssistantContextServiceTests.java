@@ -20,7 +20,9 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.In
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.dto.BehaviorSummaryResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorSummaryService;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.MessageResponse;
+import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.ConversationDemandStateSnapshot;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationApplicationService;
+import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationDemandStateStore;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.dto.RecommendationCandidateQuery;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.service.RecommendationCandidateQueryService;
 import com.recommendation.intelligentoutfitrecommendationsystem.user.dto.UserBodyDataResponse;
@@ -34,6 +36,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.UnaryOperator;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -45,6 +49,44 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 
 class AssistantContextServiceTests {
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void explicitBudgetPatchFlowsThroughV3StateIntoCandidateMaxFilter() {
+        UserProfileService profiles = mock(UserProfileService.class);
+        RecommendationCandidateQueryService candidates = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversations = mock(ConversationApplicationService.class);
+        ConversationDemandStateStore store = mock(ConversationDemandStateStore.class);
+        AtomicReference<ConversationDemandStateSnapshot> persisted = new AtomicReference<>();
+        when(store.transition(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    UnaryOperator<ConversationDemandStateSnapshot> mutation = invocation.getArgument(7);
+                    ConversationDemandStateSnapshot next = mutation.apply(new ConversationDemandStateSnapshot(
+                            invocation.getArgument(6), null));
+                    persisted.set(next);
+                    return next;
+                });
+        DemandIntentStateService states = new DemandIntentStateService(store);
+        AssistantContextService service = new AssistantContextService(
+                profiles, candidates, conversations, mock(BehaviorSummaryService.class), states,
+                mock(DemandIntentParseClient.class));
+        when(conversations.getMessages(anyLong(), anyString())).thenReturn(List.of());
+        when(candidates.findCandidates(any())).thenReturn(List.of());
+
+        AssistantContext context = service.buildContext(10L, "thread-budget-v3",
+                new AssistantChatRequest("thread-budget-v3", "show options",
+                        null, null, null, null, null, null, 450));
+
+        ArgumentCaptor<RecommendationCandidateQuery> query =
+                ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
+        verify(candidates).findCandidates(query.capture());
+        assertThat(query.getValue().getBudgetMax()).isEqualTo(450);
+        assertThat(context.effectiveDemand().hardFilters())
+                .filteredOn(constraint -> constraint.field().equals("budgetMax"))
+                .extracting(IntentConstraint::operator)
+                .containsExactly(ConstraintOperator.MAX);
+        assertThat(persisted.get()).isNotNull();
+    }
 
     @Test
     void candidateQueryUsesOnlyHardEffectiveDemandAndKeepsSoftStyleForPython() {

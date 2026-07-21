@@ -99,8 +99,10 @@ public class TurnIntentAdapter {
     ) {
         String semantic = turnId + "|" + field + "|" + String.join(",", values) + "|" + strength;
         String id = "turn-" + UUID.nameUUIDFromBytes(semantic.getBytes(StandardCharsets.UTF_8));
-        return new IntentConstraint(id, field,
-                strength == ConstraintStrength.HARD ? ConstraintOperator.EQUALS : ConstraintOperator.CONTAINS,
+        ConstraintOperator operator = strength == ConstraintStrength.HARD
+                ? ("budgetMax".equals(field) ? ConstraintOperator.MAX : ConstraintOperator.EQUALS)
+                : ConstraintOperator.CONTAINS;
+        return new IntentConstraint(id, field, operator,
                 values, strength, ConstraintOrigin.USER_EXPLICIT, turnId, null, "ACTIVE_DEMAND", null);
     }
 

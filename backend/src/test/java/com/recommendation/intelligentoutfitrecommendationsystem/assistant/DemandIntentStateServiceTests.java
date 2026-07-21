@@ -5,6 +5,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.De
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PendingClarification;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintOrigin;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintOperator;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintStrength;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.EffectiveDemand;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntentStateSnapshot;
@@ -185,11 +186,17 @@ class DemandIntentStateServiceTests {
         DemandIntentPatch patch = new DemandIntentPatch(
                 "clear", "女性日常", "OUTFIT_ADVICE", List.of("OUTFIT_PLAN"),
                 "female", true, null, "summer", List.of("daily"), List.of("casual"),
-                List.of(), null, List.of(), null, true);
+                List.of(), 500, List.of(), null, true);
 
         var turn = new TurnIntentAdapter().adapt("turn-adapter", patch);
 
-        assertThat(turn.scalarReplacements()).containsOnlyKeys("targetGender", "season");
+        assertThat(turn.scalarReplacements()).containsOnlyKeys("targetGender", "season", "budgetMax");
+        assertThat(turn.scalarReplacements().get("targetGender").operator())
+                .isEqualTo(ConstraintOperator.EQUALS);
+        assertThat(turn.scalarReplacements().get("season").operator())
+                .isEqualTo(ConstraintOperator.EQUALS);
+        assertThat(turn.scalarReplacements().get("budgetMax").operator())
+                .isEqualTo(ConstraintOperator.MAX);
         assertThat(turn.explicitAdditions()).extracting(item -> item.field())
                 .containsExactlyInAnyOrder("scene", "style");
         assertThat(turn.explicitRemovals()).isEmpty();
