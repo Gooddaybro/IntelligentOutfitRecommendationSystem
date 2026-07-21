@@ -1,7 +1,5 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
-
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -12,7 +10,7 @@ import java.util.stream.Stream;
  */
 public record EffectiveDemand(
         String version,
-        @JsonIgnore String rawQuery,
+        String rawQuery,
         String requestType,
         List<String> requestedCapabilities,
         List<IntentConstraint> hardFilters,

@@ -32,6 +32,35 @@ class DemandIntentStateServiceTests {
 
     @SuppressWarnings("unchecked")
     @Test
+    void v3StateWriteReadRoundTripPreservesRawQuery() throws Exception {
+        ConversationDemandStateStore store = mock(ConversationDemandStateStore.class);
+        AtomicReference<ConversationDemandStateSnapshot> persisted = new AtomicReference<>();
+        when(store.transition(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    UnaryOperator<ConversationDemandStateSnapshot> mutation = invocation.getArgument(7);
+                    ConversationDemandStateSnapshot next = mutation.apply(new ConversationDemandStateSnapshot(
+                            invocation.getArgument(6), null));
+                    persisted.set(next);
+                    return next;
+                });
+        when(store.read(1L, "thread-raw-query")).thenAnswer(invocation -> persisted.get());
+        DemandIntentStateService service = new DemandIntentStateService(store);
+        String rawQuery = "夏天通勤怎么穿";
+        DemandIntentPatch patch = new DemandIntentPatch(
+                "merge", rawQuery, null, List.of(), null, false, null, "summer",
+                List.of(), List.of(), List.of(), null, List.of(), null, false);
+
+        service.applyResolution(1L, "thread-raw-query", "turn-raw-query", null,
+                patch, null, null, DemandIntent.empty(rawQuery));
+
+        assertThat(new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(persisted.get().effectiveIntentJson()).path("rawQuery").asText())
+                .isEqualTo(rawQuery);
+        assertThat(service.read(1L, "thread-raw-query").effectiveDemand().rawQuery()).isEqualTo(rawQuery);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
     void consecutiveParserPatchesReplaceScalarsAndExpireWinterWarmth() throws Exception {
         ConversationDemandStateStore store = mock(ConversationDemandStateStore.class);
         AtomicReference<ConversationDemandStateSnapshot> persisted = new AtomicReference<>();

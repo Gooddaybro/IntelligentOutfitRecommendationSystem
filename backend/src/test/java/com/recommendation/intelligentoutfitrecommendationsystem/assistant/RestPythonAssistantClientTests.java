@@ -159,6 +159,7 @@ class RestPythonAssistantClientTests {
                 "version", "requestType", "requestedCapabilities", "hardFilters", "softPreferences",
                 "subjectMeasurements"
         ));
+        assertThat(demandIntent.has("rawQuery")).isFalse();
         JsonNode hardFilters = demandIntent.path("hardFilters");
         assertThat(hardFilters.size()).isEqualTo(1);
         JsonNode seasonFilter = hardFilters.get(0);

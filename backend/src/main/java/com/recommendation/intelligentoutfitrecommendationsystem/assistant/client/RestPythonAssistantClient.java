@@ -1,10 +1,12 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.assistant.client;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatResponse;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.EffectiveDemand;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ExternalServiceException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -45,6 +47,7 @@ public class RestPythonAssistantClient implements PythonAssistantClient, PythonA
                 .findAndRegisterModules()
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
                 .disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+        this.objectMapper.addMixIn(EffectiveDemand.class, PythonEffectiveDemandMixin.class);
         this.httpClient = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofMillis(connectTimeoutMs))
@@ -134,5 +137,11 @@ public class RestPythonAssistantClient implements PythonAssistantClient, PythonA
         String code = data.path("code").asText("python_stream_error");
         String message = data.path("message").asText("python assistant stream failed");
         handler.onError(code, message);
+    }
+
+    /** Restricts the Python transport shape without changing domain-state persistence. */
+    private abstract static class PythonEffectiveDemandMixin {
+        @JsonIgnore
+        abstract String rawQuery();
     }
 }
