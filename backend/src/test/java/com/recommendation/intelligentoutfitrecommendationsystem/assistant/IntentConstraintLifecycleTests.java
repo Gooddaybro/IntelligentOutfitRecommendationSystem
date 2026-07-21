@@ -61,6 +61,32 @@ class IntentConstraintLifecycleTests {
     }
 
     @Test
+    void explicitConstraintWinsSemanticDeduplicationEvenWhenDerivedConstraintComesFirst() {
+        IntentConstraint summer = hard("c-season-turn-3", "season", "SUMMER", "turn-3");
+        IntentConstraint derivedCooling = derived(
+                "c-derived-cooling", "thermal", "COOLING", "turn-3", summer.id());
+        IntentConstraint explicitCooling = soft(
+                "c-explicit-cooling", "thermal", "COOLING", "turn-4");
+        EffectiveDemand input = demand(List.of(summer), List.of(derivedCooling, explicitCooling));
+
+        EffectiveDemand resolved = resolver.resolve(input);
+
+        assertThat(resolved.constraints("thermal"))
+                .filteredOn(item -> item.values().contains("COOLING"))
+                .containsExactly(explicitCooling);
+    }
+
+    @Test
+    void hardExplicitSummerWarmthIsAnUncommonValidCombination() {
+        EffectiveDemand input = demand(List.of(
+                hard("c-season-turn-5", "season", "SUMMER", "turn-5"),
+                hard("c-thermal-turn-5", "thermal", "WARM", "turn-5")), List.of());
+
+        assertThat(validator.validate(input).status())
+                .isEqualTo(ConstraintConflictStatus.VALID_UNCOMMON_COMBINATION);
+    }
+
+    @Test
     void currentExplicitScalarWinsOverHistoricalExplicitScalar() {
         EffectiveDemand previous = demand(
                 List.of(hard("c-gender-turn-1", "targetGender", "MALE", "turn-1")), List.of());
@@ -113,6 +139,17 @@ class IntentConstraintLifecycleTests {
         assertThat(validator.validate(sameTurnConflict).conflictingFields()).containsExactly("season");
         assertThat(validator.validate(crossTurnConflict).status())
                 .isEqualTo(ConstraintConflictStatus.RESOLVED_BY_PRIORITY);
+    }
+
+    @Test
+    void oneMultiValueHardConstraintIsNotMistakenForTwoConflictingConstraints() {
+        IntentConstraint multiValueSeason = new IntentConstraint(
+                "c-season-multi", "season", ConstraintOperator.EQUALS, List.of("SUMMER", "WINTER"),
+                ConstraintStrength.HARD, ConstraintOrigin.USER_EXPLICIT,
+                "turn-6", null, "ACTIVE_DEMAND", null);
+
+        assertThat(validator.validate(demand(List.of(multiValueSeason), List.of())).status())
+                .isEqualTo(ConstraintConflictStatus.VALID);
     }
 
     private List<String> values(EffectiveDemand demand, String field) {

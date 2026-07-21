@@ -35,6 +35,9 @@ public class ConstraintConflictValidator {
             List<IntentConstraint> constraints = demand.hardFilters().stream()
                     .filter(item -> item.field().equals(field))
                     .toList();
+            if (constraints.size() < 2) {
+                continue;
+            }
             long distinctValues = constraints.stream().flatMap(item -> item.values().stream()).distinct().count();
             if (distinctValues < 2) {
                 continue;
@@ -43,8 +46,7 @@ public class ConstraintConflictValidator {
                     .filter(item -> item.originTurnId() != null && !item.originTurnId().isBlank())
                     .collect(java.util.stream.Collectors.groupingBy(IntentConstraint::originTurnId))
                     .values().stream()
-                    .anyMatch(sameTurn -> sameTurn.stream()
-                            .flatMap(item -> item.values().stream()).distinct().count() > 1);
+                    .anyMatch(this::containsDifferentConstraints);
             if (sameTurnConflict) {
                 unresolved.add(field);
             } else {
@@ -69,10 +71,22 @@ public class ConstraintConflictValidator {
     private boolean isExplicitSummerWarmth(EffectiveDemand demand) {
         boolean summer = demand.hardFilters().stream()
                 .anyMatch(item -> item.field().equals("season") && item.values().contains("SUMMER"));
-        boolean explicitWarm = demand.softPreferences().stream()
+        boolean explicitWarm = java.util.stream.Stream.concat(
+                        demand.hardFilters().stream(), demand.softPreferences().stream())
                 .anyMatch(item -> item.field().equals("thermal")
                         && item.origin() == ConstraintOrigin.USER_EXPLICIT
                         && item.values().contains("WARM"));
         return summer && explicitWarm;
+    }
+
+    private boolean containsDifferentConstraints(List<IntentConstraint> constraints) {
+        for (int left = 0; left < constraints.size(); left++) {
+            for (int right = left + 1; right < constraints.size(); right++) {
+                if (!constraints.get(left).values().equals(constraints.get(right).values())) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }
