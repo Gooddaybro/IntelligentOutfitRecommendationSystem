@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.rabbitmq.client.Channel;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 
 /**
  * 商品搜索专用 Worker：幂等消费、读取 MySQL 当前事实并投影到 Elasticsearch。
@@ -29,17 +31,20 @@ public class ProductSearchWorker {
     private final ProductSearchInboxMapper inboxMapper;
     private final ProductSearchConsumptionRecorder consumptionRecorder;
     private final RabbitTemplate rabbitTemplate;
+    private final ApplicationMetrics metrics;
     private final ObjectMapper objectMapper = JsonMapper.builder().addModule(new JavaTimeModule()).build();
 
     public ProductSearchWorker(
             ProductSearchIncrementalProjector projector,
             ProductSearchInboxMapper inboxMapper,
             ProductSearchConsumptionRecorder consumptionRecorder,
-            RabbitTemplate rabbitTemplate) {
+            RabbitTemplate rabbitTemplate,
+            ApplicationMetrics metrics) {
         this.projector = projector;
         this.inboxMapper = inboxMapper;
         this.consumptionRecorder = consumptionRecorder;
         this.rabbitTemplate = rabbitTemplate;
+        this.metrics = metrics;
     }
 
     @RabbitListener(
@@ -52,32 +57,42 @@ public class ProductSearchWorker {
     }
 
     public void handle(String payload, int retryStage, long deliveryTag, Channel channel) throws IOException {
-        ProductSearchSyncMessage message;
+        long startedNanos = System.nanoTime();
+        String outcome = "error";
         try {
-            message = parseAndValidate(payload);
-        } catch (IllegalArgumentException exception) {
-            publish(payload, RabbitProductSearchTopology.DLQ_ROUTING_KEY, retryStage);
-            channel.basicAck(deliveryTag, false);
-            return;
-        }
-
-        try {
-            if (inboxMapper.exists(ProductSearchConsumptionRecorder.CONSUMER_NAME, message.eventId())) {
-                channel.basicAck(deliveryTag, false);
-                return;
-            }
-            projector.project(message.spuId());
+            ProductSearchSyncMessage message;
             try {
-                consumptionRecorder.record(message);
-            } catch (DuplicateKeyException duplicate) {
-                // Inbox 冲突会使记录事务回滚，因此不会误推进缓存版本。
+                message = parseAndValidate(payload);
+            } catch (IllegalArgumentException exception) {
+                publish(payload, RabbitProductSearchTopology.DLQ_ROUTING_KEY, retryStage);
                 channel.basicAck(deliveryTag, false);
+                outcome = "dlq";
                 return;
             }
-            channel.basicAck(deliveryTag, false);
-        } catch (RuntimeException exception) {
-            routeFailure(payload, retryStage, exception);
-            channel.basicAck(deliveryTag, false);
+
+            try {
+                if (inboxMapper.exists(ProductSearchConsumptionRecorder.CONSUMER_NAME, message.eventId())) {
+                    channel.basicAck(deliveryTag, false);
+                    outcome = "duplicate";
+                    return;
+                }
+                projector.project(message.spuId());
+                try {
+                    consumptionRecorder.record(message);
+                } catch (DuplicateKeyException duplicate) {
+                    // Inbox 冲突会使记录事务回滚，因此不会误推进缓存版本。
+                    channel.basicAck(deliveryTag, false);
+                    outcome = "duplicate";
+                    return;
+                }
+                channel.basicAck(deliveryTag, false);
+                outcome = "success";
+            } catch (RuntimeException exception) {
+                outcome = routeFailure(payload, retryStage, exception);
+                channel.basicAck(deliveryTag, false);
+            }
+        } finally {
+            metrics.recordProductSearchSyncConsume(outcome, elapsed(startedNanos));
         }
     }
 
@@ -97,13 +112,15 @@ public class ProductSearchWorker {
         }
     }
 
-    private void routeFailure(String payload, int retryStage, RuntimeException failure) {
+    private String routeFailure(String payload, int retryStage, RuntimeException failure) {
         if (isPermanent(failure) || retryStage >= 3) {
             publish(payload, RabbitProductSearchTopology.DLQ_ROUTING_KEY, retryStage);
-            return;
+            return "dlq";
         }
         int nextStage = retryStage + 1;
         publish(payload, retryRoutingKey(nextStage), nextStage);
+        metrics.recordProductSearchSyncRetry(String.valueOf(nextStage));
+        return "retry";
     }
 
     private boolean isPermanent(Throwable failure) {
@@ -139,6 +156,10 @@ public class ProductSearchWorker {
             return number.intValue();
         }
         return 0;
+    }
+
+    private Duration elapsed(long startedNanos) {
+        return Duration.ofNanos(System.nanoTime() - startedNanos);
     }
 
 }
