@@ -12,6 +12,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.De
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.EffectiveDemand;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PendingClarification;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.IntentConstraint;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.TurnIntent;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.ConversationDemandStateSnapshot;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationDemandStateStore;
 import org.springframework.stereotype.Service;
@@ -117,15 +118,14 @@ public class DemandIntentStateService {
                     EffectiveDemand effective = readEffective(current.effectiveIntentJson());
                     if (!"cancel_clarify".equals(action)) {
                         if (deterministicPatch != null) {
-                            effective = merger.merge(resetBase(effective, deterministicPatch),
+                            effective = mergeTurn(resetBase(effective, deterministicPatch),
                                     turnAdapter.adapt(turnId, deterministicPatch));
                         }
                         if (semanticPatch != null) {
-                            effective = merger.merge(resetBase(effective, semanticPatch),
+                            effective = mergeTurn(resetBase(effective, semanticPatch),
                                     turnAdapter.adapt(turnId, semanticPatch));
                         }
                     }
-                    effective = expireLegacyWarmthForSummer(effective);
                     EffectiveDemand resolved = resolver.resolve(effective);
                     ConstraintConflictResult conflict = conflictValidator.validate(resolved, turnId);
                     PendingClarification nextPending = "cancel_clarify".equals(action) ? null : pending;
@@ -140,15 +140,20 @@ public class DemandIntentStateService {
                 ? EffectiveDemand.v3("", null, List.of(), List.of(), List.of(), null) : current;
     }
 
-    private EffectiveDemand expireLegacyWarmthForSummer(EffectiveDemand demand) {
-        if (demand.value("season").filter("SUMMER"::equals).isEmpty()) {
-            return demand;
+    private EffectiveDemand mergeTurn(EffectiveDemand previous, TurnIntent turn) {
+        EffectiveDemand merged = merger.merge(previous, turn);
+        if (!turn.scalarReplacements().containsKey("season")
+                || !turn.scalarReplacements().get("season").values().contains("SUMMER")) {
+            return merged;
         }
-        var retained = demand.softPreferences().stream()
+        var retained = merged.softPreferences().stream()
                 .filter(item -> !(item.origin() == ConstraintOrigin.LEGACY_UNPROVENANCED
                         && item.field().equals("thermal") && item.values().contains("WARM")))
                 .toList();
-        return demand.withSoftPreferences(retained);
+        if (retained.size() == merged.softPreferences().size()) {
+            return merged;
+        }
+        return merged.withSoftPreferences(retained);
     }
 
     private DemandIntentStateSnapshot snapshot(ConversationDemandStateSnapshot stored) {

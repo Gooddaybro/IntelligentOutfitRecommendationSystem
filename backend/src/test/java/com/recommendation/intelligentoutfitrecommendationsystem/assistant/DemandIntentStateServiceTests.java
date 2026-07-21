@@ -111,6 +111,43 @@ class DemandIntentStateServiceTests {
                 .noneMatch(item -> item.values().contains("WARM"));
     }
 
+    @SuppressWarnings("unchecked")
+    @Test
+    void legacySummerWarmthSurvivesTurnsThatDoNotExplicitlyReplaceSeason() throws Exception {
+        ConversationDemandStateStore store = mock(ConversationDemandStateStore.class);
+        DemandIntent legacy = new DemandIntent(
+                DemandIntent.VERSION, DemandIntent.SOURCE_JAVA_RULE, "\u590f\u5929\u4e5f\u8981\u4fdd\u6696",
+                null, List.of(), null, null, "summer", List.of(), List.of(), List.of(), null,
+                List.of("\u4fdd\u6696"), null, List.of("season"), List.of("attributes"),
+                BigDecimal.ONE, List.of());
+        AtomicReference<ConversationDemandStateSnapshot> persisted = new AtomicReference<>(
+                new ConversationDemandStateSnapshot(
+                        new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(legacy), null));
+        when(store.transition(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    UnaryOperator<ConversationDemandStateSnapshot> mutation = invocation.getArgument(7);
+                    ConversationDemandStateSnapshot next = mutation.apply(persisted.get());
+                    persisted.set(next);
+                    return next;
+                });
+        DemandIntentStateService service = new DemandIntentStateService(store);
+
+        var cancelled = service.applyResolution(1L, "thread-legacy-summer", "turn-cancel", null,
+                "cancel_clarify", null, null, null, legacy);
+        assertThat(cancelled.effectiveDemand().constraints("thermal"))
+                .anyMatch(item -> item.origin() == ConstraintOrigin.LEGACY_UNPROVENANCED
+                        && item.values().contains("WARM"));
+
+        DemandIntentPatch styleOnly = new DemandIntentPatch(
+                "merge", "\u65e5\u5e38\u4f11\u95f2", null, List.of(), null, false, null, null,
+                List.of(), List.of("casual"), List.of(), null, List.of(), null, false);
+        var merged = service.applyResolution(1L, "thread-legacy-summer", "turn-style", null,
+                styleOnly, null, null, legacy);
+        assertThat(merged.effectiveDemand().constraints("thermal"))
+                .anyMatch(item -> item.origin() == ConstraintOrigin.LEGACY_UNPROVENANCED
+                        && item.values().contains("WARM"));
+    }
+
     @Test
     void adaptersAreCurrentTurnOnlyAndLegacyMigrationIsIdempotent() {
         DemandIntentPatch patch = new DemandIntentPatch(
