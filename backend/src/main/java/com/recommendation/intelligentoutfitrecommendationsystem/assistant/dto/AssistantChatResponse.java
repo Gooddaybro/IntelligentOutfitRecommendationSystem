@@ -15,8 +15,9 @@ public record AssistantChatResponse(
         List<AssistantRecommendationItem> recommendedItems,
         int candidatesCount,
         DemandIntent resolvedIntent,
-        String recommendationStatus,
-        String recommendationId
+        RecommendationStatus recommendationStatus,
+        String recommendationId,
+        RecommendationDiagnostics diagnostics
 ) {
     public AssistantChatResponse(
             String threadId,
@@ -25,10 +26,10 @@ public record AssistantChatResponse(
             List<AssistantRecommendationItem> recommendedItems,
             int candidatesCount,
             DemandIntent resolvedIntent,
-            String recommendationStatus
+            RecommendationStatus recommendationStatus
     ) {
         this(threadId, answer, recommendedSpuIds, recommendedItems, candidatesCount,
-                resolvedIntent, recommendationStatus, null);
+                resolvedIntent, recommendationStatus, null, null);
     }
 
     public AssistantChatResponse(
@@ -39,6 +40,7 @@ public record AssistantChatResponse(
             int candidatesCount
     ) {
         this(threadId, answer, recommendedSpuIds, recommendedItems, candidatesCount,
-                null, recommendedItems == null || recommendedItems.isEmpty() ? "BROWSE_FALLBACK" : "STRONG_MATCH", null);
+                null, recommendedItems == null || recommendedItems.isEmpty()
+                        ? RecommendationStatus.BROWSE_FALLBACK : RecommendationStatus.STRONG_MATCH, null, null);
     }
 }

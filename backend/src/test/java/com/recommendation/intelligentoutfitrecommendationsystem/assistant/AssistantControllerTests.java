@@ -108,7 +108,12 @@ class AssistantControllerTests {
                 .andExpect(jsonPath("$.data.recommendedItems[0].spuId").value(1002))
                 .andExpect(jsonPath("$.data.recommendedItems[0].skuId").value(2101))
                 .andExpect(jsonPath("$.data.recommendedItems[0].reason").value("fits the requested commute style"))
+                .andExpect(jsonPath("$.data.recommendedItems[0].outfitRole").value("OUTER"))
                 .andExpect(jsonPath("$.data.recommendationStatus").value("STRONG_MATCH"))
+                .andExpect(jsonPath("$.data.diagnostics.status").value("STRONG_MATCH"))
+                .andExpect(jsonPath("$.data.diagnostics.javaCandidateCount").value(org.hamcrest.Matchers.greaterThan(0)))
+                .andExpect(jsonPath("$.data.diagnostics.pythonSelectedCount").value(2))
+                .andExpect(jsonPath("$.data.diagnostics.javaAcceptedCount").value(1))
                 .andExpect(jsonPath("$.data.recommendationId").value(org.hamcrest.Matchers.startsWith("rec_")))
                 .andExpect(jsonPath("$.data.resolvedIntent.category").value("外套"))
                 .andExpect(jsonPath("$.data.resolvedIntent.budgetMax").value(800))
@@ -189,8 +194,13 @@ class AssistantControllerTests {
                 .contains("\"recommended_items\"")
                 .contains("\"resolved_intent\"")
                 .contains("\"recommendation_status\":\"STRONG_MATCH\"")
+                .contains("\"diagnostics\"")
+                .contains("\"status\":\"STRONG_MATCH\"")
+                .contains("\"pythonSelectedCount\":2")
+                .contains("\"javaAcceptedCount\":1")
                 .contains("\"recommendation_id\":\"rec_")
                 .contains("fits the requested commute style")
+                .contains("\"outfitRole\":\"OUTER\"")
                 .doesNotContain("9999");
     }
 

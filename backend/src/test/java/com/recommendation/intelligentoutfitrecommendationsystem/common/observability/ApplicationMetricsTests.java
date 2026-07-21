@@ -1,5 +1,6 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.common.observability;
 
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.RecommendationStatus;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 
@@ -19,6 +20,9 @@ class ApplicationMetricsTests {
         metrics.recordAiFallback("sync");
         metrics.recordAiCandidateCount(12);
         metrics.recordAiDiscardedReferences(2);
+        metrics.recordAiSelection(24, 0, 0, RecommendationStatus.BROWSE_FALLBACK);
+        metrics.recordAiReasonCode("PYTHON_REJECTED_ALL");
+        metrics.recordAiReasonCode("raw user query must never become a tag");
 
         assertThat(registry.get("app.ai.requests").tags("mode", "sync", "outcome", "success").counter().count())
                 .isEqualTo(1);
@@ -27,6 +31,14 @@ class ApplicationMetricsTests {
         assertThat(registry.get("app.ai.fallbacks").tag("mode", "sync").counter().count()).isEqualTo(1);
         assertThat(registry.get("app.ai.candidates").summary().totalAmount()).isEqualTo(12);
         assertThat(registry.get("app.ai.discarded.references").counter().count()).isEqualTo(2);
+        assertThat(registry.get("app.ai.selection")
+                .tag("status", "BROWSE_FALLBACK").counter().count()).isEqualTo(1);
+        assertThat(registry.get("app.ai.selection.java.candidates").summary().totalAmount()).isEqualTo(24);
+        assertThat(registry.get("app.ai.selection.python.selected").summary().totalAmount()).isZero();
+        assertThat(registry.get("app.ai.selection.java.accepted").summary().totalAmount()).isZero();
+        assertThat(registry.get("app.ai.reason")
+                .tag("code", "PYTHON_REJECTED_ALL").counter().count()).isEqualTo(1);
+        assertThat(registry.get("app.ai.reason").tag("code", "other").counter().count()).isEqualTo(1);
     }
 
     @Test

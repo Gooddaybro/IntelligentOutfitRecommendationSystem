@@ -11,6 +11,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.Ma
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonProductRef;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.RecommendationStatus;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.AssistantContextService;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.AssistantFallbackService;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.AssistantRateLimitService;
@@ -168,11 +169,17 @@ class AssistantServiceTests {
         assertThat(response.answer()).contains("wool blend jacket");
         assertThat(response.recommendedSpuIds()).containsExactly(1001L);
         assertThat(response.recommendationId()).isEqualTo("rec_sync_test");
-        assertThat(response.recommendationStatus()).isEqualTo("STRONG_MATCH");
+        assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.STRONG_MATCH);
+        assertThat(response.diagnostics().javaCandidateCount()).isEqualTo(1);
+        assertThat(response.diagnostics().pythonSelectedCount()).isEqualTo(1);
+        assertThat(response.diagnostics().javaAcceptedCount()).isEqualTo(1);
+        assertThat(response.diagnostics().status()).isEqualTo(RecommendationStatus.STRONG_MATCH);
+        assertThat(response.diagnostics().reasonCodes()).isEmpty();
         assertThat(response.recommendedItems())
                 .extracting("spuId", "skuId", "reason")
                 .containsExactly(tuple(1001L, 2001L, "fits the requested commute style"));
         verify(applicationMetrics).recordAiCandidateCount(1);
+        verify(applicationMetrics).recordAiSelection(1, 1, 1, RecommendationStatus.STRONG_MATCH);
         verify(recommendationAttributionService).record(argThat(command ->
                 "sync".equals(command.mode())
                         && command.candidates().size() == 1
@@ -288,7 +295,7 @@ class AssistantServiceTests {
         AssistantChatResponse response = newAssistantService().chat(10L, request);
 
         assertThat(response.recommendedSpuIds()).containsExactly(1001L);
-        assertThat(response.recommendationStatus()).isEqualTo("STRONG_MATCH");
+        assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.STRONG_MATCH);
         verify(assistantRateLimitService).assertAllowed(10L);
         assertThat(response.recommendedItems())
                 .extracting("spuId", "skuId", "reason")
@@ -363,10 +370,35 @@ class AssistantServiceTests {
         assertThat(response.recommendedSpuIds()).isEmpty();
         assertThat(response.recommendedItems()).isEmpty();
         assertThat(response.candidatesCount()).isEqualTo(1);
+        assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.BROWSE_FALLBACK);
+        assertThat(response.diagnostics().reasonCodes()).containsExactly("DEPENDENCY_FAILED");
+        verify(applicationMetrics).recordAiSelection(1, 0, 0, RecommendationStatus.BROWSE_FALLBACK);
+        verify(applicationMetrics).recordAiReasonCode("DEPENDENCY_FAILED");
         verify(assistantRateLimitService).assertAllowed(10L);
         verify(conversationService).appendMessage(10L, "th_existing", "user", "recommend a jacket", "req-ai-fallback-test");
         verify(conversationService).appendMessage(10L, "th_existing", "assistant", response.answer(), "req-ai-fallback-test");
         verify(applicationMetrics).recordAiFallback("sync");
+    }
+
+    @Test
+    void candidateSnapshotFailureReturnsFailedWithoutReusingRecommendations() {
+        AssistantChatRequest request = new AssistantChatRequest(
+                "th_snapshot_failed", "recommend a jacket", null, null, null, null, null, null);
+        MDC.put("requestId", "req-snapshot-failed");
+        when(assistantContextService.buildContext(10L, "th_snapshot_failed", request))
+                .thenThrow(new ExternalServiceException("candidate snapshot unavailable"));
+
+        AssistantChatResponse response = newAssistantService().chat(10L, request);
+
+        assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.FAILED);
+        assertThat(response.recommendedSpuIds()).isEmpty();
+        assertThat(response.recommendedItems()).isEmpty();
+        assertThat(response.diagnostics().javaCandidateCount()).isZero();
+        assertThat(response.diagnostics().reasonCodes()).containsExactly("DEPENDENCY_FAILED");
+        verify(applicationMetrics).recordAiSelection(0, 0, 0, RecommendationStatus.FAILED);
+        verify(applicationMetrics).recordAiReasonCode("DEPENDENCY_FAILED");
+        verify(pythonAssistantClient, never()).chat(any());
+        verify(recommendationAttributionService, never()).record(any());
     }
 
     @Test

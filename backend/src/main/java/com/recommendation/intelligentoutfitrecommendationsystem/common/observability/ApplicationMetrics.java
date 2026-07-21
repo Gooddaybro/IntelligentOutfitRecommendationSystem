@@ -19,6 +19,11 @@ public class ApplicationMetrics {
 
     private static final Set<String> AI_MODES = Set.of("sync", "stream");
     private static final Set<String> AI_OUTCOMES = Set.of("success", "error", "circuit_open");
+    private static final Set<String> AI_REASON_CODES = Set.of(
+            "STALE_DERIVED_CONSTRAINT_REMOVED", "PYTHON_REJECTED_ALL", "JAVA_DISCARDED_ALL_REFS",
+            "NO_JAVA_CANDIDATES", "DEPENDENCY_FAILED");
+    private static final Set<String> AI_RECOMMENDATION_STATUSES = Set.of(
+            "STRONG_MATCH", "PARTIAL_MATCH", "BROWSE_FALLBACK", "EMPTY", "FAILED");
     private static final Set<String> REDIS_OPERATIONS = Set.of("get", "set", "delete", "increment");
     private static final Set<String> REDIS_OUTCOMES = Set.of("hit", "miss", "success", "error");
     private static final Set<String> ORDER_OPERATIONS = Set.of("cart", "buy_now");
@@ -74,6 +79,25 @@ public class ApplicationMetrics {
 
     public void recordAiDiscardedReferences(int count) {
         registry.counter("app.ai.discarded.references").increment(Math.max(0, count));
+    }
+
+    /** Records the three bounded selection counts under Java's typed final status. */
+    public <S extends Enum<S>> void recordAiSelection(
+            int javaCandidateCount,
+            int pythonSelectedCount,
+            int javaAcceptedCount,
+            S status
+    ) {
+        String safeStatus = status == null ? "FAILED" : bounded(status.name(), AI_RECOMMENDATION_STATUSES);
+        registry.counter("app.ai.selection", "status", safeStatus).increment();
+        registry.summary("app.ai.selection.java.candidates").record(Math.max(0, javaCandidateCount));
+        registry.summary("app.ai.selection.python.selected").record(Math.max(0, pythonSelectedCount));
+        registry.summary("app.ai.selection.java.accepted").record(Math.max(0, javaAcceptedCount));
+    }
+
+    /** Records only the fixed diagnostic vocabulary; arbitrary text is collapsed to {@code other}. */
+    public void recordAiReasonCode(String reasonCode) {
+        registry.counter("app.ai.reason", "code", bounded(reasonCode, AI_REASON_CODES)).increment();
     }
 
     public void recordRedisCommand(String operation, String outcome, Duration duration) {

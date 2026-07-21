@@ -27,8 +27,9 @@ public record AssistantStreamDoneEvent(
         @JsonProperty("candidates_count") int candidatesCount,
         String intent,
         @JsonProperty("resolved_intent") DemandIntent resolvedIntent,
-        @JsonProperty("recommendation_status") String recommendationStatus,
-        @JsonProperty("recommendation_id") String recommendationId
+        @JsonProperty("recommendation_status") RecommendationStatus recommendationStatus,
+        @JsonProperty("recommendation_id") String recommendationId,
+        RecommendationDiagnostics diagnostics
 ) {
     public AssistantStreamDoneEvent(
             String threadId,
@@ -38,10 +39,10 @@ public record AssistantStreamDoneEvent(
             int candidatesCount,
             String intent,
             DemandIntent resolvedIntent,
-            String recommendationStatus
+            RecommendationStatus recommendationStatus
     ) {
         this(threadId, answer, recommendedSpuIds, recommendedItems, candidatesCount, intent,
-                resolvedIntent, recommendationStatus, null);
+                resolvedIntent, recommendationStatus, null, null);
     }
 
     public AssistantStreamDoneEvent(
@@ -53,6 +54,7 @@ public record AssistantStreamDoneEvent(
             String intent
     ) {
         this(threadId, answer, recommendedSpuIds, recommendedItems, candidatesCount, intent, null,
-                recommendedItems == null || recommendedItems.isEmpty() ? "BROWSE_FALLBACK" : "STRONG_MATCH", null);
+                recommendedItems == null || recommendedItems.isEmpty()
+                        ? RecommendationStatus.BROWSE_FALLBACK : RecommendationStatus.STRONG_MATCH, null, null);
     }
 }
