@@ -1,6 +1,5 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.common.observability;
 
-import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.RecommendationStatus;
 import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Component;
@@ -87,7 +86,7 @@ public class ApplicationMetrics {
             int javaCandidateCount,
             int pythonSelectedCount,
             int javaAcceptedCount,
-            RecommendationStatus status
+            AiSelectionStatus status
     ) {
         String safeStatus = status == null ? "FAILED" : bounded(status.name(), AI_RECOMMENDATION_STATUSES);
         registry.counter("app.ai.selection", "status", safeStatus).increment();

@@ -27,6 +27,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -51,6 +53,7 @@ class AssistantControllerTests {
     private static final AtomicInteger USER_SEQUENCE = new AtomicInteger(7000);
     private static final AtomicBoolean FAIL_SYNC_PYTHON = new AtomicBoolean();
     private static final AtomicBoolean FAIL_STREAM_PYTHON = new AtomicBoolean();
+    private static final AtomicBoolean RACE_STREAM_TERMINALS = new AtomicBoolean();
 
     @Autowired
     private MockMvc mockMvc;
@@ -75,6 +78,7 @@ class AssistantControllerTests {
     void resetFakePythonFailures() {
         FAIL_SYNC_PYTHON.set(false);
         FAIL_STREAM_PYTHON.set(false);
+        RACE_STREAM_TERMINALS.set(false);
     }
 
     @Test
@@ -325,6 +329,28 @@ class AssistantControllerTests {
         assertThat(streamBody.split("event:done", -1)).hasSize(2);
     }
 
+    @Test
+    void concurrentPythonTerminalsPublishExactlyOneDoneEvent() throws Exception {
+        RACE_STREAM_TERMINALS.set(true);
+        String accessToken = registerAndLogin(nextUsername());
+
+        var mvcResult = mockMvc.perform(post("/api/assistant/chat/stream")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .content("""
+                                {"message":"recommend a jacket","category":"外套"}
+                                """))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        String streamBody = mockMvc.perform(asyncDispatch(mvcResult))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+
+        assertThat(streamBody.split("event:done", -1)).hasSize(2);
+    }
+
     private String registerAndLogin(String username) throws Exception {
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -387,6 +413,20 @@ class AssistantControllerTests {
                     handler.onError("raw_secret", "provider secret /tmp/python-internal");
                     return;
                 }
+                if (RACE_STREAM_TERMINALS.get()) {
+                    CyclicBarrier barrier = new CyclicBarrier(2);
+                    CompletableFuture<Void> done = CompletableFuture.runAsync(() -> {
+                        await(barrier);
+                        handler.onDone(new PythonChatResponse(
+                                request.requestId(), "race done", "recommendation", List.of()));
+                    });
+                    CompletableFuture<Void> error = CompletableFuture.runAsync(() -> {
+                        await(barrier);
+                        handler.onError("race_error", "race error");
+                    });
+                    CompletableFuture.allOf(done, error).join();
+                    return;
+                }
                 handler.onToken("A structured");
                 handler.onToken(" jacket");
                 handler.onDone(new PythonChatResponse(
@@ -399,6 +439,14 @@ class AssistantControllerTests {
                         )
                 ));
             };
+        }
+
+        private static void await(CyclicBarrier barrier) {
+            try {
+                barrier.await();
+            } catch (Exception exception) {
+                throw new AssertionError(exception);
+            }
         }
 
         private static PythonProductRef ref(Long spuId, Long skuId, String reason) {

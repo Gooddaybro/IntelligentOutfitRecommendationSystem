@@ -23,7 +23,8 @@ public record AssistantContext(
         List<RecommendationCandidate> candidates,
         DemandIntent demandIntent,
         EffectiveDemand effectiveDemand,
-        String clarificationQuestion
+        String clarificationQuestion,
+        boolean staleDerivedConstraintRemoved
 ) {
     public AssistantContext {
         demandIntent = demandIntent == null ? DemandIntent.empty(null) : demandIntent;
@@ -40,7 +41,7 @@ public record AssistantContext(
             String clarificationQuestion
     ) {
         this(profile, bodyData, preferences, behaviorSummary, chatHistory, candidates,
-                demandIntent, null, clarificationQuestion);
+                demandIntent, null, clarificationQuestion, false);
     }
 
     public AssistantContext(
@@ -52,7 +53,8 @@ public record AssistantContext(
             List<RecommendationCandidate> candidates,
             DemandIntent demandIntent
     ) {
-        this(profile, bodyData, preferences, behaviorSummary, chatHistory, candidates, demandIntent, null, null);
+        this(profile, bodyData, preferences, behaviorSummary, chatHistory, candidates,
+                demandIntent, null, null, false);
     }
 
     public AssistantContext(
@@ -64,7 +66,7 @@ public record AssistantContext(
             List<RecommendationCandidate> candidates
     ) {
         this(profile, bodyData, preferences, behaviorSummary, chatHistory, candidates,
-                DemandIntent.empty(null), null, null);
+                DemandIntent.empty(null), null, null, false);
     }
 
     public AssistantContext(
@@ -75,6 +77,6 @@ public record AssistantContext(
             List<RecommendationCandidate> candidates
     ) {
         this(profile, bodyData, preferences, null, chatHistory, candidates,
-                DemandIntent.empty(null), null, null);
+                DemandIntent.empty(null), null, null, false);
     }
 }

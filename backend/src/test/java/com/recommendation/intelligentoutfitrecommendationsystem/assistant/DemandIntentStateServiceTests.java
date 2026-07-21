@@ -31,6 +31,19 @@ import static org.mockito.Mockito.when;
 
 class DemandIntentStateServiceTests {
 
+    @Test
+    void oldSnapshotJsonDefaultsLifecycleDiagnosticToFalse() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        EffectiveDemand effective = new LegacyDemandIntentAdapter().adapt(DemandIntent.empty("legacy"));
+        var json = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.valueToTree(
+                new DemandIntentStateSnapshot(effective, null));
+        json.remove("staleDerivedConstraintRemoved");
+
+        DemandIntentStateSnapshot restored = mapper.treeToValue(json, DemandIntentStateSnapshot.class);
+
+        assertThat(restored.staleDerivedConstraintRemoved()).isFalse();
+    }
+
     @SuppressWarnings("unchecked")
     @Test
     void v3StateWriteReadRoundTripPreservesRawQuery() throws Exception {
@@ -86,13 +99,21 @@ class DemandIntentStateServiceTests {
                 "日常休闲"
         );
 
+        DemandIntentStateSnapshot summerTransition = null;
+        DemandIntentStateSnapshot ordinaryTransition = null;
         for (int index = 0; index < messages.size(); index++) {
             String message = messages.get(index);
             DemandIntent initial = DemandIntent.empty(message);
-            service.applyResolution(1L, "thread-multi", "turn-" + index, null,
+            DemandIntentStateSnapshot transition = service.applyResolution(
+                    1L, "thread-multi", "turn-" + index, null,
                     parser.resolvePatch(new AssistantChatRequest(
                             "thread-multi", message, null, null, null, null, null, null, null)),
                     null, null, initial);
+            if (index == 2) {
+                summerTransition = transition;
+            } else if (index == 3) {
+                ordinaryTransition = transition;
+            }
         }
 
         EffectiveDemand effective = service.read(1L, "thread-multi").effectiveDemand();
@@ -104,6 +125,8 @@ class DemandIntentStateServiceTests {
         assertThat(new com.fasterxml.jackson.databind.ObjectMapper()
                 .readTree(persisted.get().effectiveIntentJson()).get("version").asText())
                 .isEqualTo(EffectiveDemand.VERSION);
+        assertThat(summerTransition.staleDerivedConstraintRemoved()).isTrue();
+        assertThat(ordinaryTransition.staleDerivedConstraintRemoved()).isFalse();
     }
 
     @SuppressWarnings("unchecked")
@@ -135,13 +158,15 @@ class DemandIntentStateServiceTests {
         });
 
         String summer = "夏天呢？";
-        service.applyResolution(1L, "thread-legacy", "turn-summer", null,
+        DemandIntentStateSnapshot summerTransition = service.applyResolution(
+                1L, "thread-legacy", "turn-summer", null,
                 new DemandIntentResolver().resolvePatch(new AssistantChatRequest(
                         "thread-legacy", summer, null, null, null, null, null, null, null)),
                 null, null, DemandIntent.empty(summer));
 
         assertThat(service.read(1L, "thread-legacy").effectiveDemand().constraints("thermal"))
                 .noneMatch(item -> item.values().contains("WARM"));
+        assertThat(summerTransition.staleDerivedConstraintRemoved()).isFalse();
     }
 
     @SuppressWarnings("unchecked")

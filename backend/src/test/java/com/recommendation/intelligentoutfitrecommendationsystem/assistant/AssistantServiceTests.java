@@ -19,6 +19,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.servic
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.dto.BehaviorSummaryResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.RecommendationAttributionService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ExternalServiceException;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.AiSelectionStatus;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.ConversationResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.MessageResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate;
@@ -41,6 +42,8 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -179,7 +182,7 @@ class AssistantServiceTests {
                 .extracting("spuId", "skuId", "reason")
                 .containsExactly(tuple(1001L, 2001L, "fits the requested commute style"));
         verify(applicationMetrics).recordAiCandidateCount(1);
-        verify(applicationMetrics).recordAiSelection(1, 1, 1, RecommendationStatus.STRONG_MATCH);
+        verify(applicationMetrics).recordAiSelection(1, 1, 1, AiSelectionStatus.STRONG_MATCH);
         verify(recommendationAttributionService).record(argThat(command ->
                 "sync".equals(command.mode())
                         && command.candidates().size() == 1
@@ -372,7 +375,7 @@ class AssistantServiceTests {
         assertThat(response.candidatesCount()).isEqualTo(1);
         assertThat(response.recommendationStatus()).isEqualTo(RecommendationStatus.BROWSE_FALLBACK);
         assertThat(response.diagnostics().reasonCodes()).containsExactly("DEPENDENCY_FAILED");
-        verify(applicationMetrics).recordAiSelection(1, 0, 0, RecommendationStatus.BROWSE_FALLBACK);
+        verify(applicationMetrics).recordAiSelection(1, 0, 0, AiSelectionStatus.BROWSE_FALLBACK);
         verify(applicationMetrics).recordAiReasonCode("DEPENDENCY_FAILED");
         verify(assistantRateLimitService).assertAllowed(10L);
         verify(conversationService).appendMessage(10L, "th_existing", "user", "recommend a jacket", "req-ai-fallback-test");
@@ -395,7 +398,7 @@ class AssistantServiceTests {
         assertThat(response.recommendedItems()).isEmpty();
         assertThat(response.diagnostics().javaCandidateCount()).isZero();
         assertThat(response.diagnostics().reasonCodes()).containsExactly("DEPENDENCY_FAILED");
-        verify(applicationMetrics).recordAiSelection(0, 0, 0, RecommendationStatus.FAILED);
+        verify(applicationMetrics).recordAiSelection(0, 0, 0, AiSelectionStatus.FAILED);
         verify(applicationMetrics).recordAiReasonCode("DEPENDENCY_FAILED");
         verify(pythonAssistantClient, never()).chat(any());
         verify(recommendationAttributionService, never()).record(any());
@@ -601,6 +604,68 @@ class AssistantServiceTests {
                 argThat(answer -> answer.contains("仍可继续浏览当前条件筛选出的商品")),
                 eq("req-stream-guard-test")
         );
+    }
+
+    @Test
+    void staleDerivedRemovalPublishesOnlyTheBoundedReasonAndMetric() {
+        AssistantChatRequest request = new AssistantChatRequest(
+                "th_stale", "summer", null, null, null, null, null, null);
+        AssistantContext context = new AssistantContext(
+                null, null, null, null, List.of(), List.of(), DemandIntent.empty("summer"), null, null, true);
+        when(assistantContextService.buildContext(10L, "th_stale", request)).thenReturn(context);
+        when(pythonAssistantClient.chat(any())).thenReturn(new PythonChatResponse(
+                "req-stale", "browse", "recommendation", List.of()));
+
+        AssistantChatResponse response = newAssistantService().chat(10L, request);
+
+        assertThat(response.diagnostics().reasonCodes())
+                .contains("STALE_DERIVED_CONSTRAINT_REMOVED");
+        verify(applicationMetrics).recordAiReasonCode("STALE_DERIVED_CONSTRAINT_REMOVED");
+    }
+
+    @Test
+    void concurrentDoneAndErrorClaimExactlyOneTerminalSideEffect() throws Exception {
+        AssistantChatRequest request = new AssistantChatRequest(
+                "th_terminal_race", "recommend", null, null, null, null, null, null);
+        AssistantContext context = new AssistantContext(null, null, null, null, List.of(), List.of());
+        AtomicReference<PythonAssistantStreamHandler> handlerRef = new AtomicReference<>();
+        when(assistantContextService.buildContext(10L, "th_terminal_race", request)).thenReturn(context);
+        doAnswer(invocation -> {
+            handlerRef.set(invocation.getArgument(1));
+            return null;
+        }).when(pythonAssistantStreamClient).streamChat(any(), any());
+        newAssistantService().streamChat(10L, request);
+        PythonAssistantStreamHandler handler = handlerRef.get();
+        CyclicBarrier barrier = new CyclicBarrier(2);
+        CountDownLatch finished = new CountDownLatch(2);
+        Thread done = Thread.ofPlatform().start(() -> {
+            await(barrier);
+            handler.onDone(new PythonChatResponse("req-race", "done", "recommendation", List.of()));
+            finished.countDown();
+        });
+        Thread error = Thread.ofPlatform().start(() -> {
+            await(barrier);
+            handler.onError("failed", "failed");
+            finished.countDown();
+        });
+
+        finished.await();
+        done.join();
+        error.join();
+
+        verify(conversationService, times(1)).appendMessage(
+                eq(10L), eq("th_terminal_race"), eq("assistant"), any(), any());
+        verify(applicationMetrics, times(1)).recordAiSelection(any(Integer.class), any(Integer.class),
+                any(Integer.class), any(AiSelectionStatus.class));
+        verify(recommendationAttributionService, times(1)).record(any());
+    }
+
+    private void await(CyclicBarrier barrier) {
+        try {
+            barrier.await();
+        } catch (Exception exception) {
+            throw new AssertionError(exception);
+        }
     }
 
     private AssistantService newAssistantService() {

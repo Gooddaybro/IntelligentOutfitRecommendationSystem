@@ -108,6 +108,7 @@ public class AssistantContextService {
         DemandIntent demandIntent = initialIntent;
         EffectiveDemand effectiveDemand = legacyDemandIntentAdapter.adapt(initialIntent);
         String clarificationQuestion = null;
+        boolean staleDerivedConstraintRemoved = false;
         if (demandIntentStateService != null && demandIntentParseClient != null) {
             DemandIntentStateSnapshot current = demandIntentStateService.read(userId, threadId);
             PendingClarification pending = current == null ? null : current.pendingClarification();
@@ -158,6 +159,7 @@ public class AssistantContextService {
                     nextPending, initialIntent);
             demandIntent = DemandIntentStateSnapshot.toLegacyIntent(resolved.effectiveDemand());
             effectiveDemand = resolved.effectiveDemand();
+            staleDerivedConstraintRemoved = resolved.staleDerivedConstraintRemoved();
             if (resolved.pendingClarification() != null) {
                 clarificationQuestion = resolved.pendingClarification().question();
             }
@@ -187,7 +189,8 @@ public class AssistantContextService {
                 recommendationCandidateQueryService.findCandidates(query),
                 demandIntent,
                 effectiveDemand,
-                clarificationQuestion
+                clarificationQuestion,
+                staleDerivedConstraintRemoved
         );
     }
 

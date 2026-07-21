@@ -125,10 +125,12 @@ public class DemandIntentStateService {
                         }
                     }
                     EffectiveDemand resolved = resolver.resolve(effective);
+                    boolean staleDerivedConstraintRemoved = staleDerivedConstraintRemoved(effective, resolved);
                     ConstraintConflictResult conflict = conflictValidator.validate(resolved, turnId);
                     PendingClarification nextPending = "cancel_clarify".equals(action) ? null : pending;
                     return new ConversationDemandStateSnapshot(
-                            writeJson(resolved), writeJson(new WorkflowState(nextPending, conflict)));
+                            writeJson(resolved), writeJson(new WorkflowState(
+                                    nextPending, conflict, staleDerivedConstraintRemoved)));
                 });
         return snapshot(stored);
     }
@@ -159,19 +161,35 @@ public class DemandIntentStateService {
         EffectiveDemand effective = readEffective(stored.effectiveIntentJson());
         ConstraintConflictResult conflict = workflow.conflictResult() == null
                 ? conflictValidator.validate(effective) : workflow.conflictResult();
-        return new DemandIntentStateSnapshot(effective, workflow.pendingClarification(), conflict);
+        return new DemandIntentStateSnapshot(
+                effective, workflow.pendingClarification(), conflict, workflow.staleDerivedConstraintRemoved());
+    }
+
+    private boolean staleDerivedConstraintRemoved(EffectiveDemand before, EffectiveDemand after) {
+        Set<String> activeParentIds = before.hardFilters().stream()
+                .map(com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.IntentConstraint::id)
+                .collect(java.util.stream.Collectors.toSet());
+        Set<String> survivingIds = after.softPreferences().stream()
+                .map(com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.IntentConstraint::id)
+                .collect(java.util.stream.Collectors.toSet());
+        return before.softPreferences().stream()
+                .filter(item -> item.origin() == ConstraintOrigin.SYSTEM_DERIVED)
+                .filter(item -> item.derivedFromConstraintId() != null)
+                .anyMatch(item -> !activeParentIds.contains(item.derivedFromConstraintId())
+                        && !survivingIds.contains(item.id()));
     }
 
     private WorkflowState readWorkflow(String json) {
         if (json == null || json.isBlank()) {
-            return new WorkflowState(null, null);
+            return new WorkflowState(null, null, false);
         }
         try {
             JsonNode root = objectMapper.readTree(json);
-            if (root.has("pendingClarification") || root.has("conflictResult")) {
+            if (root.has("pendingClarification") || root.has("conflictResult")
+                    || root.has("staleDerivedConstraintRemoved")) {
                 return objectMapper.readValue(json, WorkflowState.class);
             }
-            return new WorkflowState(objectMapper.readValue(json, PendingClarification.class), null);
+            return new WorkflowState(objectMapper.readValue(json, PendingClarification.class), null, false);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("invalid stored demand workflow", exception);
         }
@@ -206,7 +224,8 @@ public class DemandIntentStateService {
 
     private record WorkflowState(
             PendingClarification pendingClarification,
-            ConstraintConflictResult conflictResult
+            ConstraintConflictResult conflictResult,
+            boolean staleDerivedConstraintRemoved
     ) {
     }
 

@@ -25,6 +25,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.behavior.dto.Beh
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.RecommendationAttributionService;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.RecommendationRecordCommand;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ExternalServiceException;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.AiSelectionStatus;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.ConversationResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.MessageResponse;
@@ -185,7 +186,6 @@ public class AssistantService {
                     "error",
                     new AssistantStreamErrorEvent("assistant_stream_busy", "AI assistant stream is busy")
             );
-            metrics.recordAiFallback("stream");
             handler.complete(assistantFallbackService.streamFallbackResponse(requestId), true);
         }
         return emitter;
@@ -361,7 +361,8 @@ public class AssistantService {
                     context.demandIntent(), context.candidates(), selectedRefs);
             List<AssistantRecommendationItem> acceptedItems = decision.recommendedItems();
             List<String> reasonCodes = diagnosticReasons(
-                    candidateCount, selectedRefs.size(), acceptedItems.size(), selectionAttempted, dependencyFailed);
+                    candidateCount, selectedRefs.size(), acceptedItems.size(), selectionAttempted, dependencyFailed,
+                    context.staleDerivedConstraintRemoved());
             RecommendationDiagnostics diagnostics = new RecommendationDiagnostics(
                     candidateCount, selectedRefs.size(), acceptedItems.size(),
                     decision.recommendationStatus(), reasonCodes);
@@ -382,9 +383,13 @@ public class AssistantService {
             int selectedCount,
             int acceptedCount,
             boolean selectionAttempted,
-            boolean dependencyFailed
+            boolean dependencyFailed,
+            boolean staleDerivedConstraintRemoved
     ) {
         List<String> reasons = new ArrayList<>();
+        if (staleDerivedConstraintRemoved) {
+            reasons.add("STALE_DERIVED_CONSTRAINT_REMOVED");
+        }
         if (candidateCount == 0) {
             reasons.add("NO_JAVA_CANDIDATES");
         }
@@ -410,8 +415,12 @@ public class AssistantService {
     private void recordDiagnostics(RecommendationDiagnostics diagnostics) {
         metrics.recordAiSelection(
                 diagnostics.javaCandidateCount(), diagnostics.pythonSelectedCount(),
-                diagnostics.javaAcceptedCount(), diagnostics.status());
+                diagnostics.javaAcceptedCount(), toMetricStatus(diagnostics.status()));
         diagnostics.reasonCodes().forEach(metrics::recordAiReasonCode);
+    }
+
+    private AiSelectionStatus toMetricStatus(RecommendationStatus status) {
+        return AiSelectionStatus.valueOf(status.name());
     }
 
     private AssistantChatResponse toChatResponse(
@@ -513,6 +522,16 @@ public class AssistantService {
         }
     }
 
+    private boolean sendTerminalEvent(SseEmitter emitter, AssistantStreamDoneEvent done) {
+        try {
+            emitter.send(SseEmitter.event().name("done").data(done));
+            return true;
+        } catch (IOException exception) {
+            emitter.complete();
+            return false;
+        }
+    }
+
     private record PythonCallResult(PythonChatResponse response, boolean dependencyFailed) {
     }
 
@@ -563,7 +582,7 @@ public class AssistantService {
         }
 
         private void complete(PythonChatResponse response, boolean dependencyFailed) {
-            if (!active.get()) {
+            if (!active.compareAndSet(true, false)) {
                 return;
             }
             String answer;
@@ -573,6 +592,9 @@ public class AssistantService {
                 response = assistantFallbackService.streamFallbackResponse(requestId);
                 answer = response.answer();
                 dependencyFailed = true;
+            }
+            if (dependencyFailed) {
+                metrics.recordAiFallback("stream");
             }
             conversationService.appendMessage(userId, threadId, "assistant", answer, requestId);
             AssembledRecommendation result = assembleResult(
@@ -589,18 +611,13 @@ public class AssistantService {
                     result.recommendationId(),
                     result.diagnostics()
             );
-            if (sendEvent(emitter, active, "done", done)) {
-                active.set(false);
+            if (sendTerminalEvent(emitter, done)) {
                 emitter.complete();
             }
         }
 
         @Override
         public void onError(String code, String message) {
-            if (!active.get()) {
-                return;
-            }
-            metrics.recordAiFallback("stream");
             complete(assistantFallbackService.streamFallbackResponse(requestId), true);
         }
     }

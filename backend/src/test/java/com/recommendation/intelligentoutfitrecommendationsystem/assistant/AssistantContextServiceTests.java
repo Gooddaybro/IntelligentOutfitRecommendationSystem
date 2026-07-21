@@ -89,7 +89,7 @@ class AssistantContextServiceTests {
     }
 
     @Test
-    void candidateQueryUsesOnlyHardEffectiveDemandAndKeepsSoftStyleForPython() {
+    void candidateQueryUsesOnlyHardDemandAndCarriesLifecycleDiagnostics() {
         UserProfileService profiles = mock(UserProfileService.class);
         RecommendationCandidateQueryService candidates = mock(RecommendationCandidateQueryService.class);
         ConversationApplicationService conversations = mock(ConversationApplicationService.class);
@@ -114,7 +114,11 @@ class AssistantContextServiceTests {
         when(conversations.getMessages(anyLong(), anyString())).thenReturn(List.of());
         when(states.applyResolution(anyLong(), anyString(), anyString(), any(), anyString(),
                 any(), any(), any(), any()))
-                .thenReturn(new DemandIntentStateSnapshot(effective, null));
+                .thenReturn(new DemandIntentStateSnapshot(
+                        effective, null,
+                        new com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintConflictResult(
+                                com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintConflictStatus.VALID,
+                                List.of(), ""), true));
         when(parser.parse(any())).thenReturn(Optional.empty());
         when(candidates.findCandidates(any())).thenReturn(List.of());
 
@@ -131,6 +135,7 @@ class AssistantContextServiceTests {
         assertThat(query.getValue().getMaterial()).isNull();
         assertThat(query.getValue().getFit()).isNull();
         assertThat(context.effectiveDemand()).isEqualTo(effective);
+        assertThat(context.staleDerivedConstraintRemoved()).isTrue();
         assertThat(context.effectiveDemand().softPreferences())
                 .extracting(IntentConstraint::field).contains("style");
     }

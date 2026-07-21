@@ -1,7 +1,5 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.architecture;
 
-import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.RecommendationStatus;
-import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
 import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.importer.ImportOption;
@@ -10,8 +8,6 @@ import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
-
-import java.util.Set;
 
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
@@ -24,15 +20,11 @@ class ModuleArchitectureTests {
 
     static final String BASE_PACKAGE =
             "com.recommendation.intelligentoutfitrecommendationsystem";
-    private static final Set<String> BUSINESS_MODULES = Set.of(
-            "aftersale", "assistant", "auth", "behavior", "cart", "conversation",
-            "favorite", "inventory", "order", "payment", "product", "user");
 
     @ArchTest
     static final ArchRule TOP_LEVEL_MODULES_MUST_BE_FREE_OF_CYCLES =
             slices().matching(BASE_PACKAGE + ".(*)..")
-                    .should().beFreeOfCycles()
-                    .ignoreDependency(ApplicationMetrics.class, RecommendationStatus.class);
+                    .should().beFreeOfCycles();
 
     @ArchTest
     static final ArchRule CONTROLLERS_MUST_NOT_ACCESS_MAPPERS =
@@ -41,25 +33,20 @@ class ModuleArchitectureTests {
 
     @ArchTest
     static final ArchRule COMMON_MUST_NOT_DEPEND_ON_BUSINESS_MODULES =
-            classes().that().resideInAPackage(BASE_PACKAGE + ".common..")
-                    .should(new ArchCondition<>(
-                            "avoid business dependencies except the typed recommendation metric contract") {
-                        @Override
-                        public void check(JavaClass source, com.tngtech.archunit.lang.ConditionEvents events) {
-                            for (Dependency dependency : source.getDirectDependenciesFromSelf()) {
-                                JavaClass target = dependency.getTargetClass();
-                                if (!BUSINESS_MODULES.contains(moduleOf(target.getPackageName()))) {
-                                    continue;
-                                }
-                                boolean allowed = source.getName().equals(ApplicationMetrics.class.getName())
-                                        && target.getName().equals(RecommendationStatus.class.getName());
-                                events.add(new SimpleConditionEvent(
-                                        dependency,
-                                        allowed,
-                                        source.getName() + " depends on " + target.getName()));
-                            }
-                        }
-                    });
+            noClasses().that().resideInAPackage(BASE_PACKAGE + ".common..")
+                    .should().dependOnClassesThat().resideInAnyPackage(
+                            "..aftersale..",
+                            "..assistant..",
+                            "..auth..",
+                            "..behavior..",
+                            "..cart..",
+                            "..conversation..",
+                            "..favorite..",
+                            "..inventory..",
+                            "..order..",
+                            "..payment..",
+                            "..product..",
+                            "..user..");
 
     @ArchTest
     static final ArchRule MAPPERS_MUST_STAY_INSIDE_THEIR_MODULE =

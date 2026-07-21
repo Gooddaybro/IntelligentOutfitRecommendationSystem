@@ -12,7 +12,8 @@ import java.util.Locale;
 public record DemandIntentStateSnapshot(
         EffectiveDemand effectiveDemand,
         PendingClarification pendingClarification,
-        ConstraintConflictResult conflictResult
+        ConstraintConflictResult conflictResult,
+        boolean staleDerivedConstraintRemoved
 ) {
     public DemandIntentStateSnapshot {
         if (effectiveDemand == null) {
@@ -25,7 +26,16 @@ public record DemandIntentStateSnapshot(
     /** Creates a snapshot when no persisted conflict metadata exists yet. */
     public DemandIntentStateSnapshot(EffectiveDemand effectiveDemand, PendingClarification pendingClarification) {
         this(effectiveDemand, pendingClarification,
-                new ConstraintConflictResult(ConstraintConflictStatus.VALID, List.of(), ""));
+                new ConstraintConflictResult(ConstraintConflictStatus.VALID, List.of(), ""), false);
+    }
+
+    /** Creates a snapshot from the earlier contract that did not expose lifecycle diagnostics. */
+    public DemandIntentStateSnapshot(
+            EffectiveDemand effectiveDemand,
+            PendingClarification pendingClarification,
+            ConstraintConflictResult conflictResult
+    ) {
+        this(effectiveDemand, pendingClarification, conflictResult, false);
     }
 
     /**

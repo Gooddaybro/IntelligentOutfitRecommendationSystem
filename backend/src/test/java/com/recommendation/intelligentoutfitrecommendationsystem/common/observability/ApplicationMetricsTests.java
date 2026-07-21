@@ -1,6 +1,6 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.common.observability;
 
-import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.RecommendationStatus;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.AiSelectionStatus;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 
@@ -17,7 +17,7 @@ class ApplicationMetricsTests {
     @Test
     void aiSelectionRequiresTheRecommendationStatusType() throws Exception {
         assertThat(ApplicationMetrics.class.getDeclaredMethod(
-                "recordAiSelection", int.class, int.class, int.class, RecommendationStatus.class))
+                "recordAiSelection", int.class, int.class, int.class, AiSelectionStatus.class))
                 .isNotNull();
     }
 
@@ -27,7 +27,7 @@ class ApplicationMetricsTests {
         metrics.recordAiFallback("sync");
         metrics.recordAiCandidateCount(12);
         metrics.recordAiDiscardedReferences(2);
-        metrics.recordAiSelection(24, 0, 0, RecommendationStatus.BROWSE_FALLBACK);
+        metrics.recordAiSelection(24, 0, 0, AiSelectionStatus.BROWSE_FALLBACK);
         metrics.recordAiReasonCode("PYTHON_REJECTED_ALL");
         metrics.recordAiReasonCode("raw user query must never become a tag");
 
