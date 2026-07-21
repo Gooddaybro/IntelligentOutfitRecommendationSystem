@@ -1,5 +1,6 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.assistant.service;
 
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintOrigin;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.EffectiveDemand;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.IntentConstraint;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.TurnIntent;
@@ -107,8 +108,16 @@ public class IntentConstraintMerger {
 
     private List<IntentConstraint> deduplicate(List<IntentConstraint> constraints) {
         Map<String, IntentConstraint> unique = new LinkedHashMap<>();
-        constraints.forEach(item -> unique.putIfAbsent(semanticKey(item), item));
+        constraints.forEach(item -> unique.merge(semanticKey(item), item, this::preferExplicit));
         return List.copyOf(unique.values());
+    }
+
+    private IntentConstraint preferExplicit(IntentConstraint existing, IntentConstraint candidate) {
+        if (candidate.origin() == ConstraintOrigin.USER_EXPLICIT
+                && existing.origin() != ConstraintOrigin.USER_EXPLICIT) {
+            return candidate;
+        }
+        return existing;
     }
 
     private String semanticKey(IntentConstraint constraint) {

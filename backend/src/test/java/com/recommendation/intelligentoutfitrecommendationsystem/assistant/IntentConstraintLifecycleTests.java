@@ -77,6 +77,25 @@ class IntentConstraintLifecycleTests {
     }
 
     @Test
+    void currentExplicitAppendSurvivesMergeAndResolutionWhenHistoricalDerivedParentExpires() {
+        IntentConstraint winter = hard("c-season-turn-1", "season", "WINTER", "turn-1");
+        IntentConstraint derivedWarm = derived(
+                "c-derived-warm", "thermal", "WARM", "turn-1", winter.id());
+        EffectiveDemand previous = demand(List.of(winter), List.of(derivedWarm));
+        IntentConstraint summer = hard("c-season-turn-2", "season", "SUMMER", "turn-2");
+        IntentConstraint explicitWarm = soft(
+                "c-explicit-warm", "thermal", "WARM", "turn-2");
+        TurnIntent turn = turn(
+                "turn-2", Map.of("season", summer), List.of(explicitWarm), List.of(), Set.of());
+
+        EffectiveDemand resolved = resolver.resolve(merger.merge(previous, turn));
+
+        assertThat(resolved.constraints("thermal"))
+                .filteredOn(item -> item.values().contains("WARM"))
+                .containsExactly(explicitWarm);
+    }
+
+    @Test
     void hardExplicitSummerWarmthIsAnUncommonValidCombination() {
         EffectiveDemand input = demand(List.of(
                 hard("c-season-turn-5", "season", "SUMMER", "turn-5"),
