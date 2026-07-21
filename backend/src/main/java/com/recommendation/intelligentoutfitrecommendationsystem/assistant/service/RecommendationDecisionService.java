@@ -5,6 +5,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.De
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.MatchedDimension;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonProductRef;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.RecommendationDecision;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.RecommendationStatus;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate;
 
 import java.math.BigDecimal;
@@ -22,9 +23,14 @@ import java.util.Set;
  */
 public class RecommendationDecisionService {
 
-    private final OutfitRoleResolver roleResolver = new OutfitRoleResolver();
+    private final OutfitRoleValidator roleValidator = new OutfitRoleValidator();
 
-    /** Decides EMPTY, WEAK_FALLBACK or STRONG_MATCH from one immutable Java candidate pool. */
+    /**
+     * 从同一份不可变 Java 候选池生成最终决策。
+     *
+     * 无候选和零采信引用分别降级为 EMPTY 与 BROWSE_FALLBACK；搭配建议只有同时覆盖上装和下装才是完整匹配。
+     * 决策异常不在此处吞掉，由调用方统一映射为 FAILED，防止正常降级与系统故障混淆。
+     */
     public RecommendationDecision decide(
             DemandIntent intent,
             List<RecommendationCandidate> candidates,
@@ -33,7 +39,7 @@ public class RecommendationDecisionService {
         List<RecommendationCandidate> safeCandidates = candidates == null ? List.of() : candidates;
         List<PythonProductRef> safeRefs = refs == null ? List.of() : refs;
         if (safeCandidates.isEmpty()) {
-            return new RecommendationDecision("EMPTY", List.of(), safeRefs.size());
+            return new RecommendationDecision(RecommendationStatus.EMPTY, List.of(), safeRefs.size());
         }
 
         Map<String, RecommendationCandidate> candidateById = new LinkedHashMap<>();
@@ -55,14 +61,29 @@ public class RecommendationDecisionService {
             }
             accepted.add(new AssistantRecommendationItem(
                     ref.spuId(), ref.skuId(), normalizeReason(ref.reason()), ref.rankScore(),
-                    ref.matchedDimensions(), roleResolver.resolve(candidate.getCategoryName())
+                    ref.matchedDimensions(), roleValidator.validate(candidate.getCategoryName(), ref.outfitRole())
             ));
         }
         return new RecommendationDecision(
-                accepted.isEmpty() ? "WEAK_FALLBACK" : "STRONG_MATCH",
+                resolveStatus(intent, accepted),
                 accepted,
                 discarded
         );
+    }
+
+    private RecommendationStatus resolveStatus(DemandIntent intent, List<AssistantRecommendationItem> accepted) {
+        if (accepted.isEmpty()) {
+            return RecommendationStatus.BROWSE_FALLBACK;
+        }
+        if (intent == null || !"OUTFIT_ADVICE".equals(intent.requestType())) {
+            return RecommendationStatus.STRONG_MATCH;
+        }
+        Set<String> acceptedRoles = accepted.stream()
+                .map(AssistantRecommendationItem::outfitRole)
+                .collect(java.util.stream.Collectors.toSet());
+        return acceptedRoles.contains("TOP") && acceptedRoles.contains("BOTTOM")
+                ? RecommendationStatus.STRONG_MATCH
+                : RecommendationStatus.PARTIAL_MATCH;
     }
 
     private boolean hasValidEvidence(

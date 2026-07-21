@@ -53,6 +53,6 @@ public record AssistantStreamDoneEvent(
             String intent
     ) {
         this(threadId, answer, recommendedSpuIds, recommendedItems, candidatesCount, intent, null,
-                recommendedItems == null || recommendedItems.isEmpty() ? "WEAK_FALLBACK" : "STRONG_MATCH", null);
+                recommendedItems == null || recommendedItems.isEmpty() ? "BROWSE_FALLBACK" : "STRONG_MATCH", null);
     }
 }

@@ -39,6 +39,6 @@ public record AssistantChatResponse(
             int candidatesCount
     ) {
         this(threadId, answer, recommendedSpuIds, recommendedItems, candidatesCount,
-                null, recommendedItems == null || recommendedItems.isEmpty() ? "WEAK_FALLBACK" : "STRONG_MATCH", null);
+                null, recommendedItems == null || recommendedItems.isEmpty() ? "BROWSE_FALLBACK" : "STRONG_MATCH", null);
     }
 }

@@ -2,9 +2,9 @@ package com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto;
 
 import java.util.List;
 
-/** Java-owned final recommendation state and the strong-match items that passed validation. */
+/** Java 拥有的最终推荐状态，以及通过商品成员资格、证据和角色校验的商品。 */
 public record RecommendationDecision(
-        String recommendationStatus,
+        RecommendationStatus recommendationStatus,
         List<AssistantRecommendationItem> recommendedItems,
         int discardedReferences
 ) {

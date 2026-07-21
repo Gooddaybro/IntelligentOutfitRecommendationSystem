@@ -105,7 +105,7 @@ public class AssistantService {
             RecommendationDecision decision = recommendationDecisionService.decide(
                     context.demandIntent(), context.candidates(), List.of());
             return new AssistantChatResponse(threadId, answer, List.of(), List.of(),
-                    context.candidates().size(), context.demandIntent(), decision.recommendationStatus(), null);
+                    context.candidates().size(), context.demandIntent(), decision.recommendationStatus().name(), null);
         }
         PythonChatRequest pythonRequest = toPythonRequest(userId, threadId, request, context);
         PythonChatResponse pythonResponse = callPythonOrFallback(pythonRequest);
@@ -126,7 +126,7 @@ public class AssistantService {
                 recommendedItems,
                 context.candidates().size(),
                 context.demandIntent(),
-                decision.recommendationStatus(),
+                decision.recommendationStatus().name(),
                 recommendationId
         );
     }
@@ -164,7 +164,7 @@ public class AssistantService {
             sendEvent(emitter, active, "token", new AssistantStreamTokenEvent(answer));
             sendEvent(emitter, active, "done", new AssistantStreamDoneEvent(
                     threadId, answer, List.of(), List.of(), context.candidates().size(),
-                    "demand_clarification", context.demandIntent(), decision.recommendationStatus(), null));
+                    "demand_clarification", context.demandIntent(), decision.recommendationStatus().name(), null));
             emitter.complete();
             return emitter;
         }
@@ -457,7 +457,7 @@ public class AssistantService {
                     context.candidates().size(),
                     response.intent(),
                     context.demandIntent(),
-                    decision.recommendationStatus(),
+                    decision.recommendationStatus().name(),
                     recommendationId
             );
             if (sendEvent(emitter, active, "done", done)) {
