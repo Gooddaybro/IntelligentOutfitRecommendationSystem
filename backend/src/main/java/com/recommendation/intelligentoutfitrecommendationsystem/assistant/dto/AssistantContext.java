@@ -22,6 +22,7 @@ public record AssistantContext(
         List<MessageResponse> chatHistory,
         List<RecommendationCandidate> candidates,
         DemandIntent demandIntent,
+        EffectiveDemand effectiveDemand,
         String clarificationQuestion
 ) {
     public AssistantContext {
@@ -35,9 +36,23 @@ public record AssistantContext(
             BehaviorSummaryResponse behaviorSummary,
             List<MessageResponse> chatHistory,
             List<RecommendationCandidate> candidates,
+            DemandIntent demandIntent,
+            String clarificationQuestion
+    ) {
+        this(profile, bodyData, preferences, behaviorSummary, chatHistory, candidates,
+                demandIntent, null, clarificationQuestion);
+    }
+
+    public AssistantContext(
+            UserProfileResponse profile,
+            UserBodyDataResponse bodyData,
+            UserPreferencesResponse preferences,
+            BehaviorSummaryResponse behaviorSummary,
+            List<MessageResponse> chatHistory,
+            List<RecommendationCandidate> candidates,
             DemandIntent demandIntent
     ) {
-        this(profile, bodyData, preferences, behaviorSummary, chatHistory, candidates, demandIntent, null);
+        this(profile, bodyData, preferences, behaviorSummary, chatHistory, candidates, demandIntent, null, null);
     }
 
     public AssistantContext(
@@ -48,7 +63,8 @@ public record AssistantContext(
             List<MessageResponse> chatHistory,
             List<RecommendationCandidate> candidates
     ) {
-        this(profile, bodyData, preferences, behaviorSummary, chatHistory, candidates, DemandIntent.empty(null), null);
+        this(profile, bodyData, preferences, behaviorSummary, chatHistory, candidates,
+                DemandIntent.empty(null), null, null);
     }
 
     public AssistantContext(
@@ -58,6 +74,7 @@ public record AssistantContext(
             List<MessageResponse> chatHistory,
             List<RecommendationCandidate> candidates
     ) {
-        this(profile, bodyData, preferences, null, chatHistory, candidates, DemandIntent.empty(null), null);
+        this(profile, bodyData, preferences, null, chatHistory, candidates,
+                DemandIntent.empty(null), null, null);
     }
 }

@@ -1,8 +1,14 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.assistant;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client.RestPythonAssistantClient;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client.PythonAssistantStreamHandler;
-import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntent;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintOperator;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintOrigin;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintStrength;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.EffectiveDemand;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.IntentConstraint;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatHistoryItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatResponse;
@@ -50,7 +56,9 @@ class RestPythonAssistantClientTests {
                           "spu_id": 1001,
                           "sku_id": 2001,
                           "reason": "fits the requested commute style",
-                          "rank_score": 0.95
+                          "rank_score": 0.95,
+                          "matched_dimensions": [],
+                          "outfit_role": "TOP"
                         }
                       ],
                       "suggested_actions": []
@@ -109,20 +117,17 @@ class RestPythonAssistantClientTests {
                         7,
                         List.of("适用场景:通勤")
                 )),
-                new DemandIntent(
-                        DemandIntent.VERSION,
-                        DemandIntent.SOURCE_JAVA_RULE,
+                EffectiveDemand.v3(
                         "hello",
-                        "male",
-                        "外套",
-                        List.of("commute"),
-                        List.of("commute"),
-                        800,
+                        "recommendation",
+                        List.of("PRODUCT_RECOMMENDATION"),
+                        List.of(new IntentConstraint(
+                                "turn-1-season", "season", ConstraintOperator.EQUALS, List.of("SUMMER"),
+                                ConstraintStrength.HARD, ConstraintOrigin.USER_EXPLICIT, "turn-1", null,
+                                "ACTIVE_DEMAND", null
+                        )),
                         List.of(),
-                        List.of("targetGender", "category", "budgetMax"),
-                        List.of("scene", "style"),
-                        new BigDecimal("0.88"),
-                        List.of()
+                        null
                 ),
                 false
         );
@@ -132,6 +137,8 @@ class RestPythonAssistantClientTests {
         assertThat(response.requestId()).isEqualTo("req-client-test");
         assertThat(response.answer()).isEqualTo("ok");
         assertThat(response.intent()).isEqualTo("recommendation");
+        assertThat(response.productRefs()).singleElement().satisfies(ref ->
+                assertThat(ref.outfitRole()).isEqualTo("TOP"));
         assertThat(internalTokenHeader.get()).isEqualTo("test-internal-token");
         assertThat(response.productRefs())
                 .extracting("spuId", "skuId", "reason")
@@ -140,6 +147,19 @@ class RestPythonAssistantClientTests {
                         2001L,
                         "fits the requested commute style"
                 ));
+        JsonNode requestJson = new ObjectMapper().readTree(requestBody.get());
+        assertThat(requestJson.size()).isEqualTo(9);
+        assertThat(requestJson.has("demand_intent")).isTrue();
+        assertThat(requestJson.has("hardFilters")).isFalse();
+        assertThat(requestJson.path("demand_intent").size()).isEqualTo(6);
+        assertThat(requestJson.path("demand_intent").has("rawQuery")).isFalse();
+        JsonNode hardFilters = requestJson.path("demand_intent").path("hardFilters");
+        assertThat(hardFilters.size()).isEqualTo(1);
+        JsonNode seasonFilter = hardFilters.get(0);
+        assertThat(seasonFilter.path("field").asText()).isEqualTo("season");
+        assertThat(seasonFilter.path("values").size()).isEqualTo(1);
+        assertThat(seasonFilter.path("values").get(0).asText()).isEqualTo("SUMMER");
+        assertThat(seasonFilter.path("strength").asText()).isEqualTo("HARD");
         assertThat(requestBody.get())
                 .contains("\"request_id\":\"req-client-test\"")
                 .contains("\"session_id\":\"th_client_001\"")
@@ -154,9 +174,7 @@ class RestPythonAssistantClientTests {
                 .contains("\"budget_max\":800.0")
                 .contains("\"candidates\"")
                 .contains("\"demand_intent\"")
-                .contains("\"targetGender\":\"male\"")
                 .contains("\"category\":\"外套\"")
-                .contains("\"budgetMax\":800")
                 .contains("\"spu_id\":123")
                 .contains("\"sku_id\":456")
                 .contains("\"sale_price\":299.0")

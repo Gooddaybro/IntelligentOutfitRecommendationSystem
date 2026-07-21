@@ -7,6 +7,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntentPatch;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntentStateSnapshot;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DeterministicDemandParseResult;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.EffectiveDemand;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.LlmDemandParseRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PendingClarification;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatHistoryItem;
@@ -45,6 +46,7 @@ public class AssistantContextService {
     private final DemandIntentParseTrigger demandIntentParseTrigger = new DemandIntentParseTrigger();
     private final LlmDemandIntentValidator llmDemandIntentValidator = new LlmDemandIntentValidator();
     private final DemandIntentNormalizer demandIntentNormalizer = new DemandIntentNormalizer();
+    private final LegacyDemandIntentAdapter legacyDemandIntentAdapter = new LegacyDemandIntentAdapter();
 
     @Autowired
     public AssistantContextService(
@@ -103,6 +105,7 @@ public class AssistantContextService {
             requestId = "local-" + UUID.randomUUID();
         }
         DemandIntent demandIntent = initialIntent;
+        EffectiveDemand effectiveDemand = legacyDemandIntentAdapter.adapt(initialIntent);
         String clarificationQuestion = null;
         if (demandIntentStateService != null && demandIntentParseClient != null) {
             DemandIntentStateSnapshot current = demandIntentStateService.read(userId, threadId);
@@ -153,6 +156,7 @@ public class AssistantContextService {
                     userId, threadId, requestId, null, transitionAction, deterministicPatch, semanticPatch,
                     nextPending, initialIntent);
             demandIntent = DemandIntentStateSnapshot.toLegacyIntent(resolved.effectiveDemand());
+            effectiveDemand = resolved.effectiveDemand();
             if (resolved.pendingClarification() != null) {
                 clarificationQuestion = resolved.pendingClarification().question();
             }
@@ -160,6 +164,7 @@ public class AssistantContextService {
             DemandIntent persistedIntent = demandIntentStateService.apply(
                     userId, threadId, requestId, null, demandIntentResolver.resolvePatch(request), initialIntent);
             demandIntent = persistedIntent == null ? initialIntent : persistedIntent;
+            effectiveDemand = legacyDemandIntentAdapter.adapt(demandIntent);
         }
         // Java 只执行 DemandIntent 中的硬过滤；候选池内的排序解释仍由 Python AI 服务完成。
         String deterministicStyle = detailedStyle(request, demandIntent);
@@ -180,6 +185,7 @@ public class AssistantContextService {
                 history,
                 recommendationCandidateQueryService.findCandidates(query),
                 demandIntent,
+                effectiveDemand,
                 clarificationQuestion
         );
     }

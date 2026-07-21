@@ -64,6 +64,7 @@ public class AssistantService {
     private final Executor assistantStreamingExecutor;
     private final long streamTimeoutMs;
     private final RecommendationDecisionService recommendationDecisionService = new RecommendationDecisionService();
+    private final LegacyDemandIntentAdapter legacyDemandIntentAdapter = new LegacyDemandIntentAdapter();
 
     public AssistantService(
             ConversationApplicationService conversationService,
@@ -231,7 +232,9 @@ public class AssistantService {
                         context.behaviorSummary()
                 ),
                 toPythonCandidates(context.candidates()),
-                context.demandIntent(),
+                context.effectiveDemand() == null
+                        ? legacyDemandIntentAdapter.adapt(context.demandIntent())
+                        : context.effectiveDemand(),
                 false
         );
     }

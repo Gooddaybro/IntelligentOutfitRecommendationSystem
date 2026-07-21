@@ -15,14 +15,26 @@ public record PythonProductRef(
         @JsonProperty("sku_id") Long skuId,
         @JsonProperty("reason") String reason,
         @JsonProperty("rank_score") BigDecimal rankScore,
-        @JsonProperty("matched_dimensions") List<MatchedDimension> matchedDimensions
+        @JsonProperty("matched_dimensions") List<MatchedDimension> matchedDimensions,
+        @JsonProperty("outfit_role") String outfitRole
 ) {
     public PythonProductRef {
         matchedDimensions = matchedDimensions == null ? List.of() : List.copyOf(matchedDimensions);
     }
 
+    /** Creates a v2 response reference without an outfit role. */
+    public PythonProductRef(
+            Long spuId,
+            Long skuId,
+            String reason,
+            BigDecimal rankScore,
+            List<MatchedDimension> matchedDimensions
+    ) {
+        this(spuId, skuId, reason, rankScore, matchedDimensions, null);
+    }
+
     /** Creates a legacy response reference without v2 match evidence. */
     public PythonProductRef(Long spuId, Long skuId, String reason, BigDecimal rankScore) {
-        this(spuId, skuId, reason, rankScore, List.of());
+        this(spuId, skuId, reason, rankScore, List.of(), null);
     }
 }
