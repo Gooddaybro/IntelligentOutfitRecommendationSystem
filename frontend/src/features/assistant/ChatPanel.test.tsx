@@ -1,8 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../shared/api/client";
 import type { AssistantStreamEvent } from "../../shared/api/assistantStream";
 import { ChatPanel } from "./ChatPanel";
+import type { ChatPanelState } from "./ChatPanel";
 
 const streamAssistantChatMock = vi.hoisted(() => vi.fn());
 
@@ -96,5 +98,92 @@ describe("ChatPanel stale request protection", () => {
     expect(onRecommendations).toHaveBeenCalledTimes(1);
     expect(onRecommendations.mock.calls[0][0]).toEqual([secondCandidate]);
     expect(onRecommendations.mock.calls[0][1].recommendationStatus).toBe("PARTIAL_MATCH");
+  });
+
+  it("aborts on unmount and ignores a snapshot that resolves afterward", async () => {
+    const snapshot = deferred<Awaited<ReturnType<typeof api.recommendationSnapshot>>>();
+    const stream = deferred<void>();
+    vi.spyOn(api, "recommendationSnapshot").mockReturnValue(snapshot.promise);
+    let requestSignal: AbortSignal | undefined;
+    streamAssistantChatMock.mockImplementation(
+      (_request: unknown, onEvent: (event: AssistantStreamEvent) => void, signal?: AbortSignal) => {
+        requestSignal = signal;
+        void onEvent({
+          type: "done",
+          spuIds: [303],
+          recommendedItems: [{ spuId: 303, skuId: 3303 }],
+          recommendationId: "rec-unmounted",
+          recommendationStatus: "STRONG_MATCH"
+        });
+        return stream.promise;
+      }
+    );
+    const onRecommendations = vi.fn();
+    const view = render(<ChatPanel onRecommendations={onRecommendations} />);
+
+    fireEvent.change(screen.getByTestId("ai-chat-input"), { target: { value: "卸载中的请求" } });
+    fireEvent.click(screen.getByTestId("ai-chat-submit"));
+    await waitFor(() => expect(api.recommendationSnapshot).toHaveBeenCalledWith("rec-unmounted"));
+
+    view.unmount();
+    expect(requestSignal?.aborted).toBe(true);
+    snapshot.resolve([{
+      spuId: 303, skuId: 3303, spuCode: "UNMOUNTED", name: "卸载后商品", categoryName: "上装", salePrice: 99
+    }]);
+    await snapshot.promise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(onRecommendations).not.toHaveBeenCalled();
+  });
+
+  it("does not let an unmounted request finally clear a remounted request controller", async () => {
+    const oldStream = deferred<void>();
+    const newStream = deferred<void>();
+    streamAssistantChatMock
+      .mockReturnValueOnce(oldStream.promise)
+      .mockReturnValueOnce(newStream.promise);
+    const sharedAbortRef: ChatPanelState["abortRef"] = { current: null };
+    const setIsStreaming = vi.fn();
+
+    function ControlledPanel() {
+      const [draft, setDraft] = useState("");
+      const state: ChatPanelState = {
+        messages: [],
+        setMessages: vi.fn(),
+        draft,
+        setDraft,
+        filters: { category: "", style: "", season: "", budgetMax: "" },
+        setFilters: vi.fn(),
+        threadId: undefined,
+        setThreadId: vi.fn(),
+        isStreaming: false,
+        setIsStreaming,
+        error: "",
+        setError: vi.fn(),
+        abortRef: sharedAbortRef
+      };
+      return <ChatPanel state={state} onRecommendations={vi.fn()} />;
+    }
+
+    const first = render(<ControlledPanel />);
+    fireEvent.change(screen.getByTestId("ai-chat-input"), { target: { value: "旧请求" } });
+    fireEvent.click(screen.getByTestId("ai-chat-submit"));
+    await waitFor(() => expect(streamAssistantChatMock).toHaveBeenCalledTimes(1));
+    first.unmount();
+
+    render(<ControlledPanel />);
+    fireEvent.change(screen.getByTestId("ai-chat-input"), { target: { value: "新请求" } });
+    fireEvent.click(screen.getByTestId("ai-chat-submit"));
+    await waitFor(() => expect(streamAssistantChatMock).toHaveBeenCalledTimes(2));
+    const newController = sharedAbortRef.current;
+    expect(newController).not.toBeNull();
+    setIsStreaming.mockClear();
+
+    oldStream.resolve();
+    await oldStream.promise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(sharedAbortRef.current).toBe(newController);
+    expect(setIsStreaming).not.toHaveBeenCalledWith(false);
   });
 });

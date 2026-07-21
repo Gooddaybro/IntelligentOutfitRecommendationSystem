@@ -83,15 +83,24 @@ describe("AiShoppingPage", () => {
       <MemoryRouter>
         <AiShoppingPage
           chatState={chatState}
-          recommendations={[{
-            spuId: 11, skuId: 21, spuCode: "TOP-2", name: "真实局部匹配上装", categoryName: "T恤",
-            salePrice: 139, outfitRole: "TOP", recommendationReason: "上装匹配", rankScore: 1.2
-          }]}
+          recommendations={[
+            {
+              spuId: 11, skuId: 21, spuCode: "TOP-2", name: "真实局部匹配上装", categoryName: "T恤",
+              salePrice: 139, outfitRole: "TOP", recommendationReason: "上装匹配", rankScore: 1.2
+            },
+            {
+              spuId: 14, skuId: 24, spuCode: "OTHER-1", name: "真实其他单品", categoryName: "腰带",
+              salePrice: 89, outfitRole: "OTHER"
+            }
+          ]}
           setRecommendations={vi.fn()}
           recommendationMeta={{
             recommendationStatus: "PARTIAL_MATCH",
             resolvedIntent: { requestType: "OUTFIT_ADVICE" },
-            recommendedItems: [{ spuId: 11, skuId: 21, outfitRole: "TOP" }]
+            recommendedItems: [
+              { spuId: 11, skuId: 21, outfitRole: "TOP" },
+              { spuId: 14, skuId: 24, outfitRole: "OTHER" }
+            ]
           }}
           setRecommendationMeta={vi.fn()}
           recommendationsLoaded
@@ -106,9 +115,64 @@ describe("AiShoppingPage", () => {
 
     expect(screen.getByTestId("outfit-groups")).toBeVisible();
     expect(screen.getByText("真实局部匹配上装")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "其他" })).toBeVisible();
+    expect(screen.getByText("真实其他单品")).toBeVisible();
     const bottomGroup = screen.getByRole("region", { name: "下装" });
     expect(bottomGroup.querySelector('[data-testid="recommendation-card"]')).toBeNull();
     expect(bottomGroup.querySelector("p")).not.toBeNull();
+  });
+
+  it("shows an outfit result that contains only an OTHER role", () => {
+    render(
+      <MemoryRouter>
+        <AiShoppingPage
+          chatState={chatState}
+          recommendations={[{
+            spuId: 15, skuId: 25, spuCode: "OTHER-ONLY", name: "唯一其他单品", categoryName: "礼帽",
+            salePrice: 109, outfitRole: "OTHER"
+          }]}
+          setRecommendations={vi.fn()}
+          recommendationMeta={{
+            recommendationStatus: "STRONG_MATCH",
+            resolvedIntent: { requestType: "OUTFIT_ADVICE" },
+            recommendedItems: [{ spuId: 15, skuId: 25, outfitRole: "OTHER" }]
+          }}
+          setRecommendationMeta={vi.fn()}
+          recommendationsLoaded
+          setRecommendationsLoaded={vi.fn()}
+          isRecommendationsLoading={false}
+          setIsRecommendationsLoading={vi.fn()}
+          onAction={vi.fn()}
+          onRefreshCart={vi.fn().mockResolvedValue(undefined)}
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole("heading", { name: "其他" })).toBeVisible();
+    expect(screen.getByText("唯一其他单品")).toBeVisible();
+  });
+
+  it("announces recommendation updates and exposes failures as alerts", () => {
+    render(
+      <MemoryRouter>
+        <AiShoppingPage
+          chatState={chatState}
+          recommendations={[]}
+          setRecommendations={vi.fn()}
+          recommendationMeta={{ recommendationStatus: "FAILED" }}
+          setRecommendationMeta={vi.fn()}
+          recommendationsLoaded
+          setRecommendationsLoaded={vi.fn()}
+          isRecommendationsLoading={false}
+          setIsRecommendationsLoading={vi.fn()}
+          onAction={vi.fn()}
+          onRefreshCart={vi.fn().mockResolvedValue(undefined)}
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId("recommendation-panel")).toHaveAttribute("aria-live", "polite");
+    expect(screen.getByRole("alert")).toHaveTextContent("候选快照读取失败");
   });
 
   it("groups only real outfit products and leaves missing roles as text", () => {
@@ -141,6 +205,7 @@ describe("AiShoppingPage", () => {
     expect(screen.getByText("真实夏季上衣")).toBeVisible();
     expect(screen.getByRole("heading", { name: "鞋履" })).toBeVisible();
     expect(screen.getAllByText("本组暂无真实匹配商品，请参考对话中的文字搭配建议。").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("region", { name: "其他" })).not.toBeInTheDocument();
     expect(screen.queryByText(/占位鞋/)).not.toBeInTheDocument();
   });
 });

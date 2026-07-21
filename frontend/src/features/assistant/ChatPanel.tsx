@@ -1,5 +1,5 @@
 import { Send, SlidersHorizontal, Square } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../shared/api/client";
 import { streamAssistantChat } from "../../shared/api/assistantStream";
 import type { AssistantChatRequest, DemandIntent, RecommendationCandidate, RecommendationStatus, RecommendedItem } from "../../shared/api/types";
@@ -95,6 +95,12 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
   const error = state?.error ?? internalError;
   const setError = state?.setError ?? setInternalError;
   const abortRef = state?.abortRef ?? internalAbortRef;
+
+  useEffect(() => () => {
+    requestSequenceRef.current += 1;
+    abortRef.current?.abort();
+    abortRef.current = null;
+  }, [abortRef]);
 
   const requestFilters = useMemo<Partial<AssistantChatRequest>>(
     () => ({
@@ -222,7 +228,8 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
     setError("");
     setMessages((current) => [...current, { role: "user", content: message }, { role: "assistant", content: "" }]);
     setIsStreaming(true);
-    abortRef.current = new AbortController();
+    const localAbortController = new AbortController();
+    abortRef.current = localAbortController;
     const effectiveRequestFilters = requestFilters;
     const localRequestId = ++requestSequenceRef.current;
 
@@ -271,7 +278,7 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
             setError(event.message);
           }
         },
-        abortRef.current.signal
+        localAbortController.signal
       );
     } catch (streamError) {
       if (streamError instanceof Error && streamError.name === "AbortError") {
@@ -302,8 +309,10 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
         localRequestId
       );
     } finally {
-      setIsStreaming(false);
-      abortRef.current = null;
+      if (localRequestId === requestSequenceRef.current && abortRef.current === localAbortController) {
+        setIsStreaming(false);
+        abortRef.current = null;
+      }
     }
   }
 

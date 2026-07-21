@@ -118,7 +118,8 @@ export function AiShoppingPage({
     ["BOTTOM", "下装"],
     ["OUTER", "外搭"],
     ["SHOES", "鞋履"],
-    ["ACCESSORY", "配饰"]
+    ["ACCESSORY", "配饰"],
+    ["OTHER", "其他"]
   ] as const;
 
   return (
@@ -133,7 +134,7 @@ export function AiShoppingPage({
         />
       </section>
 
-      <section className="recommendation-stage" data-testid="recommendation-panel">
+      <section className="recommendation-stage" data-testid="recommendation-panel" aria-live="polite">
         <div className="section-heading">
           <div>
             <p className="eyebrow">CURATED / AI</p>
@@ -145,7 +146,7 @@ export function AiShoppingPage({
         {status === "PARTIAL_MATCH" && <p className="recommendation-notice">已展示部分真实匹配，其余搭配位置请参考文字建议。</p>}
         {status === "BROWSE_FALLBACK" && <p className="recommendation-notice">暂无强匹配，以下为同一候选快照中的可浏览商品，不作 AI 归因。</p>}
         {status === "EMPTY" && <p className="recommendation-notice">当前条件下没有候选商品，可以尝试放宽一个条件。</p>}
-        {status === "FAILED" && <p className="error-text">候选快照读取失败，请重试；未沿用上一次结果。</p>}
+        {status === "FAILED" && <p className="error-text" role="alert">候选快照读取失败，请重试；未沿用上一次结果。</p>}
         {isRecommendationsLoading && <div className="recommendation-stage__skeleton" aria-label="推荐商品加载中" />}
         {!isRecommendationsLoading && visibleRecommendations.length === 0 && (
           <p className="recommendation-stage__empty">告诉 AI 你的场景、风格或预算，专属推荐会在这里出现。</p>
@@ -154,6 +155,7 @@ export function AiShoppingPage({
           <div className="outfit-groups" data-testid="outfit-groups">
             {outfitGroups.map(([role, label]) => {
               const items = visibleRecommendations.filter((candidate) => candidate.outfitRole === role);
+              if (role === "OTHER" && items.length === 0) return null;
               return (
                 <section key={role} className="outfit-group" aria-label={label}>
                   <h3>{label}</h3>

@@ -5,9 +5,7 @@ import {
   initialChatMessages
 } from "./ChatPanel";
 import type { ChatFilters, ChatMessage, ChatPanelState, RecommendationResultMeta } from "./ChatPanel";
-import type { RecommendationCandidate, RecommendationStatus } from "../../shared/api/types";
-
-export type RecommendationUiStatus = "IDLE" | "LOADING" | RecommendationStatus;
+import type { RecommendationCandidate } from "../../shared/api/types";
 
 export type AssistantShoppingState = {
   messages: ChatMessage[];
@@ -20,8 +18,6 @@ export type AssistantShoppingState = {
   recommendationMeta?: RecommendationResultMeta;
   recommendationsLoaded: boolean;
   recommendationsLoading: boolean;
-  recommendationStatus: RecommendationUiStatus;
-  recommendationRequestId?: string;
 };
 
 type AssistantShoppingAction =
@@ -35,8 +31,6 @@ type AssistantShoppingAction =
   | { type: "setRecommendationMeta"; value: SetStateAction<RecommendationResultMeta | undefined> }
   | { type: "setRecommendationsLoaded"; value: SetStateAction<boolean> }
   | { type: "setRecommendationsLoading"; value: SetStateAction<boolean> }
-  | { type: "recommendationStarted"; requestId: string }
-  | { type: "recommendationCompleted"; requestId: string; status: RecommendationStatus }
   | { type: "reset" };
 
 export const initialAssistantShoppingState: AssistantShoppingState = {
@@ -49,9 +43,7 @@ export const initialAssistantShoppingState: AssistantShoppingState = {
   recommendations: [],
   recommendationMeta: undefined,
   recommendationsLoaded: false,
-  recommendationsLoading: false,
-  recommendationStatus: "IDLE",
-  recommendationRequestId: undefined
+  recommendationsLoading: false
 };
 
 function resolveStateAction<T>(value: SetStateAction<T>, current: T): T {
@@ -83,12 +75,6 @@ export function assistantShoppingReducer(
       return { ...state, recommendationsLoaded: resolveStateAction(action.value, state.recommendationsLoaded) };
     case "setRecommendationsLoading":
       return { ...state, recommendationsLoading: resolveStateAction(action.value, state.recommendationsLoading) };
-    case "recommendationStarted":
-      return { ...state, recommendationRequestId: action.requestId, recommendationStatus: "LOADING" };
-    case "recommendationCompleted":
-      return action.requestId === state.recommendationRequestId
-        ? { ...state, recommendationStatus: action.status }
-        : state;
     case "reset":
       return initialAssistantShoppingState;
   }
