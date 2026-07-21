@@ -9,12 +9,11 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.In
 
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 
 /**
  * Reports hard conflicts and uncommon explicit combinations without mutating effective demand.
- * Cross-turn scalar disagreements are marked as priority-resolved; same-turn disagreements remain unresolved.
+ * Cross-turn scalar disagreements are priority-resolved only when the caller identifies the winning current turn.
  */
 public class ConstraintConflictValidator {
 
@@ -28,6 +27,22 @@ public class ConstraintConflictValidator {
      * @return status plus the minimal affected-field diagnosis
      */
     public ConstraintConflictResult validate(EffectiveDemand demand) {
+        return validateInternal(demand, null);
+    }
+
+    /**
+     * Evaluates conflicts with an explicit current-turn identity, allowing a satisfiable current value set to win over
+     * incompatible historical scalar values. A blank or unmatched identity falls back to conservative validation.
+     *
+     * @param demand resolved effective demand
+     * @param currentTurnId identity of the turn whose explicit scalar constraints have priority
+     * @return status plus the minimal affected-field diagnosis
+     */
+    public ConstraintConflictResult validate(EffectiveDemand demand, String currentTurnId) {
+        return validateInternal(demand, currentTurnId);
+    }
+
+    private ConstraintConflictResult validateInternal(EffectiveDemand demand, String currentTurnId) {
         if (demand == null) {
             throw new IllegalArgumentException("effective demand is required");
         }
@@ -40,7 +55,7 @@ public class ConstraintConflictValidator {
             if (constraints.size() < 2) {
                 continue;
             }
-            ConflictKind conflictKind = classifyEqualsConflicts(constraints);
+            ConflictKind conflictKind = classifyEqualsConflicts(constraints, currentTurnId);
             if (conflictKind == ConflictKind.UNRESOLVED) {
                 unresolved.add(field);
             } else if (conflictKind == ConflictKind.CROSS_TURN) {
@@ -73,23 +88,29 @@ public class ConstraintConflictValidator {
         return summer && explicitWarm;
     }
 
-    private ConflictKind classifyEqualsConflicts(List<IntentConstraint> constraints) {
-        boolean crossTurnConflict = false;
-        for (int left = 0; left < constraints.size(); left++) {
-            for (int right = left + 1; right < constraints.size(); right++) {
-                IntentConstraint first = constraints.get(left);
-                IntentConstraint second = constraints.get(right);
-                if (first.values().stream().anyMatch(second.values()::contains)) {
-                    continue;
-                }
-                if (isBlank(first.originTurnId()) || isBlank(second.originTurnId())
-                        || Objects.equals(first.originTurnId(), second.originTurnId())) {
-                    return ConflictKind.UNRESOLVED;
-                }
-                crossTurnConflict = true;
-            }
+    private ConflictKind classifyEqualsConflicts(
+            List<IntentConstraint> constraints,
+            String currentTurnId
+    ) {
+        if (!intersection(constraints).isEmpty()) {
+            return ConflictKind.NONE;
         }
-        return crossTurnConflict ? ConflictKind.CROSS_TURN : ConflictKind.NONE;
+        if (isBlank(currentTurnId)) {
+            return ConflictKind.UNRESOLVED;
+        }
+        List<IntentConstraint> currentConstraints = constraints.stream()
+                .filter(item -> currentTurnId.equals(item.originTurnId()))
+                .toList();
+        if (currentConstraints.isEmpty() || intersection(currentConstraints).isEmpty()) {
+            return ConflictKind.UNRESOLVED;
+        }
+        return ConflictKind.CROSS_TURN;
+    }
+
+    private Set<String> intersection(List<IntentConstraint> constraints) {
+        Set<String> common = new LinkedHashSet<>(constraints.getFirst().values());
+        constraints.stream().skip(1).forEach(item -> common.retainAll(item.values()));
+        return common;
     }
 
     private boolean isBlank(String value) {

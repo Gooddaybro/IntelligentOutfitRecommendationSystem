@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class IntentConstraintLifecycleTests {
 
@@ -169,8 +170,10 @@ class IntentConstraintLifecycleTests {
         assertThat(validator.validate(sameTurnConflict).status())
                 .isEqualTo(ConstraintConflictStatus.UNRESOLVED_HARD_CONFLICT);
         assertThat(validator.validate(sameTurnConflict).conflictingFields()).containsExactly("season");
-        assertThat(validator.validate(crossTurnConflict).status())
+        assertThat(validator.validate(crossTurnConflict, "turn-4").status())
                 .isEqualTo(ConstraintConflictStatus.RESOLVED_BY_PRIORITY);
+        assertThat(validator.validate(crossTurnConflict).status())
+                .isEqualTo(ConstraintConflictStatus.UNRESOLVED_HARD_CONFLICT);
     }
 
     @Test
@@ -247,6 +250,64 @@ class IntentConstraintLifecycleTests {
                 .containsExactly("targetGender", "season");
     }
 
+    @Test
+    void sameTurnEqualsConstraintsRequireANonEmptyCumulativeIntersection() {
+        EffectiveDemand pairwiseButNotCollectivelySatisfiable = demand(List.of(
+                hardValues("c-category-a", "category", List.of("COAT", "JACKET"), "turn-11"),
+                hardValues("c-category-b", "category", List.of("JACKET", "SHIRT"), "turn-11"),
+                hardValues("c-category-c", "category", List.of("COAT", "SHIRT"), "turn-11")), List.of());
+
+        assertThat(validator.validate(pairwiseButNotCollectivelySatisfiable, "turn-11").status())
+                .isEqualTo(ConstraintConflictStatus.UNRESOLVED_HARD_CONFLICT);
+    }
+
+    @Test
+    void explicitRemovalSubtractsValuesAndPreservesSurvivingConstraintProvenance() {
+        IntentConstraint historical = softValues(
+                "c-attributes-turn-1", "attributes", List.of("HOODED", "WATERPROOF"),
+                ConstraintOrigin.USER_EXPLICIT, "turn-1");
+        IntentConstraint removeHooded = softValues(
+                "remove-hooded", "attributes", List.of("HOODED"),
+                ConstraintOrigin.USER_EXPLICIT, "turn-2");
+        EffectiveDemand partiallyRemoved = merger.merge(demand(List.of(), List.of(historical)),
+                turn("turn-2", Map.of(), List.of(), List.of(removeHooded), Set.of()));
+        IntentConstraint removeRemaining = softValues(
+                "remove-waterproof", "attributes", List.of("WATERPROOF"),
+                ConstraintOrigin.USER_EXPLICIT, "turn-3");
+
+        EffectiveDemand fullyRemoved = merger.merge(partiallyRemoved,
+                turn("turn-3", Map.of(), List.of(), List.of(removeRemaining), Set.of()));
+
+        assertThat(partiallyRemoved.constraints("attributes")).singleElement().satisfies(item -> {
+            assertThat(item.values()).containsExactly("WATERPROOF");
+            assertThat(item.id()).isEqualTo(historical.id());
+            assertThat(item.originTurnId()).isEqualTo(historical.originTurnId());
+        });
+        assertThat(fullyRemoved.constraints("attributes")).isEmpty();
+    }
+
+    @Test
+    void resolverPrefersProfileOverEarlierDerivedSemanticDuplicate() {
+        IntentConstraint summer = hard("c-season-profile", "season", "SUMMER", "turn-12");
+        IntentConstraint derivedCooling = derived(
+                "c-derived-profile", "thermal", "COOLING", "turn-12", summer.id());
+        IntentConstraint profileCooling = softValues(
+                "c-profile-cooling", "thermal", List.of("COOLING"), ConstraintOrigin.PROFILE, "profile");
+
+        EffectiveDemand resolved = resolver.resolve(
+                demand(List.of(summer), List.of(derivedCooling, profileCooling)));
+
+        assertThat(resolved.constraints("thermal"))
+                .filteredOn(item -> item.values().contains("COOLING"))
+                .containsExactly(profileCooling);
+    }
+
+    @Test
+    void turnIntentRequiresANonBlankTurnIdentity() {
+        assertThatThrownBy(() -> turn(" ", Map.of(), List.of(), List.of(), Set.of()))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
     private List<String> values(EffectiveDemand demand, String field) {
         return demand.constraints(field).stream().flatMap(item -> item.values().stream()).toList();
     }
@@ -287,8 +348,18 @@ class IntentConstraintLifecycleTests {
     }
 
     private IntentConstraint soft(String id, String field, String value, String turnId) {
-        return new IntentConstraint(id, field, ConstraintOperator.CONTAINS, List.of(value),
-                ConstraintStrength.SOFT, ConstraintOrigin.USER_EXPLICIT,
+        return softValues(id, field, List.of(value), ConstraintOrigin.USER_EXPLICIT, turnId);
+    }
+
+    private IntentConstraint softValues(
+            String id,
+            String field,
+            List<String> values,
+            ConstraintOrigin origin,
+            String turnId
+    ) {
+        return new IntentConstraint(id, field, ConstraintOperator.CONTAINS, values,
+                ConstraintStrength.SOFT, origin,
                 turnId, null, "ACTIVE_DEMAND", null);
     }
 

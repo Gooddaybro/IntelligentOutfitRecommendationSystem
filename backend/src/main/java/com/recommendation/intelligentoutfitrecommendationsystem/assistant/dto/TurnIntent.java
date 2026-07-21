@@ -20,6 +20,9 @@ public record TurnIntent(
         SubjectMeasurements subjectMeasurements
 ) {
     public TurnIntent {
+        if (turnId == null || turnId.isBlank()) {
+            throw new IllegalArgumentException("turn id is required");
+        }
         rawQuery = rawQuery == null ? "" : rawQuery;
         scalarReplacements = scalarReplacements == null ? Map.of() : Map.copyOf(scalarReplacements);
         if (scalarReplacements.entrySet().stream()

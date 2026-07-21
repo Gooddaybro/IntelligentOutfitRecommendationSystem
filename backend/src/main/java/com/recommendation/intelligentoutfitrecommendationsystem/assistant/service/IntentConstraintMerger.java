@@ -8,6 +8,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.Tu
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -91,14 +92,33 @@ public class IntentConstraintMerger {
             List<IntentConstraint> soft,
             IntentConstraint removal
     ) {
-        hard.removeIf(item -> sameSemanticValue(item, removal));
-        soft.removeIf(item -> sameSemanticValue(item, removal));
+        subtractValues(hard, removal);
+        subtractValues(soft, removal);
     }
 
-    private boolean sameSemanticValue(IntentConstraint left, IntentConstraint right) {
-        return left.field().equals(right.field())
-                && left.operator() == right.operator()
-                && left.values().equals(right.values());
+    private void subtractValues(List<IntentConstraint> constraints, IntentConstraint removal) {
+        ListIterator<IntentConstraint> iterator = constraints.listIterator();
+        while (iterator.hasNext()) {
+            IntentConstraint existing = iterator.next();
+            if (!existing.field().equals(removal.field()) || existing.operator() != removal.operator()) {
+                continue;
+            }
+            List<String> remaining = existing.values().stream()
+                    .filter(value -> !removal.values().contains(value))
+                    .toList();
+            if (remaining.isEmpty()) {
+                iterator.remove();
+            } else if (remaining.size() != existing.values().size()) {
+                iterator.set(withValues(existing, remaining));
+            }
+        }
+    }
+
+    private IntentConstraint withValues(IntentConstraint constraint, List<String> values) {
+        return new IntentConstraint(
+                constraint.id(), constraint.field(), constraint.operator(), values,
+                constraint.strength(), constraint.origin(), constraint.originTurnId(),
+                constraint.derivedFromConstraintId(), constraint.scope(), constraint.weight());
     }
 
     private void addByStrength(
@@ -133,11 +153,15 @@ public class IntentConstraintMerger {
                     && Objects.equals(currentTurnId, constraint.originTurnId());
             return belongsToCurrentTurn ? 5 : 4;
         }
-        return switch (constraint.origin()) {
+        return sourceRank(constraint.origin());
+    }
+
+    static int sourceRank(ConstraintOrigin origin) {
+        return switch (origin) {
+            case USER_EXPLICIT -> 4;
             case PROFILE -> 3;
             case SYSTEM_DERIVED -> 2;
             case LEGACY_UNPROVENANCED -> 1;
-            case USER_EXPLICIT -> throw new IllegalStateException("explicit priority handled above");
         };
     }
 
