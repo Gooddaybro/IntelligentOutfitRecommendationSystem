@@ -110,6 +110,29 @@ class IntentConstraintLifecycleTests {
     }
 
     @Test
+    void semanticDeduplicationIgnoresValueOrderWithoutCollidingCommaContainingValues() {
+        IntentConstraint historical = softValues(
+                "c-scene-history", "scene", List.of("COMMUTE", "TRAVEL"),
+                ConstraintOrigin.USER_EXPLICIT, "turn-1");
+        IntentConstraint currentReordered = softValues(
+                "c-scene-current", "scene", List.of("TRAVEL", "COMMUTE"),
+                ConstraintOrigin.USER_EXPLICIT, "turn-2");
+        IntentConstraint commaValue = softValues(
+                "c-attribute-comma", "attributes", List.of("A, B"),
+                ConstraintOrigin.USER_EXPLICIT, "turn-1");
+        IntentConstraint twoValues = softValues(
+                "c-attribute-two", "attributes", List.of("A", "B"),
+                ConstraintOrigin.USER_EXPLICIT, "turn-2");
+        EffectiveDemand previous = demand(List.of(), List.of(historical, commaValue));
+
+        EffectiveDemand merged = merger.merge(previous,
+                turn("turn-2", Map.of(), List.of(currentReordered, twoValues), List.of(), Set.of()));
+
+        assertThat(merged.constraints("scene")).containsExactly(currentReordered);
+        assertThat(merged.constraints("attributes")).containsExactly(commaValue, twoValues);
+    }
+
+    @Test
     void hardExplicitSummerWarmthIsAnUncommonValidCombination() {
         EffectiveDemand input = demand(List.of(
                 hard("c-season-turn-5", "season", "SUMMER", "turn-5"),
@@ -257,8 +280,24 @@ class IntentConstraintLifecycleTests {
                 hardValues("c-category-b", "category", List.of("JACKET", "SHIRT"), "turn-11"),
                 hardValues("c-category-c", "category", List.of("COAT", "SHIRT"), "turn-11")), List.of());
 
-        assertThat(validator.validate(pairwiseButNotCollectivelySatisfiable, "turn-11").status())
+        var result = validator.validate(pairwiseButNotCollectivelySatisfiable, "turn-11");
+
+        assertThat(result.status())
                 .isEqualTo(ConstraintConflictStatus.UNRESOLVED_HARD_CONFLICT);
+        assertThat(result.reason()).isEqualTo("current-turn hard scalar values have no common value");
+    }
+
+    @Test
+    void unmatchedCurrentTurnExplainsWhyPriorityCannotBeTrusted() {
+        EffectiveDemand crossTurnConflict = demand(List.of(
+                hard("c-season-old", "season", "WINTER", "turn-old"),
+                hard("c-season-new", "season", "SUMMER", "turn-new")), List.of());
+
+        var result = validator.validate(crossTurnConflict, "turn-missing");
+
+        assertThat(result.status()).isEqualTo(ConstraintConflictStatus.UNRESOLVED_HARD_CONFLICT);
+        assertThat(result.reason())
+                .isEqualTo("current turn is missing or does not identify a trustworthy priority winner");
     }
 
     @Test

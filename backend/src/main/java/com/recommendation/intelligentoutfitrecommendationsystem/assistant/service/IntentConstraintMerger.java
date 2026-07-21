@@ -1,5 +1,6 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.assistant.service;
 
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintOperator;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintOrigin;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.EffectiveDemand;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.IntentConstraint;
@@ -133,7 +134,7 @@ public class IntentConstraintMerger {
     }
 
     private List<IntentConstraint> deduplicate(List<IntentConstraint> constraints, String currentTurnId) {
-        Map<String, IntentConstraint> unique = new LinkedHashMap<>();
+        Map<SemanticKey, IntentConstraint> unique = new LinkedHashMap<>();
         constraints.forEach(item -> unique.merge(semanticKey(item), item,
                 (existing, candidate) -> preferByPriority(existing, candidate, currentTurnId)));
         return List.copyOf(unique.values());
@@ -165,7 +166,14 @@ public class IntentConstraintMerger {
         };
     }
 
-    private String semanticKey(IntentConstraint constraint) {
-        return constraint.field() + "\u0000" + constraint.operator() + "\u0000" + constraint.values();
+    static SemanticKey semanticKey(IntentConstraint constraint) {
+        List<String> normalizedValues = constraint.values().stream().distinct().sorted().toList();
+        return new SemanticKey(constraint.field(), constraint.operator(), normalizedValues);
+    }
+
+    record SemanticKey(String field, ConstraintOperator operator, List<String> values) {
+        SemanticKey {
+            values = List.copyOf(values);
+        }
     }
 }

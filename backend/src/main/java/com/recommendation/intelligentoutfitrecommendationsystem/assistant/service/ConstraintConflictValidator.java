@@ -48,6 +48,7 @@ public class ConstraintConflictValidator {
         }
         Set<String> unresolved = new LinkedHashSet<>();
         Set<String> priorityResolved = new LinkedHashSet<>();
+        boolean currentTurnSetIsUnsatisfiable = false;
         for (String field : SCALAR_FIELDS) {
             List<IntentConstraint> constraints = demand.hardFilters().stream()
                     .filter(item -> item.field().equals(field) && item.operator() == ConstraintOperator.EQUALS)
@@ -56,15 +57,21 @@ public class ConstraintConflictValidator {
                 continue;
             }
             ConflictKind conflictKind = classifyEqualsConflicts(constraints, currentTurnId);
-            if (conflictKind == ConflictKind.UNRESOLVED) {
+            if (conflictKind == ConflictKind.UNRESOLVED_CURRENT_TURN) {
+                unresolved.add(field);
+                currentTurnSetIsUnsatisfiable = true;
+            } else if (conflictKind == ConflictKind.UNRESOLVED_NO_WINNER) {
                 unresolved.add(field);
             } else if (conflictKind == ConflictKind.CROSS_TURN) {
                 priorityResolved.add(field);
             }
         }
         if (!unresolved.isEmpty()) {
+            String reason = currentTurnSetIsUnsatisfiable
+                    ? "current-turn hard scalar values have no common value"
+                    : "current turn is missing or does not identify a trustworthy priority winner";
             return new ConstraintConflictResult(ConstraintConflictStatus.UNRESOLVED_HARD_CONFLICT,
-                    List.copyOf(unresolved), "same-turn hard scalar values disagree");
+                    List.copyOf(unresolved), reason);
         }
         if (!priorityResolved.isEmpty()) {
             return new ConstraintConflictResult(ConstraintConflictStatus.RESOLVED_BY_PRIORITY,
@@ -96,13 +103,16 @@ public class ConstraintConflictValidator {
             return ConflictKind.NONE;
         }
         if (isBlank(currentTurnId)) {
-            return ConflictKind.UNRESOLVED;
+            return ConflictKind.UNRESOLVED_NO_WINNER;
         }
         List<IntentConstraint> currentConstraints = constraints.stream()
                 .filter(item -> currentTurnId.equals(item.originTurnId()))
                 .toList();
-        if (currentConstraints.isEmpty() || intersection(currentConstraints).isEmpty()) {
-            return ConflictKind.UNRESOLVED;
+        if (currentConstraints.isEmpty()) {
+            return ConflictKind.UNRESOLVED_NO_WINNER;
+        }
+        if (intersection(currentConstraints).isEmpty()) {
+            return ConflictKind.UNRESOLVED_CURRENT_TURN;
         }
         return ConflictKind.CROSS_TURN;
     }
@@ -120,6 +130,7 @@ public class ConstraintConflictValidator {
     private enum ConflictKind {
         NONE,
         CROSS_TURN,
-        UNRESOLVED
+        UNRESOLVED_CURRENT_TURN,
+        UNRESOLVED_NO_WINNER
     }
 }
