@@ -49,7 +49,9 @@ public record EffectiveDemand(
                 .toList();
     }
 
-    /** Returns the first value for a field when the active snapshot contains one. */
+    /**
+     * Convenience lookup for scalar consumers; hard constraints take precedence and only the first value is returned.
+     */
     public Optional<String> value(String field) {
         return constraints(field).stream()
                 .flatMap(constraint -> constraint.values().stream())

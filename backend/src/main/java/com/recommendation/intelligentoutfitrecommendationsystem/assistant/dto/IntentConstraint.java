@@ -24,8 +24,18 @@ public record IntentConstraint(
         if (id == null || id.isBlank() || field == null || field.isBlank() || values.isEmpty()) {
             throw new IllegalArgumentException("constraint id, field and values are required");
         }
+        if (operator == null || strength == null || origin == null) {
+            throw new IllegalArgumentException("constraint operator, strength and origin are required");
+        }
         if (strength == ConstraintStrength.HARD && weight != null) {
             throw new IllegalArgumentException("hard constraints cannot carry ranking weight");
+        }
+        if (origin == ConstraintOrigin.SYSTEM_DERIVED
+                && (derivedFromConstraintId == null || derivedFromConstraintId.isBlank())) {
+            throw new IllegalArgumentException("derived constraints require a parent constraint id");
+        }
+        if (origin != ConstraintOrigin.SYSTEM_DERIVED && derivedFromConstraintId != null) {
+            throw new IllegalArgumentException("non-derived constraints cannot carry a parent constraint id");
         }
     }
 

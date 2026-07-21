@@ -22,6 +22,10 @@ public record TurnIntent(
     public TurnIntent {
         rawQuery = rawQuery == null ? "" : rawQuery;
         scalarReplacements = scalarReplacements == null ? Map.of() : Map.copyOf(scalarReplacements);
+        if (scalarReplacements.entrySet().stream()
+                .anyMatch(entry -> !entry.getKey().equals(entry.getValue().field()))) {
+            throw new IllegalArgumentException("scalar replacement keys must match constraint fields");
+        }
         explicitAdditions = explicitAdditions == null ? List.of() : List.copyOf(explicitAdditions);
         explicitRemovals = explicitRemovals == null ? List.of() : List.copyOf(explicitRemovals);
         clearFields = clearFields == null ? Set.of() : Set.copyOf(clearFields);
