@@ -99,9 +99,8 @@ class AdminControllerTests {
                 .andExpect(jsonPath("$.data.spuCode").value("TSHIRT_BASIC_001"))
                 .andExpect(jsonPath("$.data.status").value("OFF_SHELF"));
 
-        Integer eventCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM product_search_outbox WHERE spu_id = 1001", Integer.class);
-        org.assertj.core.api.Assertions.assertThat(eventCount).isEqualTo(1);
+        assertProductSearchEventCount(1001, 1);
+        assertAuditLogExists("CHANGE_PRODUCT_STATUS", "SPU", "1001");
 
         mockMvc.perform(get("/api/admin/products")
                         .with(jwt().jwt(token -> token.subject("1"))
@@ -140,6 +139,8 @@ class AdminControllerTests {
 
         long spuId = new com.fasterxml.jackson.databind.ObjectMapper()
                 .readTree(created).path("data").path("spuId").asLong();
+        assertProductSearchEventCount(spuId, 1);
+        assertAuditLogExists("CREATE_PRODUCT", "SPU", String.valueOf(spuId));
 
         String updateBody = """
                 {
@@ -164,9 +165,8 @@ class AdminControllerTests {
                 .andExpect(jsonPath("$.data.name").value("Admin Test Product Updated"))
                 .andExpect(jsonPath("$.data.status").value("ON_SALE"));
 
-        Integer eventCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM product_search_outbox WHERE spu_id = ?", Integer.class, spuId);
-        org.assertj.core.api.Assertions.assertThat(eventCount).isEqualTo(2);
+        assertProductSearchEventCount(spuId, 2);
+        assertAuditLogExists("UPDATE_PRODUCT", "SPU", String.valueOf(spuId));
     }
 
     @Test
@@ -177,8 +177,9 @@ class AdminControllerTests {
                 .andExpect(jsonPath("$.data[0].enabled").isBoolean())
                 .andExpect(jsonPath("$.data[0].productCount").isNumber());
 
-        int affectedProducts = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM product_spu WHERE category_id = 2", Integer.class);
+        java.util.List<Long> affectedSpuIds = jdbcTemplate.queryForList(
+                "SELECT id FROM product_spu WHERE category_id = 2", Long.class);
+        org.assertj.core.api.Assertions.assertThat(affectedSpuIds).isNotEmpty();
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/admin/categories/{id}", 2)
                         .with(adminJwt())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -188,9 +189,10 @@ class AdminControllerTests {
                 .andExpect(jsonPath("$.data.name").value("测试T恤"))
                 .andExpect(jsonPath("$.data.enabled").value(false));
 
+        affectedSpuIds.forEach(spuId -> assertProductSearchEventCount(spuId, 1));
+        assertAuditLogExists("DISABLE_CATEGORY", "CATEGORY", "2");
         Integer categoryEventCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM product_search_outbox", Integer.class);
-        org.assertj.core.api.Assertions.assertThat(categoryEventCount).isEqualTo(affectedProducts);
 
         mockMvc.perform(get("/api/admin/inventory").with(adminJwt()))
                 .andExpect(status().isOk())
@@ -208,6 +210,8 @@ class AdminControllerTests {
                 .andExpect(jsonPath("$.data.lastAdjustment.beforeStock").value(6))
                 .andExpect(jsonPath("$.data.lastAdjustment.afterStock").value(15))
                 .andExpect(jsonPath("$.data.lastAdjustment.reason").value("manual count"));
+
+        assertAuditLogExists("ADJUST_STOCK", "SKU", "2001");
 
         // 库存不属于当前搜索文档，调整库存不应产生额外同步事件。
         Integer eventCountAfterInventory = jdbcTemplate.queryForObject(
@@ -233,11 +237,21 @@ class AdminControllerTests {
                 .andExpect(jsonPath("$.data.shipment.carrier").value("SF Express"))
                 .andExpect(jsonPath("$.data.availableActions[*]", org.hamcrest.Matchers.not(hasItem("SHIP"))));
 
+        assertAuditLogExists("SHIP_ORDER", "ORDER", "ORDDEMO9001PAID");
+
+        String nonPaidStatusBefore = jdbcTemplate.queryForObject(
+                "SELECT status FROM sales_order WHERE order_no = 'ORDDEMO9001UNPAID'", String.class);
+        org.assertj.core.api.Assertions.assertThat(nonPaidStatusBefore).isEqualTo("UNPAID");
+
         mockMvc.perform(post("/api/admin/orders/{orderNo}/ship", "ORDDEMO9001UNPAID")
                         .with(adminJwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"carrier\":\"SF Express\",\"trackingNo\":\"SF20260717002\"}"))
                 .andExpect(status().isBadRequest());
+
+        String nonPaidStatusAfter = jdbcTemplate.queryForObject(
+                "SELECT status FROM sales_order WHERE order_no = 'ORDDEMO9001UNPAID'", String.class);
+        org.assertj.core.api.Assertions.assertThat(nonPaidStatusAfter).isEqualTo(nonPaidStatusBefore);
 
         mockMvc.perform(get("/api/admin/users").with(adminJwt()))
                 .andExpect(status().isOk())
@@ -252,6 +266,8 @@ class AdminControllerTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.userId").value(9001))
                 .andExpect(jsonPath("$.data.status").value("DISABLED"));
+
+        assertAuditLogExists("DISABLE_USER", "USER", "9001");
     }
 
     @Test
@@ -281,6 +297,22 @@ class AdminControllerTests {
     private org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor adminJwt() {
         return jwt().jwt(token -> token.subject("1"))
                 .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"));
+    }
+
+    private void assertProductSearchEventCount(long spuId, int expectedCount) {
+        Integer eventCount = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM product_search_outbox
+                WHERE spu_id = ? AND event_type = 'PRODUCT_SEARCH_REINDEX_REQUESTED'
+                """, Integer.class, spuId);
+        org.assertj.core.api.Assertions.assertThat(eventCount).isEqualTo(expectedCount);
+    }
+
+    private void assertAuditLogExists(String action, String targetType, String targetId) {
+        Integer auditCount = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM admin_audit_log
+                WHERE action = ? AND target_type = ? AND target_id = ? AND result = 'SUCCESS'
+                """, Integer.class, action, targetType, targetId);
+        org.assertj.core.api.Assertions.assertThat(auditCount).isEqualTo(1);
     }
 
     private void safeUpdate(String sql) {
