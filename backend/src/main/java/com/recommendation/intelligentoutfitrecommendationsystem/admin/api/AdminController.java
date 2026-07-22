@@ -16,6 +16,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminU
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminUserStatusRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminAuditLogService;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminCatalogService;
+import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminUserService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.api.ApiResponse;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -35,12 +36,15 @@ import java.util.List;
 public class AdminController {
     private final AdminCatalogService adminCatalogService;
     private final AdminAuditLogService adminAuditLogService;
+    private final AdminUserService adminUserService;
 
     public AdminController(
             AdminCatalogService adminCatalogService,
-            AdminAuditLogService adminAuditLogService) {
+            AdminAuditLogService adminAuditLogService,
+            AdminUserService adminUserService) {
         this.adminCatalogService = adminCatalogService;
         this.adminAuditLogService = adminAuditLogService;
+        this.adminUserService = adminUserService;
     }
 
     @GetMapping("/overview")
@@ -115,7 +119,7 @@ public class AdminController {
 
     @GetMapping("/users")
     public ApiResponse<List<AdminUserResponse>> listUsers() {
-        return ApiResponse.ok(adminCatalogService.listUsers());
+        return ApiResponse.ok(adminUserService.listUsers());
     }
 
     @PostMapping("/users/{userId}/status")
@@ -123,7 +127,7 @@ public class AdminController {
             @PathVariable Long userId,
             @RequestBody AdminUserStatusRequest request
     ) {
-        return ApiResponse.ok(adminCatalogService.changeUserStatus(userId, request));
+        return ApiResponse.ok(adminUserService.changeUserStatus(userId, request));
     }
 
     @GetMapping("/analytics")

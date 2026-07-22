@@ -19,8 +19,6 @@ import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminS
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminShipmentResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminSkuResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminTrendPoint;
-import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminUserResponse;
-import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminUserStatusRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.mapper.AdminAuditMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.mapper.AdminMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.model.AdminAuditEntry;
@@ -276,28 +274,6 @@ public class AdminCatalogService {
     }
 
     @Transactional(readOnly = true)
-    public List<AdminUserResponse> listUsers() {
-        return jdbcTemplate.query(usersSql(null), this::mapUser);
-    }
-
-    @Transactional
-    public AdminUserResponse changeUserStatus(Long userId, AdminUserStatusRequest request) {
-        if (userId == null || userId <= 0) {
-            throw new BadRequestException("userId must be positive");
-        }
-        String dbStatus = toDbUserStatus(request == null ? null : request.status());
-        int updated = jdbcTemplate.update("UPDATE user_account SET status = ?, updated_at = CURRENT_TIMESTAMP(6) WHERE id = ?",
-                dbStatus, userId);
-        if (updated == 0) {
-            throw new ResourceNotFoundException("user not found");
-        }
-        AdminUserResponse user = findUser(userId);
-        insertAudit("disabled".equals(dbStatus) ? "DISABLE_USER" : "ENABLE_USER", "USER", String.valueOf(userId),
-                "SUCCESS", user.username());
-        return user;
-    }
-
-    @Transactional(readOnly = true)
     public AdminAnalyticsResponse getAnalytics() {
         return new AdminAnalyticsResponse(
                 RANGE_LABEL,
@@ -441,10 +417,6 @@ public class AdminCatalogService {
         return singleOrNotFound(jdbcTemplate.query(orderSql("o.order_no = ?"), this::mapOrder, orderNo), "order not found");
     }
 
-    private AdminUserResponse findUser(Long userId) {
-        return singleOrNotFound(jdbcTemplate.query(usersSql("u.id = ?"), this::mapUser, userId), "user not found");
-    }
-
     private String inventorySql(String condition) {
         String whereClause = condition == null ? "" : " WHERE " + condition;
         return """
@@ -483,23 +455,6 @@ public class AdminCatalogService {
                 """ + whereClause + """
                 GROUP BY o.id, o.order_no, u.username, o.status, o.total_amount, o.created_at, os.carrier, os.tracking_no
                 ORDER BY o.created_at DESC, o.id DESC
-                """;
-    }
-
-    private String usersSql(String condition) {
-        String whereClause = condition == null ? "" : " WHERE " + condition;
-        return """
-                SELECT u.id AS user_id, u.username, up.nickname, u.email, u.phone,
-                       CASE WHEN u.status = 'disabled' THEN 'DISABLED' ELSE 'ACTIVE' END AS status,
-                       u.created_at AS registered_at,
-                       COUNT(o.id) AS order_count,
-                       COALESCE(SUM(CASE WHEN o.status IN ('PAID', 'SHIPPED', 'COMPLETED') THEN o.total_amount ELSE 0 END), 0) AS paid_amount
-                FROM user_account u
-                LEFT JOIN user_profile up ON up.user_id = u.id
-                LEFT JOIN sales_order o ON o.user_id = u.id
-                """ + whereClause + """
-                GROUP BY u.id, u.username, up.nickname, u.email, u.phone, u.status, u.created_at
-                ORDER BY u.id ASC
                 """;
     }
 
@@ -555,20 +510,6 @@ public class AdminCatalogService {
                 availableActions(status),
                 null,
                 shipment
-        );
-    }
-
-    private AdminUserResponse mapUser(ResultSet resultSet, int rowNum) throws SQLException {
-        return new AdminUserResponse(
-                resultSet.getLong("user_id"),
-                resultSet.getString("username"),
-                resultSet.getString("nickname"),
-                resultSet.getString("email"),
-                resultSet.getString("phone"),
-                resultSet.getString("status"),
-                resultSet.getTimestamp("registered_at").toLocalDateTime(),
-                resultSet.getLong("order_count"),
-                resultSet.getBigDecimal("paid_amount")
         );
     }
 
@@ -703,17 +644,6 @@ public class AdminCatalogService {
 
     private String toSkuStatus(String dbProductStatus) {
         return "on_sale".equals(dbProductStatus) ? "on_sale" : "off_sale";
-    }
-
-    private String toDbUserStatus(String status) {
-        if (status == null || status.isBlank()) {
-            throw new BadRequestException("status is required");
-        }
-        return switch (status.trim().toUpperCase(Locale.ROOT)) {
-            case "ACTIVE" -> "active";
-            case "DISABLED" -> "disabled";
-            default -> throw new BadRequestException("unsupported user status");
-        };
     }
 
     private String normalizeRequiredText(String value, String field) {
