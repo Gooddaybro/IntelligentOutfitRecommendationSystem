@@ -92,7 +92,7 @@ frontend/src/pages/AiShoppingPage.tsx
 - Create: `backend/src/main/java/com/recommendation/intelligentoutfitrecommendationsystem/assistant/dto/EffectiveDemand.java`
 - Test: `backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/assistant/IntentConstraintTests.java`
 
-- [ ] **Step 1: Read the Java comment policy before adding types**
+- [x] **Step 1: Read the Java comment policy before adding types**
 
 Run from `JAVA_REPO`:
 
@@ -102,7 +102,7 @@ Get-Content -Raw -Encoding utf8 docs/commenting-guidelines.md
 
 Expected: policy requires responsibility/boundary Javadoc on every new production type.
 
-- [ ] **Step 2: Write the failing value-object tests**
+- [x] **Step 2: Write the failing value-object tests**
 
 Create `IntentConstraintTests.java` with these assertions:
 
@@ -133,7 +133,7 @@ void effectiveDemandSeparatesHardAndSoftConstraints() {
 
 Include private factories using IDs `c-season-turn-4` and `c-style-turn-4` so later tests reuse the same canonical values.
 
-- [ ] **Step 3: Run the focused test and confirm RED**
+- [x] **Step 3: Run the focused test and confirm RED**
 
 Run:
 
@@ -144,7 +144,7 @@ cd backend
 
 Expected: compilation fails because the new types do not exist.
 
-- [ ] **Step 4: Implement the minimal immutable types**
+- [x] **Step 4: Implement the minimal immutable types**
 
 Use these exact enum values:
 
@@ -187,13 +187,13 @@ public record IntentConstraint(
 
 `TurnIntent` must contain `turnId`, `rawQuery`, scalar replacements, explicit additions, explicit removals, clear fields, request type, capabilities and measurements. `EffectiveDemand` must expose `VERSION = "demand-intent-v3"`, `hardFilters`, `softPreferences`, `subjectMeasurements`, and helper lookups by field.
 
-- [ ] **Step 5: Run the focused test and confirm GREEN**
+- [x] **Step 5: Run the focused test and confirm GREEN**
 
 Run the same Maven command.
 
 Expected: `Tests run: 2, Failures: 0, Errors: 0`.
 
-- [ ] **Step 6: Commit the value-object seam**
+- [x] **Step 6: Commit the value-object seam**
 
 ```powershell
 git add backend/src/main/java/com/recommendation/intelligentoutfitrecommendationsystem/assistant/dto backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/assistant/IntentConstraintTests.java
@@ -210,7 +210,7 @@ git commit -m "重构：增加带来源的意图约束模型"
 - Create: `backend/src/main/java/com/recommendation/intelligentoutfitrecommendationsystem/assistant/service/ConstraintConflictValidator.java`
 - Test: `backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/assistant/IntentConstraintLifecycleTests.java`
 
-- [ ] **Step 1: Write failing lifecycle invariant tests**
+- [x] **Step 1: Write failing lifecycle invariant tests**
 
 Add tests covering all four invariants:
 
@@ -252,7 +252,7 @@ void currentExplicitScalarWinsOverHistoricalExplicitScalar() { /* assert FEMALE 
 void mergeDoesNotApplyOneUnionRuleToEveryListField() { /* style REPLACE, scene APPEND, explicit REMOVE */ }
 ```
 
-- [ ] **Step 2: Run the test and confirm RED**
+- [x] **Step 2: Run the test and confirm RED**
 
 ```powershell
 cd backend
@@ -261,7 +261,7 @@ cd backend
 
 Expected: compilation fails because lifecycle modules do not exist.
 
-- [ ] **Step 3: Implement deterministic merge policies**
+- [x] **Step 3: Implement deterministic merge policies**
 
 In `IntentConstraintMerger`, define the policies locally and explicitly:
 
@@ -273,7 +273,7 @@ private static final Set<String> APPEND_LIST_FIELDS = Set.of("scene", "attribute
 
 Apply removals before additions. Replace a scalar only when the current turn supplies it. Never create derived values here.
 
-- [ ] **Step 4: Implement parent-linked derived constraints**
+- [x] **Step 4: Implement parent-linked derived constraints**
 
 In `DerivedConstraintResolver`:
 
@@ -296,7 +296,7 @@ SUMMER → materialFeature=BREATHABLE, thickness=LIGHTWEIGHT, thermal=COOLING
 
 All are `SOFT + SYSTEM_DERIVED` and reference the season constraint ID.
 
-- [ ] **Step 5: Implement conflict reporting without destructive cleanup**
+- [x] **Step 5: Implement conflict reporting without destructive cleanup**
 
 Use exact statuses:
 
@@ -311,7 +311,7 @@ public enum ConstraintConflictStatus {
 
 Return `VALID_UNCOMMON_COMBINATION` for explicit `SUMMER + WARM`. Return unresolved only when two current-turn HARD values for the same scalar survive validation.
 
-- [ ] **Step 6: Run lifecycle tests and the existing merger suite**
+- [x] **Step 6: Run lifecycle tests and the existing merger suite**
 
 ```powershell
 .\mvnw.cmd -Dtest=IntentConstraintLifecycleTests,DemandIntentMergerTests test
@@ -319,7 +319,7 @@ Return `VALID_UNCOMMON_COMBINATION` for explicit `SUMMER + WARM`. Return unresol
 
 Expected: both suites pass; no existing current-turn patch behavior regresses.
 
-- [ ] **Step 7: Commit lifecycle behavior**
+- [x] **Step 7: Commit lifecycle behavior**
 
 ```powershell
 git add backend/src/main/java/com/recommendation/intelligentoutfitrecommendationsystem/assistant backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/assistant/IntentConstraintLifecycleTests.java
@@ -337,7 +337,7 @@ git commit -m "功能：实现意图派生约束生命周期"
 - Test: `backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/assistant/DemandIntentStateServiceTests.java`
 - Test: `backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/assistant/AssistantContextServiceTests.java`
 
-- [ ] **Step 1: Add the failing multi-turn regression**
+- [x] **Step 1: Add the failing multi-turn regression**
 
 Add a test that applies these messages to one state service:
 
@@ -362,7 +362,7 @@ assertThat(result.softPreferences()).noneMatch(item ->
 
 Also add a legacy JSON test loading v2 `attributes:["保暖"]`; assert it becomes `LEGACY_UNPROVENANCED + SOFT` and expires after an explicit summer turn.
 
-- [ ] **Step 2: Run tests and confirm RED**
+- [x] **Step 2: Run tests and confirm RED**
 
 ```powershell
 cd backend
@@ -371,7 +371,7 @@ cd backend
 
 Expected: the original merger retains `保暖`, so the regression fails.
 
-- [ ] **Step 3: Implement the current-turn adapter**
+- [x] **Step 3: Implement the current-turn adapter**
 
 `TurnIntentAdapter` converts `DemandIntentPatch` into explicit operations. It must not copy fields from the previous effective state:
 
@@ -390,11 +390,11 @@ public TurnIntent adapt(String turnId, DemandIntentPatch patch) {
 }
 ```
 
-- [ ] **Step 4: Implement the legacy adapter**
+- [x] **Step 4: Implement the legacy adapter**
 
 Convert v2 scalar hard values to constraints with their persisted source when known. Convert v2 `scene/style/fitPreferences/attributes` to `LEGACY_UNPROVENANCED + SOFT`. Do not infer `USER_EXPLICIT` from presence alone.
 
-- [ ] **Step 5: Integrate the ordered lifecycle in state service**
+- [x] **Step 5: Integrate the ordered lifecycle in state service**
 
 The only state transition path must be:
 
@@ -408,11 +408,11 @@ return persist(resolved, pendingClarification, conflict);
 
 Add `ConstraintConflictResult` as a separate field on `DemandIntentStateSnapshot`; do not mix diagnostic state into `EffectiveDemand`. Keep the database columns unchanged: `effective_intent_json` carries the v3 demand, while the snapshot JSON carries the conflict result used by later decision logic.
 
-- [ ] **Step 6: Run focused state/context tests**
+- [x] **Step 6: Run focused state/context tests**
 
 Expected: multi-turn regression and legacy migration tests pass.
 
-- [ ] **Step 7: Commit state integration**
+- [x] **Step 7: Commit state integration**
 
 ```powershell
 git add backend/src/main/java/com/recommendation/intelligentoutfitrecommendationsystem/assistant backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/assistant
@@ -429,7 +429,7 @@ git commit -m "修复：阻止多轮派生条件污染后续需求"
 - Modify: `backend/src/main/java/com/recommendation/intelligentoutfitrecommendationsystem/assistant/dto/MatchedDimension.java`
 - Test: `backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/assistant/RestPythonAssistantClientTests.java`
 
-- [ ] **Step 1: Extend contract assertions before the field list**
+- [x] **Step 1: Extend contract assertions before the field list**
 
 Assert the shared field list includes:
 
@@ -450,11 +450,11 @@ cd backend
 
 Expected: FAIL because the shared JSON is still v2-shaped.
 
-- [ ] **Step 2: Update the shared field list atomically**
+- [x] **Step 2: Update the shared field list atomically**
 
 Edit `v1.fields.json` in `CONTRACT_REPO`. Keep the outer request field `demand_intent`; replace its v3 nested field set rather than adding duplicate top-level request fields. Add `intent_constraint` and `outfit_role`.
 
-- [ ] **Step 3: Serialize EffectiveDemand to Python**
+- [x] **Step 3: Serialize EffectiveDemand to Python**
 
 Change `PythonChatRequest.demandIntent` to `EffectiveDemand`. Extend `PythonProductRef` with:
 
@@ -464,7 +464,7 @@ Change `PythonChatRequest.demandIntent` to `EffectiveDemand`. Extend `PythonProd
 
 Keep an overload without `outfitRole` for existing Java tests during the compatibility window.
 
-- [ ] **Step 4: Add exact JSON serialization assertions**
+- [x] **Step 4: Add exact JSON serialization assertions**
 
 Assert the client request contains:
 
@@ -474,7 +474,7 @@ Assert the client request contains:
 
 and that response JSON reads `"outfit_role":"TOP"`.
 
-- [ ] **Step 5: Run contract and client tests**
+- [x] **Step 5: Run contract and client tests**
 
 ```powershell
 .\mvnw.cmd -Dtest=SharedJavaPythonContractTests,RestPythonAssistantClientTests,PythonSseEventParserTests test
@@ -482,7 +482,7 @@ and that response JSON reads `"outfit_role":"TOP"`.
 
 Expected: all pass.
 
-- [ ] **Step 6: Commit each repository separately**
+- [x] **Step 6: Commit each repository separately**
 
 From `CONTRACT_REPO`:
 
@@ -506,7 +506,7 @@ git commit -m "功能：接入多轮意图 v3 契约"
 - Modify: `backend/src/main/java/com/recommendation/intelligentoutfitrecommendationsystem/product/dto/RecommendationCandidateQuery.java`
 - Test: `backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/assistant/AssistantContextServiceTests.java`
 
-- [ ] **Step 1: Add a failing query-boundary test**
+- [x] **Step 1: Add a failing query-boundary test**
 
 For the final effective constraints `FEMALE + SUMMER + CASUAL`, capture the `RecommendationCandidateQuery` and assert:
 
@@ -518,11 +518,11 @@ assertThat(query.getStyle()).isNull();
 
 The natural-language `CASUAL` preference must be sent to Python, not converted into a Java hard SQL filter. Add a separate existing-filter test showing a user-selected UI style filter remains exact.
 
-- [ ] **Step 2: Run the context tests and confirm RED**
+- [x] **Step 2: Run the context tests and confirm RED**
 
 Expected: current `detailedStyle` turns parsed style into a hard query filter.
 
-- [ ] **Step 3: Implement typed effective-demand lookups**
+- [x] **Step 3: Implement typed effective-demand lookups**
 
 Construct the query only from HARD constraints:
 
@@ -539,7 +539,7 @@ RecommendationCandidateQuery query = new RecommendationCandidateQuery(
 
 Delete the raw-query season fallback once all v3 paths are covered.
 
-- [ ] **Step 4: Run context and product mapper tests**
+- [x] **Step 4: Run context and product mapper tests**
 
 ```powershell
 cd backend
@@ -548,7 +548,7 @@ cd backend
 
 Expected: all pass and SQL behavior remains unchanged for explicit filters.
 
-- [ ] **Step 5: Commit the Java hard-filter boundary**
+- [x] **Step 5: Commit the Java hard-filter boundary**
 
 ```powershell
 git add backend/src/main/java/com/recommendation/intelligentoutfitrecommendationsystem/assistant backend/src/main/java/com/recommendation/intelligentoutfitrecommendationsystem/product backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/assistant
@@ -563,7 +563,7 @@ git commit -m "重构：仅从硬约束构建推荐候选查询"
 - Test: `tests/test_recommendation_service.py`
 - Test: `tests/test_api.py`
 
-- [ ] **Step 1: Add the failing Python regression tests**
+- [x] **Step 1: Add the failing Python regression tests**
 
 Add exact tests:
 
@@ -587,7 +587,7 @@ def test_only_hard_constraint_can_exclude_candidate(self):
     # HARD season=WINTER excludes a summer-only candidate.
 ```
 
-- [ ] **Step 2: Run and confirm RED**
+- [x] **Step 2: Run and confirm RED**
 
 ```powershell
 python -m pytest tests/test_recommendation_service.py -q
@@ -595,7 +595,7 @@ python -m pytest tests/test_recommendation_service.py -q
 
 Expected: the first test returns zero refs because `is_winter_warm_query` hard-rejects the candidate.
 
-- [ ] **Step 3: Add Pydantic v3 constraint schemas**
+- [x] **Step 3: Add Pydantic v3 constraint schemas**
 
 Implement:
 
@@ -615,7 +615,7 @@ class IntentConstraint(BaseModel):
 
 Update demand schema to accept v3 plus a temporary v2 compatibility branch.
 
-- [ ] **Step 4: Replace semantic re-parsing with contract lookup**
+- [x] **Step 4: Replace semantic re-parsing with contract lookup**
 
 Remove `preferences_from_demand_intent` behavior that maps `保暖` back to winter. Add helpers:
 
@@ -627,7 +627,7 @@ def preference_values(demand_intent, field): ...
 
 Hard constraints may eliminate. Soft preferences only add or subtract ranking weight and may affect evidence/selection, but the candidate remains in `candidate_scores` and is never marked as a hard rejection.
 
-- [ ] **Step 5: Return rejection reason counts**
+- [x] **Step 5: Return rejection reason counts**
 
 Return this stable shape from `build_product_rerank_result`:
 
@@ -640,7 +640,7 @@ Return this stable shape from `build_product_rerank_result`:
 }
 ```
 
-- [ ] **Step 6: Run Python recommendation and API tests**
+- [x] **Step 6: Run Python recommendation and API tests**
 
 ```powershell
 python -m pytest tests/test_recommendation_service.py tests/test_api.py -q
@@ -648,7 +648,7 @@ python -m pytest tests/test_recommendation_service.py tests/test_api.py -q
 
 Expected: all tests pass, including the summer-with-explicit-warmth case.
 
-- [ ] **Step 7: Commit Python contract consumption**
+- [x] **Step 7: Commit Python contract consumption**
 
 ```powershell
 git add clothing_assistant/api/schemas.py clothing_assistant/application/recommendation_service.py tests/test_recommendation_service.py tests/test_api.py
@@ -665,7 +665,7 @@ git commit -m "fix: enforce hard and soft recommendation constraints"
 - Test: `tests/test_chat_stream.py`
 - Test: `tests/test_answer_service.py`
 
-- [ ] **Step 1: Write failing role and parity tests**
+- [x] **Step 1: Write failing role and parity tests**
 
 Assert a shirt returns `outfit_role="TOP"`, shorts return `BOTTOM`, and the same request produces identical `product_refs` in `/chat` and the final stream event.
 
@@ -674,7 +674,7 @@ self.assertEqual(result["product_refs"][0]["outfit_role"], "TOP")
 self.assertEqual(sync_result["product_refs"], stream_done["product_refs"])
 ```
 
-- [ ] **Step 2: Run tests and confirm RED**
+- [x] **Step 2: Run tests and confirm RED**
 
 ```powershell
 python -m pytest tests/test_recommendation_service.py tests/test_chat_stream.py tests/test_answer_service.py -q
@@ -682,7 +682,7 @@ python -m pytest tests/test_recommendation_service.py tests/test_chat_stream.py 
 
 Expected: `outfit_role` is missing.
 
-- [ ] **Step 3: Implement one role resolver in recommendation_service**
+- [x] **Step 3: Implement one role resolver in recommendation_service**
 
 Use candidate category facts, not product names:
 
@@ -697,15 +697,15 @@ ROLE_BY_CATEGORY = {
 
 The role is a proposal; Java remains the validator.
 
-- [ ] **Step 4: Carry role and diagnostics through sync and stream adapters**
+- [x] **Step 4: Carry role and diagnostics through sync and stream adapters**
 
 Both outputs must use the same agent result without recomputing roles or rejection counts.
 
-- [ ] **Step 5: Run focused Python tests**
+- [x] **Step 5: Run focused Python tests**
 
 Expected: role and sync/stream parity tests pass.
 
-- [ ] **Step 6: Commit Python composition output**
+- [x] **Step 6: Commit Python composition output**
 
 ```powershell
 git add clothing_assistant/application clothing_assistant/api/streaming.py tests
@@ -723,7 +723,7 @@ git commit -m "feat: return validated outfit role proposals"
 - Test: `backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/assistant/RecommendationDecisionServiceTests.java`
 - Test: `backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/assistant/OutfitRoleResolverTests.java`
 
-- [ ] **Step 1: Write failing status matrix tests**
+- [x] **Step 1: Write failing status matrix tests**
 
 Cover:
 
@@ -738,7 +738,7 @@ unexpected decision exception                   → handled by caller as FAILED
 
 Add a role test where Python proposes `BOTTOM` for a shirt; Java must replace it with the safe mapped role `TOP` and retain the otherwise valid item.
 
-- [ ] **Step 2: Run tests and confirm RED**
+- [x] **Step 2: Run tests and confirm RED**
 
 ```powershell
 cd backend
@@ -747,7 +747,7 @@ cd backend
 
 Expected: current decision only returns `EMPTY/WEAK_FALLBACK/STRONG_MATCH` strings.
 
-- [ ] **Step 3: Implement the enum and decision matrix**
+- [x] **Step 3: Implement the enum and decision matrix**
 
 ```java
 public enum RecommendationStatus {
@@ -757,11 +757,11 @@ public enum RecommendationStatus {
 
 Change `RecommendationDecision.recommendationStatus` to the enum. For outfit advice, evaluate accepted Java-validated roles; require `TOP + BOTTOM` for strong.
 
-- [ ] **Step 4: Validate proposed roles against Java categories**
+- [x] **Step 4: Validate proposed roles against Java categories**
 
 `OutfitRoleValidator.validate(categoryName, proposedRole)` returns the proposed role only when compatible; otherwise it returns Java's safe category mapping. Unknown categories become `OTHER`.
 
-- [ ] **Step 5: Run decision and assistant service tests**
+- [x] **Step 5: Run decision and assistant service tests**
 
 ```powershell
 .\mvnw.cmd -Dtest=RecommendationDecisionServiceTests,OutfitRoleResolverTests,AssistantServiceTests test
@@ -769,7 +769,7 @@ Change `RecommendationDecision.recommendationStatus` to the enum. For outfit adv
 
 Expected: all pass with typed statuses.
 
-- [ ] **Step 6: Commit final decision ownership**
+- [x] **Step 6: Commit final decision ownership**
 
 ```powershell
 git add backend/src/main/java/com/recommendation/intelligentoutfitrecommendationsystem/assistant backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/assistant
@@ -788,7 +788,7 @@ git commit -m "功能：细分推荐状态并校验搭配角色"
 - Test: `backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/assistant/AssistantControllerTests.java`
 - Test: `backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/common/observability/ApplicationMetricsTests.java`
 
-- [ ] **Step 1: Add failing sync/SSE parity and metric tests**
+- [x] **Step 1: Add failing sync/SSE parity and metric tests**
 
 Assert both paths publish the same typed status and role. Verify metrics receive:
 
@@ -797,11 +797,11 @@ verify(metrics).recordAiSelection(24, 0, 0, RecommendationStatus.BROWSE_FALLBACK
 verify(metrics).recordAiReasonCode("PYTHON_REJECTED_ALL");
 ```
 
-- [ ] **Step 2: Run focused tests and confirm RED**
+- [x] **Step 2: Run focused tests and confirm RED**
 
 Expected: methods and typed diagnostic DTO do not exist.
 
-- [ ] **Step 3: Implement internal diagnostics**
+- [x] **Step 3: Implement internal diagnostics**
 
 ```java
 public record RecommendationDiagnostics(
@@ -823,15 +823,15 @@ NO_JAVA_CANDIDATES
 DEPENDENCY_FAILED
 ```
 
-- [ ] **Step 4: Use one result assembler for sync and stream**
+- [x] **Step 4: Use one result assembler for sync and stream**
 
 Extract one private method in `AssistantService` that takes context and Python response and returns accepted items, status, recommendation ID and diagnostics. Call it from both `chat` and `ForwardingStreamHandler.onDone`.
 
-- [ ] **Step 5: Map exceptions to FAILED without stale data**
+- [x] **Step 5: Map exceptions to FAILED without stale data**
 
 Candidate snapshot failure or unrecoverable dependency failure publishes `FAILED`; fallback with valid Java candidates publishes `BROWSE_FALLBACK`.
 
-- [ ] **Step 6: Run assistant, controller and metric tests**
+- [x] **Step 6: Run assistant, controller and metric tests**
 
 ```powershell
 cd backend
@@ -840,7 +840,7 @@ cd backend
 
 Expected: all pass; no raw user text appears in metric tags.
 
-- [ ] **Step 7: Commit diagnostics and parity**
+- [x] **Step 7: Commit diagnostics and parity**
 
 ```powershell
 git add backend/src/main backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem
@@ -859,7 +859,7 @@ git commit -m "功能：统一推荐状态输出与诊断指标"
 - Test: `frontend/src/features/assistant/assistantState.test.ts`
 - Test: `frontend/src/pages/AiShoppingPage.test.tsx`
 
-- [ ] **Step 1: Write the failing browse fallback rendering test**
+- [x] **Step 1: Write the failing browse fallback rendering test**
 
 Render `OUTFIT_ADVICE + BROWSE_FALLBACK` with one candidate lacking `outfitRole`:
 
@@ -871,7 +871,7 @@ expect(screen.queryByText(/AI 首选|AI 推荐/)).not.toBeInTheDocument();
 
 Add `PARTIAL_MATCH` test asserting the real TOP card renders in grouped layout and the missing BOTTOM group shows text only.
 
-- [ ] **Step 2: Run and confirm RED**
+- [x] **Step 2: Run and confirm RED**
 
 ```powershell
 cd frontend
@@ -880,7 +880,7 @@ npm test -- --run src/pages/AiShoppingPage.test.tsx src/features/assistant/assis
 
 Expected: browse fallback candidate is hidden by role filtering.
 
-- [ ] **Step 3: Update shared frontend types**
+- [x] **Step 3: Update shared frontend types**
 
 ```ts
 export type RecommendationStatus =
@@ -893,7 +893,7 @@ export type RecommendationStatus =
 
 Normalize legacy `WEAK_FALLBACK` to `BROWSE_FALLBACK` and legacy `ERROR` to `FAILED` only in the SSE compatibility adapter. New state code must use only the new names.
 
-- [ ] **Step 4: Render by status, not only request type**
+- [x] **Step 4: Render by status, not only request type**
 
 Use this exact decision:
 
@@ -905,15 +905,15 @@ const groupedOutfit = isOutfit &&
 
 When `status === "BROWSE_FALLBACK"`, render all candidates in the ordinary product grid and pass `isAttributed={false}`.
 
-- [ ] **Step 5: Remove stale boolean state**
+- [x] **Step 5: Remove stale boolean state**
 
 Delete `hasStrongMatch` from `RecommendationResultMeta`. Derive all labels and attribution eligibility from the typed status plus `recommendedItems` membership.
 
-- [ ] **Step 6: Run focused frontend tests**
+- [x] **Step 6: Run focused frontend tests**
 
 Expected: browse fallback card is visible, partial grouping works, and stale SSE request protection still passes.
 
-- [ ] **Step 7: Commit frontend state semantics**
+- [x] **Step 7: Commit frontend state semantics**
 
 ```powershell
 git add frontend/src/shared/api frontend/src/features/assistant frontend/src/pages/AiShoppingPage.tsx frontend/src/pages/AiShoppingPage.test.tsx
@@ -928,7 +928,7 @@ git commit -m "修复：展示浏览降级候选并细分推荐状态"
 - Modify: `frontend/e2e/ai-shopping.spec.ts`
 - Modify: `frontend/e2e/fixtures/api.ts`
 
-- [ ] **Step 1: Add the shared regression fixture values**
+- [x] **Step 1: Add the shared regression fixture values**
 
 Use the exact sequence and final candidate facts:
 
@@ -941,19 +941,19 @@ Use the exact sequence and final candidate facts:
 
 Final candidates must include one `summer + casual + in_stock` TOP and one BOTTOM. Do not use a fabricated candidate outside the Java snapshot.
 
-- [ ] **Step 2: Add Java integration assertions**
+- [x] **Step 2: Add Java integration assertions**
 
 Assert final hard/soft constraints, `javaCandidateCount > 0`, no winter-derived warmth and a non-failed final status.
 
-- [ ] **Step 3: Add Python pipeline assertions**
+- [x] **Step 3: Add Python pipeline assertions**
 
 Assert v3 input does not re-add winter, emitted refs stay in candidates, and proposed roles match candidate categories.
 
-- [ ] **Step 4: Add browser assertions**
+- [x] **Step 4: Add browser assertions**
 
 Mock the final response first as `BROWSE_FALLBACK` with two candidates and assert both cards are visible. Add a second scenario for `PARTIAL_MATCH` with a TOP only.
 
-- [ ] **Step 5: Run the three regression layers**
+- [x] **Step 5: Run the three regression layers**
 
 Java:
 
@@ -978,7 +978,7 @@ npx playwright test e2e/ai-shopping.spec.ts
 
 Expected: all three layers pass.
 
-- [ ] **Step 6: Commit tests in their owning repositories**
+- [x] **Step 6: Commit tests in their owning repositories**
 
 Use `测试：覆盖多轮意图生命周期端到端回归` in Java/frontend and `test: cover multi-turn intent lifecycle regression` in Python.
 
@@ -988,7 +988,7 @@ Use `测试：覆盖多轮意图生命周期端到端回归` in Java/frontend an
 - Modify: `docs/superpowers/specs/2026-07-21-multi-turn-intent-lifecycle-and-admin-data-access-remediation-design.md`
 - Modify only if required by verified contract behavior: `docs/contracts/java-python-chat-contract-adaptation.md`
 
-- [ ] **Step 1: Verify Java backend**
+- [x] **Step 1: Verify Java backend**
 
 ```powershell
 cd D:\git\推荐系统\Intelligent Outfit Recommendation System\backend
@@ -997,7 +997,7 @@ cd D:\git\推荐系统\Intelligent Outfit Recommendation System\backend
 
 Expected: `BUILD SUCCESS`, including Checkstyle and all assistant/contract tests.
 
-- [ ] **Step 2: Verify Python service**
+- [x] **Step 2: Verify Python service**
 
 Use the repository's active environment, then run:
 
@@ -1008,7 +1008,7 @@ python -m pytest -q
 
 Expected: all tests pass with no collection errors.
 
-- [ ] **Step 3: Verify frontend**
+- [x] **Step 3: Verify frontend**
 
 ```powershell
 cd "D:\git\推荐系统\Intelligent Outfit Recommendation System\frontend"
@@ -1019,7 +1019,7 @@ npx playwright test e2e/ai-shopping.spec.ts
 
 Expected: Vitest passes, TypeScript/Vite build succeeds, AI shopping E2E passes.
 
-- [ ] **Step 4: Perform a real local acceptance check**
+- [x] **Step 4: Perform a real local acceptance check**
 
 With Java, Python, MySQL and Redis running, submit the four-turn sequence. Confirm:
 
@@ -1034,11 +1034,11 @@ renderedProductCount > 0
 
 Then submit `夏天，但是办公室空调很冷，想稍微保暖`; confirm explicit WARM remains and does not empty the Java candidate snapshot.
 
-- [ ] **Step 5: Update design status with actual verification evidence**
+- [x] **Step 5: Update design status with actual verification evidence**
 
 Change the design status from “待用户评审” to “推荐工作流已实现并验证；Admin 工作流待独立计划”. Record the exact commands and outcomes, not just “tests passed”.
 
-- [ ] **Step 6: Commit documentation evidence**
+- [x] **Step 6: Commit documentation evidence**
 
 ```powershell
 git add docs/superpowers/specs/2026-07-21-multi-turn-intent-lifecycle-and-admin-data-access-remediation-design.md docs/contracts/java-python-chat-contract-adaptation.md

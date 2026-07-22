@@ -87,3 +87,31 @@ test("首页、商品探索和 AI 工作台路由可连续切换", async ({ page
   await nav.getByRole("link", { name: "AI 造型师" }).click();
   await expect(page.getByTestId("recommendation-card").first()).toBeVisible();
 });
+
+test("浏览降级保留全部真实候选且不标记 AI 归因", async ({ page }) => {
+  await installApiMocks(page, { assistantScenario: "browseFallback" });
+  await login(page);
+  await page.locator(".shuimu-nav").getByRole("link", { name: "AI 造型师" }).click();
+
+  await page.getByTestId("ai-chat-input").fill("日常休闲");
+  await page.getByTestId("ai-chat-submit").click();
+
+  await expect(page.getByText("暂无强匹配，以下为同一候选快照中的可浏览商品，不作 AI 归因。")).toBeVisible();
+  await expect(page.getByText("夏季亚麻短袖衬衫")).toBeVisible();
+  await expect(page.getByText("夏季休闲短裤")).toBeVisible();
+  await expect(page.getByTestId("outfit-groups")).toHaveCount(0);
+  await expect(page.getByText("AI 推荐")).toHaveCount(0);
+});
+
+test("部分匹配按真实角色分组并提示缺失下装", async ({ page }) => {
+  await installApiMocks(page, { assistantScenario: "partialMatch" });
+  await login(page);
+  await page.locator(".shuimu-nav").getByRole("link", { name: "AI 造型师" }).click();
+
+  await page.getByTestId("ai-chat-input").fill("日常休闲");
+  await page.getByTestId("ai-chat-submit").click();
+
+  await expect(page.getByTestId("outfit-groups")).toBeVisible();
+  await expect(page.getByRole("region", { name: "上装" }).getByText("夏季亚麻短袖衬衫")).toBeVisible();
+  await expect(page.getByRole("region", { name: "下装" })).toContainText("本组暂无真实匹配商品");
+});

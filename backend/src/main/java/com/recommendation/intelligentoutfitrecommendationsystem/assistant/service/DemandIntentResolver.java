@@ -33,7 +33,7 @@ public class DemandIntentResolver {
     private static final String[] STUDENT_SIGNALS = {"学生党", "学生", "大学生", "校园", "上课", "上学"};
     private static final String[] VERSATILE_SIGNALS = {"百搭", "好搭", "基础款", "日常也能穿", "不挑场合", "一衣多穿"};
     private static final String[] WARM_SIGNALS = {
-            "秋冬", "冬季", "冬天", "保暖", "厚款", "厚实", "怕冷", "暖和", "不容易冷", "加绒", "抗冻"
+            "保暖", "厚款", "厚实", "怕冷", "暖和", "不容易冷", "加绒", "抗冻"
     };
     private static final String[] BUDGET_VALUE_SIGNALS = {
             "平价", "便宜", "不贵", "别太贵", "预算有限", "学生预算", "性价比"
@@ -363,9 +363,6 @@ public class DemandIntentResolver {
     }
 
     private String resolveSeason(String message) {
-        if (containsAny(message, new String[]{"秋冬", "保暖", "厚款", "厚实", "怕冷", "不容易冷"})) {
-            return "winter";
-        }
         if (containsAny(message, new String[]{"春天", "春季", "春装"})) {
             return "spring";
         }
@@ -376,6 +373,9 @@ public class DemandIntentResolver {
             return "autumn";
         }
         if (containsAny(message, new String[]{"冬天", "冬季", "冬装"})) {
+            return "winter";
+        }
+        if (containsAny(message, new String[]{"秋冬", "保暖", "厚款", "厚实", "怕冷", "不容易冷"})) {
             return "winter";
         }
         return null;

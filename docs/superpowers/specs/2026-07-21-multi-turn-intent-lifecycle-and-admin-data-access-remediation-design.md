@@ -2,7 +2,7 @@
 
 **日期：** 2026-07-21
 
-**状态：** 待用户评审；未批准前不得进入开发
+**状态：** 推荐工作流已实现并验证；Admin 工作流待独立计划
 
 **影响仓库：** `Intelligent Outfit Recommendation System`、`AI Clothing Shopping Assistant System`、`outfit-project-contract`
 
@@ -566,13 +566,36 @@ SQL 全部迁移并稳定后，按管理用例而不是按表机械拆分：
 | Admin 迁移中事务语义变化 | 一次一个模块，先写特征测试；Service 的事务注解在 SQL 等价迁移阶段不移动 |
 | 架构测试立即阻断现有代码 | 迁移期使用只减不增的例外清单，SQL 清零后再启用无例外规则 |
 
-## 15. 开发门禁
+## 15. 实施与验证记录
 
-本文档目前只用于评审。用户明确确认前：
+推荐工作流已按 `2026-07-21-multi-turn-intent-lifecycle-recommendation-remediation.md` 完成。本批次未修改 Admin SQL，Admin 数据访问治理仍需独立设计、计划和验收。
 
-- 不创建实现计划；
-- 不修改 Java、Python、前端或共享契约代码；
-- 不执行数据库迁移；
-- 不开始 Admin SQL 搬迁。
+### 15.1 自动化验证
 
-用户确认本文档后，下一步仅编写分阶段实施计划；实施计划再次确认后才开始开发。
+2026-07-22 在 `codex/multi-turn-recommendation` 的三个隔离工作区中执行：
+
+| 层级 | 命令 | 结果 |
+|---|---|---|
+| Java 后端 | `cd backend; .\mvnw.cmd verify` | `BUILD SUCCESS`；475 个测试，0 失败，0 错误，4 跳过；Checkstyle 0 违规 |
+| Python | `.\.venv\Scripts\python.exe -m pytest -q` | 297 个测试和 97 个子测试通过；1 条第三方 Starlette 弃用警告 |
+| 前端单元测试 | `npm test -- --run` | 30 个测试文件、72 个测试通过 |
+| 前端构建 | `npm run build` | TypeScript 与 Vite 生产构建成功，1639 个模块完成转换 |
+| 浏览器验收 | `npx playwright test e2e/ai-shopping.spec.ts` | Chromium 7 个场景全部通过，包含 `BROWSE_FALLBACK` 双候选可见和 `PARTIAL_MATCH` 缺少下装提示 |
+
+### 15.2 真实本地联调
+
+使用功能分支 Java `8081`、Python `8001`以及本地 MySQL、Redis 执行同步接口验收。四轮序列的最终持久化 v3 状态为：
+
+```text
+targetGender = FEMALE
+season = SUMMER
+style contains CASUAL
+SYSTEM_DERIVED WARM = absent
+javaCandidateCount = 24
+renderedProductCount = 3
+recommendationStatus = STRONG_MATCH
+```
+
+反例 `夏天，但是办公室空调很冷，想稍微保暖` 的持久化 v3 状态保留 `season=SUMMER` 和 `thermal=WARM + USER_EXPLICIT`，同时 `javaCandidateCount=24`、`renderedProductCount=3`、`recommendationStatus=STRONG_MATCH`。
+
+联调首次执行暴露了两个确定性解析问题：单纯的冬季词被误记为用户显式保暖，以及显式夏季被保暖措辞覆盖为冬季。两个问题均先增加失败测试，再以最小修复收紧词表和季节优先级；修复后重新执行了上述全量验证和真实联调。

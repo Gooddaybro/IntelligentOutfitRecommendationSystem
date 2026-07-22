@@ -103,6 +103,24 @@ class DemandIntentResolverTests {
         assertThat(patch.season()).isEqualTo("autumn");
     }
 
+    @Test
+    void winterSeasonAloneDoesNotBecomeExplicitWarmth() {
+        DemandIntentPatch winterOnly = resolver.resolvePatch(request("冬天该怎么穿？"));
+        DemandIntentPatch explicitWarmth = resolver.resolvePatch(request("冬天想要保暖一点"));
+
+        assertThat(winterOnly.season()).isEqualTo("winter");
+        assertThat(winterOnly.attributes()).doesNotContain("保暖");
+        assertThat(explicitWarmth.attributes()).contains("保暖");
+    }
+
+    @Test
+    void explicitSummerWinsOverWarmthLanguage() {
+        DemandIntentPatch patch = resolver.resolvePatch(request("夏天，但是办公室空调很冷，想稍微保暖"));
+
+        assertThat(patch.season()).isEqualTo("summer");
+        assertThat(patch.attributes()).contains("保暖");
+    }
+
     private AssistantChatRequest request(String message) {
         return new AssistantChatRequest(null, message, null, null, null, null, null, null, null);
     }
