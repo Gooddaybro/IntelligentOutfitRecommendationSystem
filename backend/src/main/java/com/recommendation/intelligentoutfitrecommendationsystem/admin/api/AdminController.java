@@ -14,8 +14,8 @@ import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminS
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminSkuResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminUserResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminUserStatusRequest;
+import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminAnalyticsService;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminAuditLogService;
-import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminCatalogService;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminInventoryService;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminProductService;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminOrderService;
@@ -37,7 +37,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/admin")
 public class AdminController {
-    private final AdminCatalogService adminCatalogService;
+    private final AdminAnalyticsService adminAnalyticsService;
     private final AdminAuditLogService adminAuditLogService;
     private final AdminProductService adminProductService;
     private final AdminInventoryService adminInventoryService;
@@ -45,13 +45,13 @@ public class AdminController {
     private final AdminUserService adminUserService;
 
     public AdminController(
-            AdminCatalogService adminCatalogService,
+            AdminAnalyticsService adminAnalyticsService,
             AdminAuditLogService adminAuditLogService,
             AdminProductService adminProductService,
             AdminInventoryService adminInventoryService,
             AdminOrderService adminOrderService,
             AdminUserService adminUserService) {
-        this.adminCatalogService = adminCatalogService;
+        this.adminAnalyticsService = adminAnalyticsService;
         this.adminAuditLogService = adminAuditLogService;
         this.adminProductService = adminProductService;
         this.adminInventoryService = adminInventoryService;
@@ -61,7 +61,7 @@ public class AdminController {
 
     @GetMapping("/overview")
     public ApiResponse<AdminOverviewResponse> getOverview() {
-        return ApiResponse.ok(adminCatalogService.getOverview());
+        return ApiResponse.ok(adminAnalyticsService.getOverview());
     }
 
     @GetMapping("/products")
@@ -144,7 +144,7 @@ public class AdminController {
 
     @GetMapping("/analytics")
     public ApiResponse<AdminAnalyticsResponse> getAnalytics() {
-        return ApiResponse.ok(adminCatalogService.getAnalytics());
+        return ApiResponse.ok(adminAnalyticsService.getAnalytics());
     }
 
     @GetMapping("/audit-logs")
