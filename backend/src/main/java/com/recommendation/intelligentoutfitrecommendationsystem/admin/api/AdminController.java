@@ -14,6 +14,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminS
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminSkuResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminUserResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminUserStatusRequest;
+import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminAuditLogService;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminCatalogService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.api.ApiResponse;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,9 +34,13 @@ import java.util.List;
 @RequestMapping("/api/admin")
 public class AdminController {
     private final AdminCatalogService adminCatalogService;
+    private final AdminAuditLogService adminAuditLogService;
 
-    public AdminController(AdminCatalogService adminCatalogService) {
+    public AdminController(
+            AdminCatalogService adminCatalogService,
+            AdminAuditLogService adminAuditLogService) {
         this.adminCatalogService = adminCatalogService;
+        this.adminAuditLogService = adminAuditLogService;
     }
 
     @GetMapping("/overview")
@@ -128,6 +133,6 @@ public class AdminController {
 
     @GetMapping("/audit-logs")
     public ApiResponse<List<AdminAuditLogResponse>> listAuditLogs() {
-        return ApiResponse.ok(adminCatalogService.listAuditLogs());
+        return ApiResponse.ok(adminAuditLogService.listAuditLogs());
     }
 }

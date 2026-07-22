@@ -3,7 +3,6 @@ package com.recommendation.intelligentoutfitrecommendationsystem.admin.service;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminAnalyticsHotProduct;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminAnalyticsResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminAnalyticsTrendPoint;
-import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminAuditLogResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminCategoryRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminCategoryResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminCategoryTrendPoint;
@@ -22,7 +21,9 @@ import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminS
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminTrendPoint;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminUserResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminUserStatusRequest;
+import com.recommendation.intelligentoutfitrecommendationsystem.admin.mapper.AdminAuditMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.mapper.AdminMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.admin.model.AdminAuditEntry;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.search.sync.ProductSearchChangeRecorder;
@@ -59,14 +60,17 @@ public class AdminCatalogService {
     private static final Set<String> PAID_ORDER_STATUSES = Set.of("PAID", "SHIPPED", "COMPLETED");
 
     private final AdminMapper adminMapper;
+    private final AdminAuditMapper adminAuditMapper;
     private final JdbcTemplate jdbcTemplate;
     private final ProductSearchChangeRecorder productSearchChangeRecorder;
 
     public AdminCatalogService(
             AdminMapper adminMapper,
+            AdminAuditMapper adminAuditMapper,
             JdbcTemplate jdbcTemplate,
             ProductSearchChangeRecorder productSearchChangeRecorder) {
         this.adminMapper = adminMapper;
+        this.adminAuditMapper = adminAuditMapper;
         this.jdbcTemplate = jdbcTemplate;
         this.productSearchChangeRecorder = productSearchChangeRecorder;
     }
@@ -308,16 +312,6 @@ public class AdminCatalogService {
                 findAnalyticsHotProducts(),
                 findCategoryTrend()
         );
-    }
-
-    @Transactional(readOnly = true)
-    public List<AdminAuditLogResponse> listAuditLogs() {
-        return jdbcTemplate.query("""
-                SELECT id, operator, action, target_type, target_id, result, summary, created_at
-                FROM admin_audit_log
-                ORDER BY created_at DESC, id DESC
-                LIMIT 200
-                """, this::mapAuditLog);
     }
 
     private AdminProductResponse requireProduct(Long spuId) {
@@ -578,19 +572,6 @@ public class AdminCatalogService {
         );
     }
 
-    private AdminAuditLogResponse mapAuditLog(ResultSet resultSet, int rowNum) throws SQLException {
-        return new AdminAuditLogResponse(
-                resultSet.getLong("id"),
-                resultSet.getString("operator"),
-                resultSet.getString("action"),
-                resultSet.getString("target_type"),
-                resultSet.getString("target_id"),
-                resultSet.getString("result"),
-                resultSet.getString("summary"),
-                resultSet.getTimestamp("created_at").toLocalDateTime()
-        );
-    }
-
     private List<String> availableActions(String status) {
         if ("PAID".equals(status)) {
             return List.of("SHIP");
@@ -684,10 +665,14 @@ public class AdminCatalogService {
     }
 
     private void insertAudit(String action, String targetType, String targetId, String result, String summary) {
-        jdbcTemplate.update("""
-                INSERT INTO admin_audit_log (operator, action, target_type, target_id, result, summary)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """, DEFAULT_OPERATOR, action, targetType, targetId, result, summary == null ? "" : summary);
+        adminAuditMapper.insertAuditLog(new AdminAuditEntry(
+                DEFAULT_OPERATOR,
+                action,
+                targetType,
+                targetId,
+                result,
+                summary == null ? "" : summary
+        ));
     }
 
     private String toDbStatus(String status) {
