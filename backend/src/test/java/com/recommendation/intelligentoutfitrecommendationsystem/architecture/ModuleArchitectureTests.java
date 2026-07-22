@@ -49,10 +49,8 @@ class ModuleArchitectureTests {
                             "..user..");
 
     @ArchTest
-    static final ArchRule NEW_ADMIN_SERVICES_MUST_NOT_DEPEND_ON_JDBC =
+    static final ArchRule ADMIN_SERVICES_MUST_NOT_DEPEND_ON_JDBC =
             noClasses().that().resideInAPackage(BASE_PACKAGE + ".admin.service..")
-                    .and().doNotHaveFullyQualifiedName(
-                            BASE_PACKAGE + ".admin.service.AdminCatalogService")
                     .should().dependOnClassesThat().resideInAnyPackage(
                             "org.springframework.jdbc..",
                             "java.sql..",

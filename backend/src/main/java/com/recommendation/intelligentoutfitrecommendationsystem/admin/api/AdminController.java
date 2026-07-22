@@ -17,8 +17,8 @@ import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminU
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminAnalyticsService;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminAuditLogService;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminInventoryService;
-import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminProductService;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminOrderService;
+import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminProductService;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminUserService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.api.ApiResponse;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -37,26 +37,27 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/admin")
 public class AdminController {
-    private final AdminAnalyticsService adminAnalyticsService;
-    private final AdminAuditLogService adminAuditLogService;
     private final AdminProductService adminProductService;
     private final AdminInventoryService adminInventoryService;
     private final AdminOrderService adminOrderService;
     private final AdminUserService adminUserService;
+    private final AdminAnalyticsService adminAnalyticsService;
+    private final AdminAuditLogService adminAuditLogService;
 
     public AdminController(
-            AdminAnalyticsService adminAnalyticsService,
-            AdminAuditLogService adminAuditLogService,
             AdminProductService adminProductService,
             AdminInventoryService adminInventoryService,
             AdminOrderService adminOrderService,
-            AdminUserService adminUserService) {
-        this.adminAnalyticsService = adminAnalyticsService;
-        this.adminAuditLogService = adminAuditLogService;
+            AdminUserService adminUserService,
+            AdminAnalyticsService adminAnalyticsService,
+            AdminAuditLogService adminAuditLogService
+    ) {
         this.adminProductService = adminProductService;
         this.adminInventoryService = adminInventoryService;
         this.adminOrderService = adminOrderService;
         this.adminUserService = adminUserService;
+        this.adminAnalyticsService = adminAnalyticsService;
+        this.adminAuditLogService = adminAuditLogService;
     }
 
     @GetMapping("/overview")
