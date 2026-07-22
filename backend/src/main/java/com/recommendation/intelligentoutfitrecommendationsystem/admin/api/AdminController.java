@@ -17,6 +17,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminU
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminAuditLogService;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminCatalogService;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminInventoryService;
+import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminProductService;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminOrderService;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminUserService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.api.ApiResponse;
@@ -38,6 +39,7 @@ import java.util.List;
 public class AdminController {
     private final AdminCatalogService adminCatalogService;
     private final AdminAuditLogService adminAuditLogService;
+    private final AdminProductService adminProductService;
     private final AdminInventoryService adminInventoryService;
     private final AdminOrderService adminOrderService;
     private final AdminUserService adminUserService;
@@ -45,11 +47,13 @@ public class AdminController {
     public AdminController(
             AdminCatalogService adminCatalogService,
             AdminAuditLogService adminAuditLogService,
+            AdminProductService adminProductService,
             AdminInventoryService adminInventoryService,
             AdminOrderService adminOrderService,
             AdminUserService adminUserService) {
         this.adminCatalogService = adminCatalogService;
         this.adminAuditLogService = adminAuditLogService;
+        this.adminProductService = adminProductService;
         this.adminInventoryService = adminInventoryService;
         this.adminOrderService = adminOrderService;
         this.adminUserService = adminUserService;
@@ -62,12 +66,12 @@ public class AdminController {
 
     @GetMapping("/products")
     public ApiResponse<List<AdminProductResponse>> listProducts() {
-        return ApiResponse.ok(adminCatalogService.listProducts());
+        return ApiResponse.ok(adminProductService.listProducts());
     }
 
     @PostMapping("/products")
     public ApiResponse<AdminProductResponse> createProduct(@RequestBody AdminProductInput request) {
-        return ApiResponse.ok(adminCatalogService.createProduct(request));
+        return ApiResponse.ok(adminProductService.createProduct(request));
     }
 
     @PutMapping("/products/{spuId}")
@@ -75,7 +79,7 @@ public class AdminController {
             @PathVariable Long spuId,
             @RequestBody AdminProductInput request
     ) {
-        return ApiResponse.ok(adminCatalogService.updateProduct(spuId, request));
+        return ApiResponse.ok(adminProductService.updateProduct(spuId, request));
     }
 
     @PostMapping("/products/{spuId}/status")
@@ -83,12 +87,12 @@ public class AdminController {
             @PathVariable Long spuId,
             @RequestBody AdminProductStatusRequest request
     ) {
-        return ApiResponse.ok(adminCatalogService.changeProductStatus(spuId, request));
+        return ApiResponse.ok(adminProductService.changeProductStatus(spuId, request));
     }
 
     @GetMapping("/categories")
     public ApiResponse<List<AdminCategoryResponse>> listCategories() {
-        return ApiResponse.ok(adminCatalogService.listCategories());
+        return ApiResponse.ok(adminProductService.listCategories());
     }
 
     @PutMapping("/categories/{id}")
@@ -96,7 +100,7 @@ public class AdminController {
             @PathVariable Long id,
             @RequestBody AdminCategoryRequest request
     ) {
-        return ApiResponse.ok(adminCatalogService.updateCategory(id, request));
+        return ApiResponse.ok(adminProductService.updateCategory(id, request));
     }
 
     @GetMapping("/inventory")
