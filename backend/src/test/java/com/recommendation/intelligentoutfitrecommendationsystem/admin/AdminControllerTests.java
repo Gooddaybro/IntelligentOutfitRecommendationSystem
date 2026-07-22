@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.dao.DataAccessException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -41,14 +40,33 @@ class AdminControllerTests {
         jdbcTemplate.update("UPDATE inventory SET available_stock = 6 WHERE sku_id = 2001");
         jdbcTemplate.update("UPDATE sales_order SET status = 'PAID' WHERE order_no = 'ORDDEMO9001PAID'");
         jdbcTemplate.update("UPDATE user_account SET status = 'active' WHERE id = 9001");
-        safeUpdate("DELETE FROM product_sku WHERE spu_id IN (SELECT id FROM product_spu WHERE spu_code = 'ADMIN_TEST_001')");
-        safeUpdate("DELETE FROM product_style_tag WHERE spu_id IN (SELECT id FROM product_spu WHERE spu_code = 'ADMIN_TEST_001')");
-        safeUpdate("DELETE FROM product_image WHERE spu_id IN (SELECT id FROM product_spu WHERE spu_code = 'ADMIN_TEST_001')");
-        safeUpdate("DELETE FROM product_spu WHERE spu_code = 'ADMIN_TEST_001'");
-        safeUpdate("DELETE FROM admin_inventory_adjustment");
-        safeUpdate("DELETE FROM order_shipment");
-        safeUpdate("DELETE FROM admin_audit_log");
-        safeUpdate("DELETE FROM product_search_outbox");
+        jdbcTemplate.update("DELETE FROM admin_inventory_adjustment");
+        jdbcTemplate.update("DELETE FROM order_shipment");
+        jdbcTemplate.update("DELETE FROM admin_audit_log");
+        jdbcTemplate.update("DELETE FROM product_search_outbox");
+        jdbcTemplate.update("""
+                DELETE FROM product_search_inbox
+                WHERE spu_id IN (SELECT id FROM product_spu WHERE spu_code = 'ADMIN_TEST_001')
+                """);
+        jdbcTemplate.update("""
+                DELETE FROM product_style_tag
+                WHERE spu_id IN (SELECT id FROM product_spu WHERE spu_code = 'ADMIN_TEST_001')
+                """);
+        jdbcTemplate.update("""
+                DELETE FROM product_image
+                WHERE spu_id IN (SELECT id FROM product_spu WHERE spu_code = 'ADMIN_TEST_001')
+                """);
+        jdbcTemplate.update("""
+                DELETE FROM inventory
+                WHERE sku_id IN (SELECT id FROM product_sku WHERE spu_id IN (
+                    SELECT id FROM product_spu WHERE spu_code = 'ADMIN_TEST_001'
+                ))
+                """);
+        jdbcTemplate.update("""
+                DELETE FROM product_sku
+                WHERE spu_id IN (SELECT id FROM product_spu WHERE spu_code = 'ADMIN_TEST_001')
+                """);
+        jdbcTemplate.update("DELETE FROM product_spu WHERE spu_code = 'ADMIN_TEST_001'");
     }
 
     @Test
@@ -180,6 +198,7 @@ class AdminControllerTests {
         java.util.List<Long> affectedSpuIds = jdbcTemplate.queryForList(
                 "SELECT id FROM product_spu WHERE category_id = 2", Long.class);
         org.assertj.core.api.Assertions.assertThat(affectedSpuIds).isNotEmpty();
+        int categoryEventCountBefore = countProductSearchEvents();
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/admin/categories/{id}", 2)
                         .with(adminJwt())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -190,9 +209,10 @@ class AdminControllerTests {
                 .andExpect(jsonPath("$.data.enabled").value(false));
 
         affectedSpuIds.forEach(spuId -> assertProductSearchEventCount(spuId, 1));
+        int categoryEventCountAfter = countProductSearchEvents();
+        org.assertj.core.api.Assertions.assertThat(categoryEventCountAfter - categoryEventCountBefore)
+                .isEqualTo(affectedSpuIds.size());
         assertAuditLogExists("DISABLE_CATEGORY", "CATEGORY", "2");
-        Integer categoryEventCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM product_search_outbox", Integer.class);
 
         mockMvc.perform(get("/api/admin/inventory").with(adminJwt()))
                 .andExpect(status().isOk())
@@ -214,9 +234,7 @@ class AdminControllerTests {
         assertAuditLogExists("ADJUST_STOCK", "SKU", "2001");
 
         // 库存不属于当前搜索文档，调整库存不应产生额外同步事件。
-        Integer eventCountAfterInventory = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM product_search_outbox", Integer.class);
-        org.assertj.core.api.Assertions.assertThat(eventCountAfterInventory).isEqualTo(categoryEventCount);
+        org.assertj.core.api.Assertions.assertThat(countProductSearchEvents()).isEqualTo(categoryEventCountAfter);
     }
 
     @Test
@@ -252,6 +270,8 @@ class AdminControllerTests {
         String nonPaidStatusAfter = jdbcTemplate.queryForObject(
                 "SELECT status FROM sales_order WHERE order_no = 'ORDDEMO9001UNPAID'", String.class);
         org.assertj.core.api.Assertions.assertThat(nonPaidStatusAfter).isEqualTo(nonPaidStatusBefore);
+        assertRowCount("SELECT COUNT(*) FROM order_shipment WHERE order_no = ?", 0, "ORDDEMO9001UNPAID");
+        assertAuditLogCount("SHIP_ORDER", "ORDER", "ORDDEMO9001UNPAID", 0);
 
         mockMvc.perform(get("/api/admin/users").with(adminJwt()))
                 .andExpect(status().isOk())
@@ -307,18 +327,28 @@ class AdminControllerTests {
         org.assertj.core.api.Assertions.assertThat(eventCount).isEqualTo(expectedCount);
     }
 
+    private int countProductSearchEvents() {
+        return jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM product_search_outbox
+                WHERE event_type = 'PRODUCT_SEARCH_REINDEX_REQUESTED'
+                """, Integer.class);
+    }
+
     private void assertAuditLogExists(String action, String targetType, String targetId) {
+        assertAuditLogCount(action, targetType, targetId, 1);
+    }
+
+    private void assertAuditLogCount(
+            String action, String targetType, String targetId, int expectedCount) {
         Integer auditCount = jdbcTemplate.queryForObject("""
                 SELECT COUNT(*) FROM admin_audit_log
                 WHERE action = ? AND target_type = ? AND target_id = ? AND result = 'SUCCESS'
                 """, Integer.class, action, targetType, targetId);
-        org.assertj.core.api.Assertions.assertThat(auditCount).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(auditCount).isEqualTo(expectedCount);
     }
 
-    private void safeUpdate(String sql) {
-        try {
-            jdbcTemplate.update(sql);
-        } catch (DataAccessException ignored) {
-        }
+    private void assertRowCount(String sql, int expectedCount, Object... arguments) {
+        Integer rowCount = jdbcTemplate.queryForObject(sql, Integer.class, arguments);
+        org.assertj.core.api.Assertions.assertThat(rowCount).isEqualTo(expectedCount);
     }
 }

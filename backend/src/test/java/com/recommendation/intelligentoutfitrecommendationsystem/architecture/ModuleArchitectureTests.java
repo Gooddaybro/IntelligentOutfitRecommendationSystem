@@ -51,10 +51,12 @@ class ModuleArchitectureTests {
     @ArchTest
     static final ArchRule NEW_ADMIN_SERVICES_MUST_NOT_DEPEND_ON_JDBC =
             noClasses().that().resideInAPackage(BASE_PACKAGE + ".admin.service..")
-                    .and().doNotHaveSimpleName("AdminCatalogService")
-                    .should().dependOnClassesThat().haveFullyQualifiedName(
-                            "org.springframework.jdbc.core.JdbcTemplate")
-                    .orShould().dependOnClassesThat().resideInAnyPackage("java.sql..");
+                    .and().doNotHaveFullyQualifiedName(
+                            BASE_PACKAGE + ".admin.service.AdminCatalogService")
+                    .should().dependOnClassesThat().resideInAnyPackage(
+                            "org.springframework.jdbc..",
+                            "java.sql..",
+                            "javax.sql..");
 
     @ArchTest
     static final ArchRule MAPPERS_MUST_STAY_INSIDE_THEIR_MODULE =
