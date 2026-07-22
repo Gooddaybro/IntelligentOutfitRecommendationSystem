@@ -8,13 +8,10 @@ import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminC
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminCategoryTrendPoint;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminFunnelResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminHotProduct;
-import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminOrderResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminOverviewResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminProductInput;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminProductResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminProductStatusRequest;
-import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminShipOrderRequest;
-import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminShipmentResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminTrendPoint;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.mapper.AdminAuditMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.mapper.AdminMapper;
@@ -208,36 +205,6 @@ public class AdminCatalogService {
     }
 
     @Transactional(readOnly = true)
-    public List<AdminOrderResponse> listOrders() {
-        return jdbcTemplate.query(orderSql(null), this::mapOrder);
-    }
-
-    @Transactional
-    public AdminOrderResponse shipOrder(String orderNo, AdminShipOrderRequest request) {
-        String normalizedOrderNo = normalizeRequiredText(orderNo, "orderNo");
-        String carrier = normalizeRequiredText(request == null ? null : request.carrier(), "carrier");
-        String trackingNo = normalizeRequiredText(request == null ? null : request.trackingNo(), "trackingNo");
-        Map<String, Object> order = queryMap("SELECT id, status FROM sales_order WHERE order_no = ?", normalizedOrderNo);
-        if (order == null) {
-            throw new ResourceNotFoundException("order not found");
-        }
-        String status = String.valueOf(order.get("status"));
-        if (!"PAID".equals(status)) {
-            throw new BadRequestException("order cannot be shipped");
-        }
-        Long orderId = ((Number) order.get("id")).longValue();
-        jdbcTemplate.update("UPDATE sales_order SET status = 'SHIPPED', updated_at = CURRENT_TIMESTAMP(6) WHERE id = ?",
-                orderId);
-        jdbcTemplate.update("DELETE FROM order_shipment WHERE order_no = ?", normalizedOrderNo);
-        jdbcTemplate.update("""
-                INSERT INTO order_shipment (order_id, order_no, carrier, tracking_no)
-                VALUES (?, ?, ?, ?)
-                """, orderId, normalizedOrderNo, carrier, trackingNo);
-        insertAudit("SHIP_ORDER", "ORDER", normalizedOrderNo, "SUCCESS", carrier + " " + trackingNo);
-        return findOrder(normalizedOrderNo);
-    }
-
-    @Transactional(readOnly = true)
     public AdminAnalyticsResponse getAnalytics() {
         return new AdminAnalyticsResponse(
                 RANGE_LABEL,
@@ -373,31 +340,6 @@ public class AdminCatalogService {
                 """, this::mapCategory, categoryId), "category not found");
     }
 
-    private AdminOrderResponse findOrder(String orderNo) {
-        return singleOrNotFound(jdbcTemplate.query(orderSql("o.order_no = ?"), this::mapOrder, orderNo), "order not found");
-    }
-
-    private String orderSql(String condition) {
-        String whereClause = condition == null ? "" : " WHERE " + condition;
-        return """
-                SELECT o.id, o.order_no, u.username, o.status,
-                       CASE
-                           WHEN EXISTS (SELECT 1 FROM payment pay WHERE pay.order_id = o.id AND pay.status = 'SUCCESS') THEN 'PAID'
-                           WHEN o.status = 'UNPAID' THEN 'UNPAID'
-                           ELSE o.status
-                       END AS payment_status,
-                       o.total_amount, COALESCE(SUM(oi.quantity), 0) AS item_count, o.created_at,
-                       os.carrier, os.tracking_no
-                FROM sales_order o
-                JOIN user_account u ON u.id = o.user_id
-                LEFT JOIN order_item oi ON oi.order_id = o.id
-                LEFT JOIN order_shipment os ON os.order_id = o.id
-                """ + whereClause + """
-                GROUP BY o.id, o.order_no, u.username, o.status, o.total_amount, o.created_at, os.carrier, os.tracking_no
-                ORDER BY o.created_at DESC, o.id DESC
-                """;
-    }
-
     private AdminCategoryResponse mapCategory(ResultSet resultSet, int rowNum) throws SQLException {
         return new AdminCategoryResponse(
                 resultSet.getLong("id"),
@@ -408,38 +350,6 @@ public class AdminCatalogService {
                 resultSet.getBoolean("enabled"),
                 resultSet.getLong("product_count")
         );
-    }
-
-    private AdminOrderResponse mapOrder(ResultSet resultSet, int rowNum) throws SQLException {
-        String carrier = resultSet.getString("carrier");
-        AdminShipmentResponse shipment = carrier == null ? null
-                : new AdminShipmentResponse(carrier, resultSet.getString("tracking_no"));
-        String status = resultSet.getString("status");
-        return new AdminOrderResponse(
-                resultSet.getString("order_no"),
-                resultSet.getString("username"),
-                status,
-                resultSet.getString("payment_status"),
-                resultSet.getBigDecimal("total_amount"),
-                resultSet.getLong("item_count"),
-                resultSet.getTimestamp("created_at").toLocalDateTime(),
-                availableActions(status),
-                null,
-                shipment
-        );
-    }
-
-    private List<String> availableActions(String status) {
-        if ("PAID".equals(status)) {
-            return List.of("SHIP");
-        }
-        if ("UNPAID".equals(status)) {
-            return List.of("CANCEL");
-        }
-        if ("SHIPPED".equals(status) || "COMPLETED".equals(status)) {
-            return List.of("AFTER_SALE");
-        }
-        return List.of();
     }
 
     private AdminFunnelResponse getFunnel() {
@@ -616,14 +526,6 @@ public class AdminCatalogService {
     private <T> T queryNullable(String sql, Class<T> type, Object... args) {
         try {
             return jdbcTemplate.queryForObject(sql, type, args);
-        } catch (DataAccessException exception) {
-            return null;
-        }
-    }
-
-    private Map<String, Object> queryMap(String sql, Object... args) {
-        try {
-            return jdbcTemplate.queryForMap(sql, args);
         } catch (DataAccessException exception) {
             return null;
         }

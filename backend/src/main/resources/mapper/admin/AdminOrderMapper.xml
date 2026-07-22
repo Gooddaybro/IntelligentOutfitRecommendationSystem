@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recommendation.intelligentoutfitrecommendationsystem.admin.mapper.AdminOrderMapper">
+    <sql id="adminOrderColumns">
+        o.order_no,
+        u.username,
+        o.status,
+        CASE
+            WHEN EXISTS (SELECT 1 FROM payment pay WHERE pay.order_id = o.id AND pay.status = 'SUCCESS') THEN 'PAID'
+            WHEN o.status = 'UNPAID' THEN 'UNPAID'
+            ELSE o.status
+        END AS payment_status,
+        o.total_amount,
+        COALESCE(SUM(oi.quantity), 0) AS item_count,
+        o.created_at,
+        os.carrier,
+        os.tracking_no
+    </sql>
+
+    <sql id="adminOrderFrom">
+        FROM sales_order o
+        JOIN user_account u ON u.id = o.user_id
+        LEFT JOIN order_item oi ON oi.order_id = o.id
+        LEFT JOIN order_shipment os ON os.order_id = o.id
+    </sql>
+
+    <sql id="adminOrderGroupBy">
+        GROUP BY o.id, o.order_no, u.username, o.status, o.total_amount, o.created_at, os.carrier, os.tracking_no
+    </sql>
+
+    <!--
+        Admin order rows combine order, user, item, payment and shipment facts for the console table.
+        Payment status intentionally remains a CASE expression so legacy orders without a SUCCESS payment
+        still expose the order state expected by the existing JSON contract.
+    -->
+    <select id="findOrders" resultType="com.recommendation.intelligentoutfitrecommendationsystem.admin.model.AdminOrderRow">
+        SELECT
+        <include refid="adminOrderColumns" />
+        <include refid="adminOrderFrom" />
+        <include refid="adminOrderGroupBy" />
+        ORDER BY o.created_at DESC, o.id DESC
+    </select>
+
+    <!--
+        The post-ship reload uses the same aggregation as the list endpoint but narrows by order number
+        before grouping so shipment and payment fields match the admin table projection exactly.
+    -->
+    <select id="findOrderByOrderNo" resultType="com.recommendation.intelligentoutfitrecommendationsystem.admin.model.AdminOrderRow">
+        SELECT
+        <include refid="adminOrderColumns" />
+        <include refid="adminOrderFrom" />
+        WHERE o.order_no = #{orderNo}
+        <include refid="adminOrderGroupBy" />
+    </select>
+
+    <select id="findOrderStateByOrderNo"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.admin.model.AdminOrderState">
+        SELECT id AS order_id, order_no, status
+        FROM sales_order
+        WHERE order_no = #{orderNo}
+    </select>
+
+    <update id="markOrderShipped">
+        UPDATE sales_order
+        SET status = 'SHIPPED', updated_at = CURRENT_TIMESTAMP(6)
+        WHERE id = #{orderId} AND status = 'PAID'
+    </update>
+
+    <delete id="deleteShipmentByOrderNo">
+        DELETE FROM order_shipment
+        WHERE order_no = #{orderNo}
+    </delete>
+
+    <insert id="insertShipment">
+        INSERT INTO order_shipment (order_id, order_no, carrier, tracking_no)
+        VALUES (#{orderId}, #{orderNo}, #{carrier}, #{trackingNo})
+    </insert>
+</mapper>

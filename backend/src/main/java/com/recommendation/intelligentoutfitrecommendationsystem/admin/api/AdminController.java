@@ -17,6 +17,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminU
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminAuditLogService;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminCatalogService;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminInventoryService;
+import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminOrderService;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminUserService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.api.ApiResponse;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -38,16 +39,19 @@ public class AdminController {
     private final AdminCatalogService adminCatalogService;
     private final AdminAuditLogService adminAuditLogService;
     private final AdminInventoryService adminInventoryService;
+    private final AdminOrderService adminOrderService;
     private final AdminUserService adminUserService;
 
     public AdminController(
             AdminCatalogService adminCatalogService,
             AdminAuditLogService adminAuditLogService,
             AdminInventoryService adminInventoryService,
+            AdminOrderService adminOrderService,
             AdminUserService adminUserService) {
         this.adminCatalogService = adminCatalogService;
         this.adminAuditLogService = adminAuditLogService;
         this.adminInventoryService = adminInventoryService;
+        this.adminOrderService = adminOrderService;
         this.adminUserService = adminUserService;
     }
 
@@ -110,7 +114,7 @@ public class AdminController {
 
     @GetMapping("/orders")
     public ApiResponse<List<AdminOrderResponse>> listOrders() {
-        return ApiResponse.ok(adminCatalogService.listOrders());
+        return ApiResponse.ok(adminOrderService.listOrders());
     }
 
     @PostMapping("/orders/{orderNo}/ship")
@@ -118,7 +122,7 @@ public class AdminController {
             @PathVariable String orderNo,
             @RequestBody AdminShipOrderRequest request
     ) {
-        return ApiResponse.ok(adminCatalogService.shipOrder(orderNo, request));
+        return ApiResponse.ok(adminOrderService.shipOrder(orderNo, request));
     }
 
     @GetMapping("/users")
