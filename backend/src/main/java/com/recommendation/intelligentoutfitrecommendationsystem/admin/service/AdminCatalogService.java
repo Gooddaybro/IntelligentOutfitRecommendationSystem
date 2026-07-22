@@ -8,8 +8,6 @@ import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminC
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminCategoryTrendPoint;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminFunnelResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminHotProduct;
-import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminInventoryAdjustmentRequest;
-import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminInventoryAdjustmentResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminOrderResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminOverviewResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminProductInput;
@@ -17,7 +15,6 @@ import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminP
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminProductStatusRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminShipOrderRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminShipmentResponse;
-import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminSkuResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminTrendPoint;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.mapper.AdminAuditMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.mapper.AdminMapper;
@@ -37,7 +34,6 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.sql.Timestamp;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -212,38 +208,6 @@ public class AdminCatalogService {
     }
 
     @Transactional(readOnly = true)
-    public List<AdminSkuResponse> listInventory() {
-        return jdbcTemplate.query(inventorySql(null), this::mapSku);
-    }
-
-    @Transactional
-    public AdminSkuResponse adjustInventory(Long skuId, AdminInventoryAdjustmentRequest request) {
-        if (skuId == null || skuId <= 0) {
-            throw new BadRequestException("skuId must be positive");
-        }
-        int targetStock = request == null || request.targetStock() == null ? -1 : request.targetStock();
-        if (targetStock < 0) {
-            throw new BadRequestException("targetStock must be non-negative");
-        }
-        String reason = normalizeRequiredText(request == null ? null : request.reason(), "reason");
-        Integer beforeStock = queryNullable("SELECT available_stock FROM inventory WHERE sku_id = ?", Integer.class, skuId);
-        if (beforeStock == null) {
-            throw new ResourceNotFoundException("sku not found");
-        }
-        jdbcTemplate.update("""
-                UPDATE inventory
-                SET available_stock = ?, updated_at = CURRENT_TIMESTAMP(6)
-                WHERE sku_id = ?
-                """, targetStock, skuId);
-        jdbcTemplate.update("""
-                INSERT INTO admin_inventory_adjustment (sku_id, before_stock, after_stock, reason, operator)
-                VALUES (?, ?, ?, ?, ?)
-                """, skuId, beforeStock, targetStock, reason, DEFAULT_OPERATOR);
-        insertAudit("ADJUST_STOCK", "SKU", String.valueOf(skuId), "SUCCESS", beforeStock + " -> " + targetStock);
-        return findSku(skuId);
-    }
-
-    @Transactional(readOnly = true)
     public List<AdminOrderResponse> listOrders() {
         return jdbcTemplate.query(orderSql(null), this::mapOrder);
     }
@@ -409,32 +373,8 @@ public class AdminCatalogService {
                 """, this::mapCategory, categoryId), "category not found");
     }
 
-    private AdminSkuResponse findSku(Long skuId) {
-        return singleOrNotFound(jdbcTemplate.query(inventorySql("s.id = ?"), this::mapSku, skuId), "sku not found");
-    }
-
     private AdminOrderResponse findOrder(String orderNo) {
         return singleOrNotFound(jdbcTemplate.query(orderSql("o.order_no = ?"), this::mapOrder, orderNo), "order not found");
-    }
-
-    private String inventorySql(String condition) {
-        String whereClause = condition == null ? "" : " WHERE " + condition;
-        return """
-                SELECT s.id AS sku_id, s.sku_code, s.spu_id, p.name AS product_name,
-                       co.name AS color, so.code AS size, s.sale_price, inv.available_stock,
-                       CASE WHEN s.status = 'on_sale' THEN 'ACTIVE' ELSE 'INACTIVE' END AS status,
-                       adj.before_stock, adj.after_stock, adj.reason, adj.operator, adj.adjusted_at
-                FROM product_sku s
-                JOIN product_spu p ON p.id = s.spu_id
-                JOIN color co ON co.id = s.color_id
-                JOIN size_option so ON so.id = s.size_id
-                LEFT JOIN inventory inv ON inv.sku_id = s.id
-                LEFT JOIN admin_inventory_adjustment adj ON adj.id = (
-                    SELECT MAX(inner_adj.id)
-                    FROM admin_inventory_adjustment inner_adj
-                    WHERE inner_adj.sku_id = s.id
-                )
-                """ + whereClause + " ORDER BY s.id ASC";
     }
 
     private String orderSql(String condition) {
@@ -467,30 +407,6 @@ public class AdminCatalogService {
                 resultSet.getInt("sort_order"),
                 resultSet.getBoolean("enabled"),
                 resultSet.getLong("product_count")
-        );
-    }
-
-    private AdminSkuResponse mapSku(ResultSet resultSet, int rowNum) throws SQLException {
-        Timestamp adjustedAt = resultSet.getTimestamp("adjusted_at");
-        AdminInventoryAdjustmentResponse adjustment = adjustedAt == null ? null : new AdminInventoryAdjustmentResponse(
-                resultSet.getInt("before_stock"),
-                resultSet.getInt("after_stock"),
-                resultSet.getString("reason"),
-                resultSet.getString("operator"),
-                adjustedAt.toLocalDateTime()
-        );
-        return new AdminSkuResponse(
-                resultSet.getLong("sku_id"),
-                resultSet.getString("sku_code"),
-                resultSet.getLong("spu_id"),
-                resultSet.getString("product_name"),
-                resultSet.getString("color"),
-                resultSet.getString("size"),
-                resultSet.getBigDecimal("sale_price"),
-                resultSet.getInt("available_stock"),
-                LOW_STOCK_THRESHOLD,
-                resultSet.getString("status"),
-                adjustment
         );
     }
 

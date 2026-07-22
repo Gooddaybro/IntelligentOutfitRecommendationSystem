@@ -16,6 +16,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminU
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminUserStatusRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminAuditLogService;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminCatalogService;
+import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminInventoryService;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminUserService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.api.ApiResponse;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,14 +37,17 @@ import java.util.List;
 public class AdminController {
     private final AdminCatalogService adminCatalogService;
     private final AdminAuditLogService adminAuditLogService;
+    private final AdminInventoryService adminInventoryService;
     private final AdminUserService adminUserService;
 
     public AdminController(
             AdminCatalogService adminCatalogService,
             AdminAuditLogService adminAuditLogService,
+            AdminInventoryService adminInventoryService,
             AdminUserService adminUserService) {
         this.adminCatalogService = adminCatalogService;
         this.adminAuditLogService = adminAuditLogService;
+        this.adminInventoryService = adminInventoryService;
         this.adminUserService = adminUserService;
     }
 
@@ -93,7 +97,7 @@ public class AdminController {
 
     @GetMapping("/inventory")
     public ApiResponse<List<AdminSkuResponse>> listInventory() {
-        return ApiResponse.ok(adminCatalogService.listInventory());
+        return ApiResponse.ok(adminInventoryService.listInventory());
     }
 
     @PostMapping("/inventory/{skuId}/adjustments")
@@ -101,7 +105,7 @@ public class AdminController {
             @PathVariable Long skuId,
             @RequestBody AdminInventoryAdjustmentRequest request
     ) {
-        return ApiResponse.ok(adminCatalogService.adjustInventory(skuId, request));
+        return ApiResponse.ok(adminInventoryService.adjustInventory(skuId, request));
     }
 
     @GetMapping("/orders")

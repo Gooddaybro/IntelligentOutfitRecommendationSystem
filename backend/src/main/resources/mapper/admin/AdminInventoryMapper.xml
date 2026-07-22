@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recommendation.intelligentoutfitrecommendationsystem.admin.mapper.AdminInventoryMapper">
+    <sql id="adminInventoryColumns">
+        s.id AS sku_id,
+        s.sku_code,
+        s.spu_id,
+        p.name AS product_name,
+        co.name AS color,
+        so.code AS size,
+        s.sale_price,
+        COALESCE(inv.available_stock, 0) AS available_stock,
+        CASE WHEN s.status = 'on_sale' THEN 'ACTIVE' ELSE 'INACTIVE' END AS status,
+        adj.before_stock,
+        adj.after_stock,
+        adj.reason AS adjustment_reason,
+        adj.operator AS adjustment_operator,
+        adj.adjusted_at
+    </sql>
+
+    <sql id="adminInventoryFrom">
+        FROM product_sku s
+        JOIN product_spu p ON p.id = s.spu_id
+        JOIN color co ON co.id = s.color_id
+        JOIN size_option so ON so.id = s.size_id
+        LEFT JOIN inventory inv ON inv.sku_id = s.id
+        LEFT JOIN admin_inventory_adjustment adj ON adj.id = (
+            SELECT MAX(inner_adj.id)
+            FROM admin_inventory_adjustment inner_adj
+            WHERE inner_adj.sku_id = s.id
+        )
+    </sql>
+
+    <!--
+        Admin inventory rows join SKU, product, option and stock tables while selecting only the newest
+        adjustment record. The correlated MAX(id) subquery preserves the console contract of showing
+        the most recent manual stock change without multiplying SKU rows.
+    -->
+    <select id="findInventory" resultType="com.recommendation.intelligentoutfitrecommendationsystem.admin.model.AdminInventoryRow">
+        SELECT
+        <include refid="adminInventoryColumns" />
+        <include refid="adminInventoryFrom" />
+        ORDER BY s.id ASC
+    </select>
+
+    <select id="findSkuById" resultType="com.recommendation.intelligentoutfitrecommendationsystem.admin.model.AdminInventoryRow">
+        SELECT
+        <include refid="adminInventoryColumns" />
+        <include refid="adminInventoryFrom" />
+        WHERE s.id = #{skuId}
+    </select>
+
+    <select id="findAvailableStockBySkuId" resultType="java.lang.Integer">
+        SELECT available_stock
+        FROM inventory
+        WHERE sku_id = #{skuId}
+    </select>
+
+    <update id="updateAvailableStock">
+        UPDATE inventory
+        SET available_stock = #{targetStock}, updated_at = CURRENT_TIMESTAMP(6)
+        WHERE sku_id = #{skuId}
+    </update>
+
+    <insert id="insertInventoryAdjustment">
+        INSERT INTO admin_inventory_adjustment
+            (sku_id, before_stock, after_stock, reason, operator)
+        VALUES (#{skuId}, #{beforeStock}, #{afterStock}, #{reason}, #{operator})
+    </insert>
+</mapper>
