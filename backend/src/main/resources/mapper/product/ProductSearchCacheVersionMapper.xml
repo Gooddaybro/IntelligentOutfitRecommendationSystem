@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recommendation.intelligentoutfitrecommendationsystem.product.search.cache.ProductSearchCacheVersionMapper">
+    <select id="findCurrentVersion" resultType="long">
+        SELECT generation
+        FROM product_search_cache_state
+        WHERE id = 1
+    </select>
+
+    <update id="incrementVersion">
+        UPDATE product_search_cache_state
+        SET generation = generation + 1,
+            updated_at = CURRENT_TIMESTAMP(6)
+        WHERE id = 1
+    </update>
+</mapper>

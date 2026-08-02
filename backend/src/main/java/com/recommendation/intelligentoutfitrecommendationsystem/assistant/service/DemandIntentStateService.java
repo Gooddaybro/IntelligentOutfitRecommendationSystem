@@ -1,28 +1,44 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.assistant.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintConflictResult;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintOrigin;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntent;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntentPatch;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntentStateSnapshot;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.EffectiveDemand;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PendingClarification;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.TurnIntent;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.dto.ConversationDemandStateSnapshot;
 import com.recommendation.intelligentoutfitrecommendationsystem.conversation.service.ConversationDemandStateStore;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Owns the assistant-specific state machine while reusing conversation persistence. */
+import java.util.List;
+import java.util.Set;
+
+/**
+ * Owns the assistant demand-state transition and the compatibility migration from persisted v2 JSON.
+ * The unchanged conversation columns store v3 effective JSON separately from a clarification/conflict workflow envelope.
+ */
 @Service
 public class DemandIntentStateService {
 
     private final ConversationDemandStateStore stateStore;
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final DemandIntentMerger merger = new DemandIntentMerger();
+    private final TurnIntentAdapter turnAdapter = new TurnIntentAdapter();
+    private final LegacyDemandIntentAdapter legacyAdapter = new LegacyDemandIntentAdapter();
+    private final IntentConstraintMerger merger = new IntentConstraintMerger();
+    private final DerivedConstraintResolver resolver = new DerivedConstraintResolver();
+    private final ConstraintConflictValidator conflictValidator = new ConstraintConflictValidator();
 
     public DemandIntentStateService(ConversationDemandStateStore stateStore) {
         this.stateStore = stateStore;
     }
 
+    /** Applies the established single-patch API while persisting only v3 state internally. */
     @Transactional
     public DemandIntent apply(
             Long userId,
@@ -32,26 +48,15 @@ public class DemandIntentStateService {
             DemandIntentPatch patch,
             DemandIntent initialIntent
     ) {
-        String effectiveJson = stateStore.apply(
-                userId,
-                threadId,
-                requestId,
-                messageId,
-                patch.action(),
-                writeJson(patch),
-                writeJson(initialIntent),
-                storedJson -> writeJson(merger.merge(readIntent(storedJson), patch))
-        );
-        return readIntent(effectiveJson);
+        DemandIntentStateSnapshot snapshot = transition(userId, threadId, requestId, messageId,
+                patch.action(), patch, null, null, initialIntent);
+        return snapshot.effectiveIntent();
     }
 
+    /** Reads either v3 JSON or an unmigrated v2 row and exposes one typed state shape. */
     public DemandIntentStateSnapshot read(Long userId, String threadId) {
         ConversationDemandStateSnapshot stored = stateStore.read(userId, threadId);
-        if (stored == null) {
-            return null;
-        }
-        return new DemandIntentStateSnapshot(
-                readIntent(stored.effectiveIntentJson()), readPending(stored.pendingClarificationJson()));
+        return stored == null ? null : snapshot(stored);
     }
 
     @Transactional
@@ -70,7 +75,7 @@ public class DemandIntentStateService {
                 deterministicPatch, semanticPatch, pending, initialIntent);
     }
 
-    /** Atomically apply one explicit demand-state transition and preserve its audit action. */
+    /** Atomically applies one explicit transition in adapter, merger, resolver and validation order. */
     @Transactional
     public DemandIntentStateSnapshot applyResolution(
             Long userId,
@@ -83,46 +88,120 @@ public class DemandIntentStateService {
             PendingClarification pending,
             DemandIntent initialIntent
     ) {
-        if (!java.util.Set.of("merge", "clarify", "confirm", "cancel_clarify").contains(action)) {
+        if (!Set.of("merge", "clarify", "confirm", "cancel_clarify").contains(action)) {
             throw new IllegalArgumentException("unsupported demand transition action");
         }
+        return transition(userId, threadId, requestId, messageId, action,
+                deterministicPatch, semanticPatch, pending, initialIntent);
+    }
+
+    private DemandIntentStateSnapshot transition(
+            Long userId,
+            String threadId,
+            String requestId,
+            Long messageId,
+            String action,
+            DemandIntentPatch deterministicPatch,
+            DemandIntentPatch semanticPatch,
+            PendingClarification pending,
+            DemandIntent initialIntent
+    ) {
+        String turnId = turnId(requestId, messageId);
+        EffectiveDemand initial = legacyAdapter.adapt(initialIntent);
         ConversationDemandStateSnapshot stored = stateStore.transition(
                 userId, threadId, requestId, messageId, action,
-                writeJson(semanticPatch == null ? deterministicPatch : semanticPatch),
-                writeJson(initialIntent),
+                writeJson(new AuditPatch(deterministicPatch, semanticPatch)),
+                writeJson(initial),
                 current -> {
-                    if ("cancel_clarify".equals(action)) {
-                        return new ConversationDemandStateSnapshot(current.effectiveIntentJson(), null);
+                    EffectiveDemand effective = readEffective(current.effectiveIntentJson());
+                    if (!"cancel_clarify".equals(action)) {
+                        if (deterministicPatch != null) {
+                            effective = mergeTurn(resetBase(effective, deterministicPatch),
+                                    turnAdapter.adapt(turnId, deterministicPatch));
+                        }
+                        if (semanticPatch != null) {
+                            effective = mergeTurn(resetBase(effective, semanticPatch),
+                                    turnAdapter.adapt(turnId, semanticPatch));
+                        }
                     }
-                    DemandIntent intent = readIntent(current.effectiveIntentJson());
-                    if (deterministicPatch != null) {
-                        intent = merger.merge(intent, deterministicPatch);
-                    }
-                    if (semanticPatch != null) {
-                        intent = merger.merge(intent, semanticPatch);
-                    }
+                    EffectiveDemand resolved = resolver.resolve(effective);
+                    boolean staleDerivedConstraintRemoved = staleDerivedConstraintRemoved(effective, resolved);
+                    ConstraintConflictResult conflict = conflictValidator.validate(resolved, turnId);
+                    PendingClarification nextPending = "cancel_clarify".equals(action) ? null : pending;
                     return new ConversationDemandStateSnapshot(
-                            writeJson(intent), pending == null ? null : writeJson(pending));
-                }
-        );
+                            writeJson(resolved), writeJson(new WorkflowState(
+                                    nextPending, conflict, staleDerivedConstraintRemoved)));
+                });
+        return snapshot(stored);
+    }
+
+    private EffectiveDemand resetBase(EffectiveDemand current, DemandIntentPatch patch) {
+        return "reset".equalsIgnoreCase(patch.action())
+                ? EffectiveDemand.v3("", null, List.of(), List.of(), List.of(), null) : current;
+    }
+
+    private EffectiveDemand mergeTurn(EffectiveDemand previous, TurnIntent turn) {
+        EffectiveDemand merged = merger.merge(previous, turn);
+        if (!turn.scalarReplacements().containsKey("season")
+                || !turn.scalarReplacements().get("season").values().contains("SUMMER")) {
+            return merged;
+        }
+        var retained = merged.softPreferences().stream()
+                .filter(item -> !(item.origin() == ConstraintOrigin.LEGACY_UNPROVENANCED
+                        && item.field().equals("thermal") && item.values().contains("WARM")))
+                .toList();
+        if (retained.size() == merged.softPreferences().size()) {
+            return merged;
+        }
+        return merged.withSoftPreferences(retained);
+    }
+
+    private DemandIntentStateSnapshot snapshot(ConversationDemandStateSnapshot stored) {
+        WorkflowState workflow = readWorkflow(stored.pendingClarificationJson());
+        EffectiveDemand effective = readEffective(stored.effectiveIntentJson());
+        ConstraintConflictResult conflict = workflow.conflictResult() == null
+                ? conflictValidator.validate(effective) : workflow.conflictResult();
         return new DemandIntentStateSnapshot(
-                readIntent(stored.effectiveIntentJson()), readPending(stored.pendingClarificationJson()));
+                effective, workflow.pendingClarification(), conflict, workflow.staleDerivedConstraintRemoved());
     }
 
-    private PendingClarification readPending(String json) {
+    private boolean staleDerivedConstraintRemoved(EffectiveDemand before, EffectiveDemand after) {
+        Set<String> activeParentIds = before.hardFilters().stream()
+                .map(com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.IntentConstraint::id)
+                .collect(java.util.stream.Collectors.toSet());
+        Set<String> survivingIds = after.softPreferences().stream()
+                .map(com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.IntentConstraint::id)
+                .collect(java.util.stream.Collectors.toSet());
+        return before.softPreferences().stream()
+                .filter(item -> item.origin() == ConstraintOrigin.SYSTEM_DERIVED)
+                .filter(item -> item.derivedFromConstraintId() != null)
+                .anyMatch(item -> !activeParentIds.contains(item.derivedFromConstraintId())
+                        && !survivingIds.contains(item.id()));
+    }
+
+    private WorkflowState readWorkflow(String json) {
         if (json == null || json.isBlank()) {
-            return null;
+            return new WorkflowState(null, null, false);
         }
         try {
-            return objectMapper.readValue(json, PendingClarification.class);
+            JsonNode root = objectMapper.readTree(json);
+            if (root.has("pendingClarification") || root.has("conflictResult")
+                    || root.has("staleDerivedConstraintRemoved")) {
+                return objectMapper.readValue(json, WorkflowState.class);
+            }
+            return new WorkflowState(objectMapper.readValue(json, PendingClarification.class), null, false);
         } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("invalid stored pending clarification", exception);
+            throw new IllegalStateException("invalid stored demand workflow", exception);
         }
     }
 
-    private DemandIntent readIntent(String json) {
+    private EffectiveDemand readEffective(String json) {
         try {
-            return objectMapper.readValue(json, DemandIntent.class);
+            JsonNode root = objectMapper.readTree(json);
+            if (root != null && EffectiveDemand.VERSION.equals(root.path("version").asText())) {
+                return objectMapper.treeToValue(root, EffectiveDemand.class);
+            }
+            return legacyAdapter.adapt(objectMapper.treeToValue(root, DemandIntent.class));
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("invalid stored demand intent", exception);
         }
@@ -134,5 +213,25 @@ public class DemandIntentStateService {
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("failed to serialize demand state", exception);
         }
+    }
+
+    private String turnId(String requestId, Long messageId) {
+        if (requestId != null && !requestId.isBlank()) {
+            return requestId;
+        }
+        return messageId == null ? "unidentified-current-turn" : "message-" + messageId;
+    }
+
+    private record WorkflowState(
+            PendingClarification pendingClarification,
+            ConstraintConflictResult conflictResult,
+            boolean staleDerivedConstraintRemoved
+    ) {
+    }
+
+    private record AuditPatch(
+            DemandIntentPatch deterministicPatch,
+            DemandIntentPatch semanticPatch
+    ) {
     }
 }

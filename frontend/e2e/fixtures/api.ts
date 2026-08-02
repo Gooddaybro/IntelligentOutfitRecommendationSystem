@@ -50,7 +50,10 @@ type Order = {
   };
 };
 
-type InstallApiMockOptions = { role?: "ROLE_USER" | "ROLE_ADMIN" };
+type InstallApiMockOptions = {
+  role?: "ROLE_USER" | "ROLE_ADMIN";
+  assistantScenario?: "default" | "browseFallback" | "partialMatch";
+};
 
 export const commuteJacketCandidate = {
   spuId: 1002,
@@ -71,6 +74,45 @@ export const commuteJacketCandidate = {
   maxPrice: 299,
   totalAvailableStock: 7
 };
+
+export const summerOutfitCandidates = [
+  {
+    ...commuteJacketCandidate,
+    spuId: 3101,
+    skuId: 4101,
+    spuCode: "SUMMER-TOP-001",
+    name: "夏季亚麻短袖衬衫",
+    categoryName: "衬衫",
+    mainImageUrl: "/images/products/basic-cotton-tshirt-main.svg",
+    color: "白色",
+    size: "M",
+    materials: "亚麻",
+    seasons: "summer",
+    styleTags: "casual",
+    salePrice: 199,
+    minPrice: 199,
+    maxPrice: 199,
+    totalAvailableStock: 8
+  },
+  {
+    ...commuteJacketCandidate,
+    spuId: 3102,
+    skuId: 4102,
+    spuCode: "SUMMER-BOTTOM-001",
+    name: "夏季休闲短裤",
+    categoryName: "短裤",
+    mainImageUrl: "/images/products/basic-cotton-tshirt-main.svg",
+    color: "卡其色",
+    size: "M",
+    materials: "棉",
+    seasons: "summer",
+    styleTags: "casual",
+    salePrice: 159,
+    minPrice: 159,
+    maxPrice: 159,
+    totalAvailableStock: 9
+  }
+];
 
 function jsonResponse<T>(data: T): ApiEnvelope<T> {
   return { data };
@@ -129,6 +171,9 @@ function buildOrder(orderNo: string, cartItems: CartItem[], status: "UNPAID" | "
 }
 
 export async function installApiMocks(page: Page, options: InstallApiMockOptions = {}) {
+  const assistantCandidates = options.assistantScenario === "default" || !options.assistantScenario
+    ? [commuteJacketCandidate]
+    : summerOutfitCandidates;
   let cartItems: CartItem[] = [];
   let orders: Order[] = [];
   let adminProducts = [
@@ -199,7 +244,7 @@ export async function installApiMocks(page: Page, options: InstallApiMockOptions
   });
 
   await page.route("**/api/products/recommendation-candidates?**", async (route) => {
-    await fulfillJson(route, [commuteJacketCandidate]);
+    await fulfillJson(route, assistantCandidates);
   });
 
   await page.route(/\/api\/products\/\d+$/, async (route) => {
@@ -235,6 +280,50 @@ export async function installApiMocks(page: Page, options: InstallApiMockOptions
   });
 
   await page.route("**/api/assistant/chat/stream", async (route) => {
+    const resolvedIntent = {
+      version: "demand-intent-v3",
+      requestType: "OUTFIT_ADVICE",
+      requestedCapabilities: ["OUTFIT_PLAN", "PRODUCT_SELECTION"],
+      hardFilters: [],
+      softPreferences: []
+    };
+    const donePayload = options.assistantScenario === "browseFallback"
+      ? {
+          thread_id: "thread-e2e",
+          answer: "当前先展示可浏览的夏季候选。",
+          recommended_spu_ids: [],
+          recommended_items: [],
+          java_candidate_count: 2,
+          recommendation_status: "BROWSE_FALLBACK",
+          resolved_intent: resolvedIntent
+        }
+      : options.assistantScenario === "partialMatch"
+        ? {
+            thread_id: "thread-e2e",
+            answer: "已找到真实上装，下装请参考文字建议。",
+            recommended_spu_ids: [3101],
+            recommended_items: [{
+              spuId: 3101,
+              skuId: 4101,
+              reason: "夏季休闲上装匹配。",
+              rankScore: 0.91,
+              outfitRole: "TOP"
+            }],
+            java_candidate_count: 2,
+            recommendation_status: "PARTIAL_MATCH",
+            resolved_intent: resolvedIntent
+          }
+        : {
+            thread_id: "thread-e2e",
+            answer: "",
+            recommended_spu_ids: [1002],
+            recommended_items: [{
+              spuId: 1002,
+              skuId: 2102,
+              reason: "黑色通勤外套符合预算和场景。",
+              rankScore: 0.92
+            }]
+          };
     await route.fulfill({
       status: 200,
       contentType: "text/event-stream",
@@ -242,7 +331,7 @@ export async function installApiMocks(page: Page, options: InstallApiMockOptions
         'event: meta\ndata: {"thread_id":"thread-e2e"}',
         'event: token\ndata: {"content":"通勤建议优先看黑色轻薄外套。"}',
         'event: recommendation\ndata: {"recommended_spu_ids":[1002]}',
-        'event: done\ndata: {"thread_id":"thread-e2e","answer":"","recommended_spu_ids":[1002],"recommended_items":[{"spuId":1002,"skuId":2102,"reason":"黑色通勤外套符合预算和场景。","rankScore":0.92}]}',
+        `event: done\ndata: ${JSON.stringify(donePayload)}`,
         ""
       ].join("\n\n")
     });

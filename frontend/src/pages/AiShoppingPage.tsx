@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import { Link } from "react-router-dom";
 import { ChatPanel } from "../features/assistant/ChatPanel";
 import type { ChatPanelState, RecommendationResultMeta } from "../features/assistant/ChatPanel";
 import { ProductCard } from "../features/catalog/ProductCard";
@@ -72,8 +71,7 @@ export function AiShoppingPage({
     candidate: RecommendationCandidate,
     metadata?: Record<string, unknown>
   ) {
-    if (!recommendationMeta?.hasAiResult
-        || !recommendationMeta.recommendationId
+    if (!recommendationMeta?.recommendationId
         || !chatState.threadId
         || !isAttributedCandidate(candidate)) {
       return;
@@ -92,17 +90,18 @@ export function AiShoppingPage({
   }
 
   function isAttributedCandidate(candidate: RecommendationCandidate) {
-    return recommendationMeta?.recommendedItems?.some((item) =>
-      item.skuId !== undefined && item.spuId === candidate.spuId && item.skuId === candidate.skuId
-    ) ?? false;
+    const attributionEligible = status === "STRONG_MATCH" || status === "PARTIAL_MATCH";
+    return attributionEligible && (recommendationMeta?.recommendedItems?.some((item) =>
+      item.spuId === candidate.spuId && (item.skuId === undefined || item.skuId === candidate.skuId)
+    ) ?? false);
   }
 
   function actionMetadataFor(candidate: RecommendationCandidate) {
-    return recommendationMeta?.hasAiResult && isAttributedCandidate(candidate)
+    return isAttributedCandidate(candidate)
     ? {
         source: "ASSISTANT_RECOMMENDATION" as const,
         threadId: chatState.threadId,
-        recommendationId: recommendationMeta.recommendationId
+        recommendationId: recommendationMeta?.recommendationId
       }
     : undefined;
   }
@@ -110,29 +109,18 @@ export function AiShoppingPage({
     recordRecommendationEvent(event.eventType, event.candidate, event.metadata);
   const status = recommendationMeta?.recommendationStatus;
   const isOutfit = recommendationMeta?.resolvedIntent?.requestType === "OUTFIT_ADVICE";
-  // 字段缺失代表滚动升级中的旧响应，可安全回退到带完整 SKU 的强推荐；显式空数组不可回退。
-  const effectiveMentionedItems = recommendationMeta?.mentionedItems
-    ?? recommendationMeta?.recommendedItems?.flatMap((item) =>
-      item.skuId === undefined ? [] : [{ spuId: item.spuId, skuId: item.skuId, outfitRole: item.outfitRole }]
-    )
-    ?? [];
-  const mentionedKeys = new Set(effectiveMentionedItems.map((item) => `${item.spuId}:${item.skuId}`));
-  // AI 完成后只展示 Java 明确返回的商品身份；没有结构化 ID 时绝不从回答文本猜商品。
-  const boundCandidates = recommendations.filter((candidate) =>
-    mentionedKeys.has(`${candidate.spuId}:${candidate.skuId}`)
-  );
-  const displayCandidates = recommendationMeta?.hasAiResult ? boundCandidates : recommendations;
+  const groupedOutfit = isOutfit
+    && (status === "STRONG_MATCH" || status === "PARTIAL_MATCH")
+    && recommendations.some((candidate) => candidate.outfitRole);
+  const visibleRecommendations = status === "EMPTY" || status === "FAILED" ? [] : recommendations;
   const outfitGroups = [
     ["TOP", "上装"],
     ["BOTTOM", "下装"],
     ["OUTER", "外搭"],
     ["SHOES", "鞋履"],
-    ["ACCESSORY", "配饰"]
+    ["ACCESSORY", "配饰"],
+    ["OTHER", "其他"]
   ] as const;
-
-  function isMentionedCandidate(candidate: RecommendationCandidate) {
-    return mentionedKeys.has(`${candidate.spuId}:${candidate.skuId}`);
-  }
 
   return (
     <main className="workbench outfit-workbench noir-workbench" data-testid="ai-workbench" data-layout="editorial-stage">
@@ -146,105 +134,73 @@ export function AiShoppingPage({
         />
       </section>
 
-      <section className="recommendation-stage" data-testid="recommendation-panel">
+      <section className="recommendation-stage" data-testid="recommendation-panel" aria-live="polite">
         <div className="section-heading">
           <div>
             <p className="eyebrow">CURATED / AI</p>
             <h2>为你策展的单品</h2>
           </div>
-          <span>
-            {isRecommendationsLoading
-              ? "正在筛选"
-              : recommendationMeta?.hasAiResult
-                ? `已绑定 ${boundCandidates.length} 件 · 候选 ${recommendations.length} 件`
-                : `${recommendations.length} 件`}
-          </span>
+          <span>{isRecommendationsLoading ? "正在筛选" : `${visibleRecommendations.length} 件`}</span>
         </div>
         {status === "STRONG_MATCH" && <p className="recommendation-notice">已按当前需求推荐。</p>}
-        {status === "WEAK_FALLBACK" && boundCandidates.length > 0 && (
-          <p className="recommendation-notice">暂无强匹配，以下商品已由 Java 精确绑定为对话提及，不作 AI 推荐归因。</p>
-        )}
+        {status === "PARTIAL_MATCH" && <p className="recommendation-notice">已展示部分真实匹配，其余搭配位置请参考文字建议。</p>}
+        {status === "BROWSE_FALLBACK" && <p className="recommendation-notice">暂无强匹配，以下为同一候选快照中的可浏览商品，不作 AI 归因。</p>}
         {status === "EMPTY" && <p className="recommendation-notice">当前条件下没有候选商品，可以尝试放宽一个条件。</p>}
-        {status === "ERROR" && <p className="error-text">候选快照读取失败，请重试；未沿用上一次结果。</p>}
+        {status === "FAILED" && <p className="error-text" role="alert">候选快照读取失败，请重试；未沿用上一次结果。</p>}
         {isRecommendationsLoading && <div className="recommendation-stage__skeleton" aria-label="推荐商品加载中" />}
-        {!isRecommendationsLoading && !recommendationMeta?.hasAiResult && recommendations.length === 0 && (
+        {!isRecommendationsLoading && visibleRecommendations.length === 0 && (
           <p className="recommendation-stage__empty">告诉 AI 你的场景、风格或预算，专属推荐会在这里出现。</p>
         )}
-        {!isRecommendationsLoading && status === "WEAK_FALLBACK" && boundCandidates.length === 0 && (
-          <p className="recommendation-stage__empty recommendation-stage__empty--bound">
-            本轮文字建议未绑定真实商品，暂不提供加购。你可以补充品类、预算或尺码后重新推荐。
-          </p>
-        )}
-        {isOutfit && recommendationMeta?.hasAiResult && (
+        {groupedOutfit && visibleRecommendations.length > 0 && (
           <div className="outfit-groups" data-testid="outfit-groups">
             {outfitGroups.map(([role, label]) => {
-              const items = boundCandidates.filter((candidate) => candidate.outfitRole === role);
+              const items = visibleRecommendations.filter((candidate) => candidate.outfitRole === role);
+              if (role === "OTHER" && items.length === 0) return null;
               return (
                 <section key={role} className="outfit-group" aria-label={label}>
                   <h3>{label}</h3>
-                  {items.length > 0 ? (
-                    <div className="outfit-group__items">
-                      {items.map((candidate) => {
-                        const attributed = isAttributedCandidate(candidate);
-                        return (
-                          <Link
-                            key={`${candidate.spuId}-${candidate.skuId}`}
-                            className="outfit-group__item"
-                            to={`/app/products/${candidate.spuId}`}
-                            aria-label={`查看${candidate.name}详情`}
-                          >
-                            <span>{candidate.name}</span>
-                            <small className={`outfit-role-badge outfit-role-badge--${attributed ? "ai" : "mention"}`}>
-                              {attributed ? "AI 推荐" : "对话提及"}
-                            </small>
-                          </Link>
-                        );
-                      })}
+                  {items.length === 0 ? <p>本组暂无真实匹配商品，请参考对话中的文字搭配建议。</p> : (
+                    <div className="product-grid">
+                      {items.map((candidate, index) => (
+                        <ProductCard key={`${candidate.spuId}-${candidate.skuId}`} candidate={candidate} onAction={onAction} actionMetadata={actionMetadataFor(candidate)} position={index + 1} onBehaviorEvent={recordEvent} recommendationStatus={status} isAttributed={isAttributedCandidate(candidate)} />
+                      ))}
                     </div>
-                  ) : <p>暂无绑定商品，请参考左侧文字建议</p>}
+                  )}
                 </section>
               );
             })}
           </div>
         )}
-        {recommendationMeta?.hasAiResult && displayCandidates.length > 0 && (
-          <section className="bound-products" aria-labelledby="bound-products-heading">
-            <div className="bound-products__heading">
-              <p className="eyebrow">BOUND PRODUCTS</p>
-              <h3 id="bound-products-heading">本轮推荐单品</h3>
-            </div>
-            <div className="product-grid bound-products__grid">
-              {displayCandidates.map((candidate, index) => (
-                <ProductCard
-                  key={`${candidate.spuId}-${candidate.skuId}`}
-                  candidate={candidate}
-                  onAction={onAction}
-                  actionMetadata={actionMetadataFor(candidate)}
-                  position={index + 1}
-                  onBehaviorEvent={recordEvent}
-                  recommendationStatus={status}
-                  isAttributed={isAttributedCandidate(candidate)}
-                  isMentioned={isMentionedCandidate(candidate)}
-                />
-              ))}
-            </div>
-          </section>
+        {status === "BROWSE_FALLBACK" && visibleRecommendations.length > 0 && (
+          <div className="product-grid recommendation-stage__browse-fallback">
+            {visibleRecommendations.map((candidate, index) => (
+              <ProductCard
+                key={`${candidate.spuId}-${candidate.skuId}`}
+                candidate={candidate}
+                onAction={onAction}
+                position={index + 1}
+                onBehaviorEvent={recordEvent}
+                recommendationStatus={status}
+                isAttributed={false}
+              />
+            ))}
+          </div>
         )}
-        {!recommendationMeta?.hasAiResult && displayCandidates.length > 0 && (
+        {!groupedOutfit && status !== "BROWSE_FALLBACK" && visibleRecommendations.length > 0 && (
           <div className="recommendation-stage__grid">
             <div className="recommendation-stage__featured">
-              <ProductCard candidate={displayCandidates[0]} variant="featured" onAction={onAction} actionMetadata={actionMetadataFor(displayCandidates[0])} position={1} onBehaviorEvent={recordEvent} recommendationStatus={status} isAttributed={isAttributedCandidate(displayCandidates[0])} />
+              <ProductCard candidate={visibleRecommendations[0]} variant="featured" onAction={onAction} actionMetadata={actionMetadataFor(visibleRecommendations[0])} position={1} onBehaviorEvent={recordEvent} recommendationStatus={status} isAttributed={isAttributedCandidate(visibleRecommendations[0])} />
             </div>
             <div className="recommendation-stage__supporting">
-              {displayCandidates.slice(1, 3).map((candidate, index) => (
+              {visibleRecommendations.slice(1, 3).map((candidate, index) => (
                 <ProductCard key={`${candidate.spuId}-${candidate.skuId}`} candidate={candidate} variant="supporting" onAction={onAction} actionMetadata={actionMetadataFor(candidate)} position={index + 2} onBehaviorEvent={recordEvent} recommendationStatus={status} isAttributed={isAttributedCandidate(candidate)} />
               ))}
             </div>
           </div>
         )}
-        {!recommendationMeta?.hasAiResult && displayCandidates.length > 3 && (
+        {!groupedOutfit && status !== "BROWSE_FALLBACK" && visibleRecommendations.length > 3 && (
           <div className="product-grid recommendation-stage__remaining">
-            {displayCandidates.slice(3).map((candidate, index) => (
+            {visibleRecommendations.slice(3).map((candidate, index) => (
               <ProductCard key={`${candidate.spuId}-${candidate.skuId}`} candidate={candidate} onAction={onAction} actionMetadata={actionMetadataFor(candidate)} position={index + 4} onBehaviorEvent={recordEvent} recommendationStatus={status} isAttributed={isAttributedCandidate(candidate)} />
             ))}
           </div>

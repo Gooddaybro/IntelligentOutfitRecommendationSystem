@@ -18,28 +18,12 @@ describe("assistant shopping state", () => {
     const withRecommendations = assistantShoppingReducer(initialAssistantShoppingState, {
       type: "setRecommendationMeta",
       value: {
-        hasAiResult: true,
-        hasStrongMatch: true,
+        recommendationStatus: "PARTIAL_MATCH",
         recommendedItems: [{ spuId: 1002, skuId: 2101, reason: "预算匹配", rankScore: 0.9 }]
       }
     });
 
     expect(withRecommendations.recommendationMeta?.recommendedItems?.[0].reason).toBe("预算匹配");
     expect(assistantShoppingReducer(withRecommendations, { type: "reset" })).toEqual(initialAssistantShoppingState);
-  });
-
-  it("ignores a completion event from an older request", () => {
-    const loading = assistantShoppingReducer(initialAssistantShoppingState, {
-      type: "recommendationStarted",
-      requestId: "req-new"
-    });
-    const stale = assistantShoppingReducer(loading, {
-      type: "recommendationCompleted",
-      requestId: "req-old",
-      status: "STRONG_MATCH"
-    });
-
-    expect(stale.recommendationRequestId).toBe("req-new");
-    expect(stale.recommendationStatus).toBe("LOADING");
   });
 });

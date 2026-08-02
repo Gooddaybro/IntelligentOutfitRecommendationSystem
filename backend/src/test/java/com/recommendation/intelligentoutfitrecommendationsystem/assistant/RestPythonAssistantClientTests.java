@@ -1,8 +1,14 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.assistant;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client.RestPythonAssistantClient;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client.PythonAssistantStreamHandler;
-import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntent;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintOperator;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintOrigin;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ConstraintStrength;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.EffectiveDemand;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.IntentConstraint;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatHistoryItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatResponse;
@@ -17,6 +23,8 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -50,9 +58,17 @@ class RestPythonAssistantClientTests {
                           "spu_id": 1001,
                           "sku_id": 2001,
                           "reason": "fits the requested commute style",
-                          "rank_score": 0.95
+                          "rank_score": 0.95,
+                          "matched_dimensions": [],
+                          "outfit_role": "TOP"
                         }
                       ],
+                      "rejected_reasons": {
+                        "HARD_FILTER_MISMATCH": 2,
+                        "SIZE_MISMATCH": 1,
+                        "LOW_STYLE_SCORE": 3,
+                        "MISSING_REQUIRED_EVIDENCE": 4
+                      },
                       "suggested_actions": []
                     }
                     """.getBytes(StandardCharsets.UTF_8);
@@ -109,20 +125,17 @@ class RestPythonAssistantClientTests {
                         7,
                         List.of("适用场景:通勤")
                 )),
-                new DemandIntent(
-                        DemandIntent.VERSION,
-                        DemandIntent.SOURCE_JAVA_RULE,
+                EffectiveDemand.v3(
                         "hello",
-                        "male",
-                        "外套",
-                        List.of("commute"),
-                        List.of("commute"),
-                        800,
+                        "recommendation",
+                        List.of("PRODUCT_RECOMMENDATION"),
+                        List.of(new IntentConstraint(
+                                "turn-1-season", "season", ConstraintOperator.EQUALS, List.of("SUMMER"),
+                                ConstraintStrength.HARD, ConstraintOrigin.USER_EXPLICIT, "turn-1", null,
+                                "ACTIVE_DEMAND", null
+                        )),
                         List.of(),
-                        List.of("targetGender", "category", "budgetMax"),
-                        List.of("scene", "style"),
-                        new BigDecimal("0.88"),
-                        List.of()
+                        null
                 ),
                 false
         );
@@ -132,6 +145,14 @@ class RestPythonAssistantClientTests {
         assertThat(response.requestId()).isEqualTo("req-client-test");
         assertThat(response.answer()).isEqualTo("ok");
         assertThat(response.intent()).isEqualTo("recommendation");
+        assertThat(response.productRefs()).singleElement().satisfies(ref ->
+                assertThat(ref.outfitRole()).isEqualTo("TOP"));
+        assertThat(response.rejectedReasons()).containsExactlyInAnyOrderEntriesOf(java.util.Map.of(
+                "HARD_FILTER_MISMATCH", 2,
+                "SIZE_MISMATCH", 1,
+                "LOW_STYLE_SCORE", 3,
+                "MISSING_REQUIRED_EVIDENCE", 4
+        ));
         assertThat(internalTokenHeader.get()).isEqualTo("test-internal-token");
         assertThat(response.productRefs())
                 .extracting("spuId", "skuId", "reason")
@@ -140,31 +161,49 @@ class RestPythonAssistantClientTests {
                         2001L,
                         "fits the requested commute style"
                 ));
-        assertThat(requestBody.get())
-                .contains("\"request_id\":\"req-client-test\"")
-                .contains("\"session_id\":\"th_client_001\"")
-                .contains("\"thread_id\":\"th_client_001\"")
-                .contains("\"query\":\"hello\"")
-                .contains("\"chat_history\"")
-                .contains("\"user_query\":\"上一轮的问题\"")
-                .contains("\"assistant_answer\":\"上一轮的回答\"")
-                .contains("\"user_context\"")
-                .contains("\"height_cm\":175.5")
-                .contains("\"preferred_styles\":[\"commute\"]")
-                .contains("\"budget_max\":800.0")
-                .contains("\"candidates\"")
-                .contains("\"demand_intent\"")
-                .contains("\"targetGender\":\"male\"")
-                .contains("\"category\":\"外套\"")
-                .contains("\"budgetMax\":800")
-                .contains("\"spu_id\":123")
-                .contains("\"sku_id\":456")
-                .contains("\"sale_price\":299.0")
-                .contains("\"stock_status\":\"in_stock\"")
-                .contains("\"season\":[\"autumn\"]")
-                .doesNotContain("\"message\"")
-                .doesNotContain("\"requestId\"")
-                .doesNotContain("\"chatHistory\"");
+        JsonNode requestJson = new ObjectMapper().readTree(requestBody.get());
+        assertThat(fieldNames(requestJson)).isEqualTo(Set.of(
+                "request_id", "session_id", "thread_id", "query", "chat_history", "user_context",
+                "candidates", "demand_intent", "debug"
+        ));
+        JsonNode demandIntent = requestJson.path("demand_intent");
+        assertThat(fieldNames(demandIntent)).isEqualTo(Set.of(
+                "version", "requestType", "requestedCapabilities", "hardFilters", "softPreferences",
+                "subjectMeasurements"
+        ));
+        assertThat(demandIntent.has("rawQuery")).isFalse();
+        JsonNode hardFilters = demandIntent.path("hardFilters");
+        assertThat(hardFilters.size()).isEqualTo(1);
+        JsonNode seasonFilter = hardFilters.get(0);
+        assertThat(fieldNames(seasonFilter)).isEqualTo(Set.of(
+                "id", "field", "operator", "values", "strength", "origin", "originTurnId",
+                "derivedFromConstraintId", "scope", "weight"
+        ));
+        assertThat(seasonFilter.path("field").asText()).isEqualTo("season");
+        assertThat(seasonFilter.path("values").size()).isEqualTo(1);
+        assertThat(seasonFilter.path("values").get(0).asText()).isEqualTo("SUMMER");
+        assertThat(seasonFilter.path("strength").asText()).isEqualTo("HARD");
+        assertThat(requestJson.path("request_id").asText()).isEqualTo("req-client-test");
+        assertThat(requestJson.path("session_id").asText()).isEqualTo("th_client_001");
+        assertThat(requestJson.path("thread_id").asText()).isEqualTo("th_client_001");
+        assertThat(requestJson.path("query").asText()).isEqualTo("hello");
+        assertThat(requestJson.path("chat_history").get(0).path("user_query").asText())
+                .isEqualTo("上一轮的问题");
+        assertThat(requestJson.path("chat_history").get(0).path("assistant_answer").asText())
+                .isEqualTo("上一轮的回答");
+        assertThat(requestJson.path("user_context").path("height_cm").decimalValue())
+                .isEqualByComparingTo("175.5");
+        assertThat(requestJson.path("user_context").path("preferred_styles").get(0).asText())
+                .isEqualTo("commute");
+        assertThat(requestJson.path("user_context").path("budget_max").decimalValue())
+                .isEqualByComparingTo("800.0");
+        JsonNode candidate = requestJson.path("candidates").get(0);
+        assertThat(candidate.path("category").asText()).isEqualTo("外套");
+        assertThat(candidate.path("spu_id").asLong()).isEqualTo(123L);
+        assertThat(candidate.path("sku_id").asLong()).isEqualTo(456L);
+        assertThat(candidate.path("sale_price").decimalValue()).isEqualByComparingTo("299.0");
+        assertThat(candidate.path("stock_status").asText()).isEqualTo("in_stock");
+        assertThat(candidate.path("season").get(0).asText()).isEqualTo("autumn");
     }
 
     @Test
@@ -182,7 +221,7 @@ class RestPythonAssistantClientTests {
                     data: {"content":"我建议"}
 
                     event: done
-                    data: {"request_id":"req-stream-test","answer":"我建议您穿 L 码。","intent":"size_recommendation","product_refs":[{"spu_id":1001,"sku_id":2001,"reason":"尺码匹配","rank_score":0.93}]}
+                    data: {"request_id":"req-stream-test","answer":"我建议您穿 L 码。","intent":"size_recommendation","product_refs":[{"spu_id":1001,"sku_id":2001,"reason":"尺码匹配","rank_score":0.93}],"rejected_reasons":{"HARD_FILTER_MISMATCH":2,"SIZE_MISMATCH":1,"LOW_STYLE_SCORE":3,"MISSING_REQUIRED_EVIDENCE":4}}
 
                     """.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "text/event-stream; charset=utf-8");
@@ -214,6 +253,12 @@ class RestPythonAssistantClientTests {
         assertThat(handler.done.productRefs())
                 .extracting("spuId", "skuId", "reason")
                 .containsExactly(org.assertj.core.api.Assertions.tuple(1001L, 2001L, "尺码匹配"));
+        assertThat(handler.done.rejectedReasons()).containsExactlyInAnyOrderEntriesOf(java.util.Map.of(
+                "HARD_FILTER_MISMATCH", 2,
+                "SIZE_MISMATCH", 1,
+                "LOW_STYLE_SCORE", 3,
+                "MISSING_REQUIRED_EVIDENCE", 4
+        ));
         assertThat(handler.errors).isEmpty();
     }
 
@@ -240,6 +285,12 @@ class RestPythonAssistantClientTests {
                 List.of(),
                 false
         );
+    }
+
+    private Set<String> fieldNames(JsonNode node) {
+        Set<String> names = new TreeSet<>();
+        node.fieldNames().forEachRemaining(names::add);
+        return names;
     }
 
     private static class CapturingStreamHandler implements PythonAssistantStreamHandler {

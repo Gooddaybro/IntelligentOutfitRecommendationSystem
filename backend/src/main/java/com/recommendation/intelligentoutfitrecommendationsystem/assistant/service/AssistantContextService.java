@@ -7,6 +7,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.assistant.client
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntentPatch;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntentStateSnapshot;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DeterministicDemandParseResult;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.EffectiveDemand;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.LlmDemandParseRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PendingClarification;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonChatHistoryItem;
@@ -24,6 +25,7 @@ import org.slf4j.MDC;
 
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
@@ -45,6 +47,7 @@ public class AssistantContextService {
     private final DemandIntentParseTrigger demandIntentParseTrigger = new DemandIntentParseTrigger();
     private final LlmDemandIntentValidator llmDemandIntentValidator = new LlmDemandIntentValidator();
     private final DemandIntentNormalizer demandIntentNormalizer = new DemandIntentNormalizer();
+    private final LegacyDemandIntentAdapter legacyDemandIntentAdapter = new LegacyDemandIntentAdapter();
 
     @Autowired
     public AssistantContextService(
@@ -103,7 +106,9 @@ public class AssistantContextService {
             requestId = "local-" + UUID.randomUUID();
         }
         DemandIntent demandIntent = initialIntent;
+        EffectiveDemand effectiveDemand = legacyDemandIntentAdapter.adapt(initialIntent);
         String clarificationQuestion = null;
+        boolean staleDerivedConstraintRemoved = false;
         if (demandIntentStateService != null && demandIntentParseClient != null) {
             DemandIntentStateSnapshot current = demandIntentStateService.read(userId, threadId);
             PendingClarification pending = current == null ? null : current.pendingClarification();
@@ -111,7 +116,7 @@ public class AssistantContextService {
             boolean hasDeterministicChanges = !detailed.lockedSlots().isEmpty();
             DemandIntentPatch deterministicPatch = hasDeterministicChanges ? detailed.deterministicPatch() : null;
             DemandIntentPatch semanticPatch = null;
-            PendingClarification nextPending = null;
+            PendingClarification nextPending = pending;
             String transitionAction = "merge";
             boolean cancelPending = pending != null
                     && (isCancellation(request.message()) || isNonShoppingInterrupt(request.message()));
@@ -119,17 +124,21 @@ public class AssistantContextService {
                 transitionAction = "confirm";
                 deterministicPatch = null;
                 semanticPatch = patchFromPending(pending);
+                nextPending = null;
             } else if (cancelPending) {
                 transitionAction = "cancel_clarify";
                 deterministicPatch = null;
+                nextPending = null;
             } else if (pending != null && hasDeterministicChanges) {
                 // A complete new demand is an explicit topic switch: merge it and discard the old question.
                 transitionAction = "merge";
+                nextPending = null;
             } else if (demandIntentParseTrigger.shouldParse(detailed, pending != null)) {
                 var parsed = demandIntentParseClient.parse(new LlmDemandParseRequest(
                         "1.0", requestId, threadId, request.message(),
                         demandIntentNormalizer.toCanonicalDemand(
-                                current == null ? initialIntent : current.effectiveIntent()),
+                                current == null ? initialIntent
+                                        : DemandIntentStateSnapshot.toLegacyIntent(current.effectiveDemand())),
                         detailed.deterministicPatch(),
                         detailed.lockedSlots(), detailed.matchedFragments(), detailed.unresolvedText(),
                         recentHistory(history), pending));
@@ -137,19 +146,20 @@ public class AssistantContextService {
                     ValidatedDemandParseResult validated = llmDemandIntentValidator.validate(
                             parsed.get(), request.message(), Set.copyOf(detailed.lockedSlots()), pending);
                     semanticPatch = validated.patch();
-                    nextPending = validated.pendingClarification();
-                    if (nextPending != null) {
-                        nextPending = nextPending.withSourceRequestId(requestId);
+                    if (validated.pendingClarification() != null) {
+                        nextPending = validated.pendingClarification().withSourceRequestId(requestId);
                         transitionAction = "clarify";
                     }
-                } else if (!hasDeterministicChanges) {
+                } else if (!hasDeterministicChanges && pending == null) {
                     clarificationQuestion = "\u6211\u8fd8\u4e0d\u80fd\u786e\u5b9a\u4f60\u60f3\u7b5b\u9009\u54ea\u7c7b\u7a7f\u642d\uff0c\u53ef\u4ee5\u8865\u5145\u5bf9\u8c61\u3001\u54c1\u7c7b\u6216\u573a\u666f\u5417\uff1f";
                 }
             }
             DemandIntentStateSnapshot resolved = demandIntentStateService.applyResolution(
                     userId, threadId, requestId, null, transitionAction, deterministicPatch, semanticPatch,
                     nextPending, initialIntent);
-            demandIntent = resolved.effectiveIntent();
+            demandIntent = DemandIntentStateSnapshot.toLegacyIntent(resolved.effectiveDemand());
+            effectiveDemand = resolved.effectiveDemand();
+            staleDerivedConstraintRemoved = resolved.staleDerivedConstraintRemoved();
             if (resolved.pendingClarification() != null) {
                 clarificationQuestion = resolved.pendingClarification().question();
             }
@@ -157,17 +167,18 @@ public class AssistantContextService {
             DemandIntent persistedIntent = demandIntentStateService.apply(
                     userId, threadId, requestId, null, demandIntentResolver.resolvePatch(request), initialIntent);
             demandIntent = persistedIntent == null ? initialIntent : persistedIntent;
+            effectiveDemand = legacyDemandIntentAdapter.adapt(demandIntent);
         }
-        // Java 只执行 DemandIntent 中的硬过滤；候选池内的排序解释仍由 Python AI 服务完成。
-        String deterministicStyle = detailedStyle(request, demandIntent);
+        // Java SQL 消费 v3 硬约束；仅 style/material/fit 可由本次明确的 UI 过滤字段补充。
+        // 软偏好完整保留在上下文中交给 Python 排序，绝不隐式转成 SQL 条件。
         RecommendationCandidateQuery query = new RecommendationCandidateQuery(
-                demandIntent.category(),
-                deterministicStyle,
-                seasonFilter(request, demandIntent),
-                request.material(),
-                request.fit(),
-                demandIntent.budgetMax(),
-                demandIntent.targetGender()
+                effectiveDemand.hardValue("category").orElse(null),
+                explicitCodeFilter(request.style()),
+                lowerCanonical(effectiveDemand.hardValue("season").orElse(null)),
+                explicitFilter(request.material()),
+                explicitCodeFilter(request.fit()),
+                effectiveDemand.hardInteger("budgetMax").orElse(null),
+                lowerCanonical(effectiveDemand.hardValue("targetGender").orElse(null))
         );
         return new AssistantContext(
                 profile,
@@ -177,19 +188,23 @@ public class AssistantContextService {
                 history,
                 recommendationCandidateQueryService.findCandidates(query),
                 demandIntent,
-                clarificationQuestion
+                effectiveDemand,
+                clarificationQuestion,
+                staleDerivedConstraintRemoved
         );
     }
 
-    private String detailedStyle(AssistantChatRequest request, DemandIntent demandIntent) {
-        if (hasText(request.style())) {
-            return request.style().trim();
-        }
-        DeterministicDemandParseResult parsed = demandIntentResolver.resolveDetailed(request);
-        if (!parsed.lockedSlots().contains("style") || demandIntent.style().isEmpty()) {
-            return null;
-        }
-        return demandIntent.style().getFirst();
+    private String explicitFilter(String value) {
+        return hasText(value) ? value.trim() : null;
+    }
+
+    private String explicitCodeFilter(String value) {
+        String filter = explicitFilter(value);
+        return filter == null ? null : filter.toLowerCase(Locale.ROOT);
+    }
+
+    private String lowerCanonical(String value) {
+        return value == null ? null : value.toLowerCase(Locale.ROOT);
     }
 
     private DemandIntentPatch patchFromPending(PendingClarification pending) {
@@ -259,13 +274,6 @@ public class AssistantContextService {
         return containsAny(message, "\u8ba2\u5355", "\u7269\u6d41", "\u53d1\u8d27", "\u9000\u6b3e", "\u9000\u8d27", "\u552e\u540e", "\u5e93\u5b58", "\u4ef7\u683c", "\u591a\u5c11\u94b1");
     }
 
-    private String seasonFilter(AssistantChatRequest request, DemandIntent demandIntent) {
-        if (hasText(request.season())) {
-            return request.season().trim();
-        }
-        return demandIntent.season();
-    }
-
     private boolean containsAny(String text, String... signals) {
         if (!hasText(text)) {
             return false;
@@ -282,10 +290,4 @@ public class AssistantContextService {
         return value != null && !value.isBlank();
     }
 
-    private String first(List<String> values) {
-        if (values == null || values.isEmpty()) {
-            return null;
-        }
-        return values.get(0);
-    }
 }

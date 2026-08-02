@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.dao.DataAccessException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -21,7 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ActiveProfiles("test")
-@SpringBootTest
+@SpringBootTest(properties = "app.product-search-sync.enabled=true")
 @AutoConfigureMockMvc
 class AdminControllerTests {
 
@@ -36,17 +35,38 @@ class AdminControllerTests {
     void restoreSeedProductStatus() {
         jdbcTemplate.update("UPDATE product_spu SET status = 'on_sale' WHERE id = 1001");
         jdbcTemplate.update("UPDATE product_sku SET status = 'on_sale' WHERE spu_id = 1001");
-        jdbcTemplate.update("UPDATE category SET status = 'active' WHERE id = 1");
+        jdbcTemplate.update("UPDATE category SET name = '上衣', status = 'active' WHERE id = 1");
+        jdbcTemplate.update("UPDATE category SET name = 'T恤', status = 'active' WHERE id = 2");
         jdbcTemplate.update("UPDATE inventory SET available_stock = 6 WHERE sku_id = 2001");
         jdbcTemplate.update("UPDATE sales_order SET status = 'PAID' WHERE order_no = 'ORDDEMO9001PAID'");
         jdbcTemplate.update("UPDATE user_account SET status = 'active' WHERE id = 9001");
-        safeUpdate("DELETE FROM product_sku WHERE spu_id IN (SELECT id FROM product_spu WHERE spu_code = 'ADMIN_TEST_001')");
-        safeUpdate("DELETE FROM product_style_tag WHERE spu_id IN (SELECT id FROM product_spu WHERE spu_code = 'ADMIN_TEST_001')");
-        safeUpdate("DELETE FROM product_image WHERE spu_id IN (SELECT id FROM product_spu WHERE spu_code = 'ADMIN_TEST_001')");
-        safeUpdate("DELETE FROM product_spu WHERE spu_code = 'ADMIN_TEST_001'");
-        safeUpdate("DELETE FROM admin_inventory_adjustment");
-        safeUpdate("DELETE FROM order_shipment");
-        safeUpdate("DELETE FROM admin_audit_log");
+        jdbcTemplate.update("DELETE FROM admin_inventory_adjustment");
+        jdbcTemplate.update("DELETE FROM order_shipment");
+        jdbcTemplate.update("DELETE FROM admin_audit_log");
+        jdbcTemplate.update("DELETE FROM product_search_outbox");
+        jdbcTemplate.update("""
+                DELETE FROM product_search_inbox
+                WHERE spu_id IN (SELECT id FROM product_spu WHERE spu_code = 'ADMIN_TEST_001')
+                """);
+        jdbcTemplate.update("""
+                DELETE FROM product_style_tag
+                WHERE spu_id IN (SELECT id FROM product_spu WHERE spu_code = 'ADMIN_TEST_001')
+                """);
+        jdbcTemplate.update("""
+                DELETE FROM product_image
+                WHERE spu_id IN (SELECT id FROM product_spu WHERE spu_code = 'ADMIN_TEST_001')
+                """);
+        jdbcTemplate.update("""
+                DELETE FROM inventory
+                WHERE sku_id IN (SELECT id FROM product_sku WHERE spu_id IN (
+                    SELECT id FROM product_spu WHERE spu_code = 'ADMIN_TEST_001'
+                ))
+                """);
+        jdbcTemplate.update("""
+                DELETE FROM product_sku
+                WHERE spu_id IN (SELECT id FROM product_spu WHERE spu_code = 'ADMIN_TEST_001')
+                """);
+        jdbcTemplate.update("DELETE FROM product_spu WHERE spu_code = 'ADMIN_TEST_001'");
     }
 
     @Test
@@ -97,6 +117,9 @@ class AdminControllerTests {
                 .andExpect(jsonPath("$.data.spuCode").value("TSHIRT_BASIC_001"))
                 .andExpect(jsonPath("$.data.status").value("OFF_SHELF"));
 
+        assertProductSearchEventCount(1001, 1);
+        assertAuditLogExists("CHANGE_PRODUCT_STATUS", "SPU", "1001");
+
         mockMvc.perform(get("/api/admin/products")
                         .with(jwt().jwt(token -> token.subject("1"))
                                 .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
@@ -134,6 +157,8 @@ class AdminControllerTests {
 
         long spuId = new com.fasterxml.jackson.databind.ObjectMapper()
                 .readTree(created).path("data").path("spuId").asLong();
+        assertProductSearchEventCount(spuId, 1);
+        assertAuditLogExists("CREATE_PRODUCT", "SPU", String.valueOf(spuId));
 
         String updateBody = """
                 {
@@ -157,6 +182,9 @@ class AdminControllerTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.name").value("Admin Test Product Updated"))
                 .andExpect(jsonPath("$.data.status").value("ON_SALE"));
+
+        assertProductSearchEventCount(spuId, 2);
+        assertAuditLogExists("UPDATE_PRODUCT", "SPU", String.valueOf(spuId));
     }
 
     @Test
@@ -167,13 +195,24 @@ class AdminControllerTests {
                 .andExpect(jsonPath("$.data[0].enabled").isBoolean())
                 .andExpect(jsonPath("$.data[0].productCount").isNumber());
 
-        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/admin/categories/{id}", 1)
+        java.util.List<Long> affectedSpuIds = jdbcTemplate.queryForList(
+                "SELECT id FROM product_spu WHERE category_id = 2", Long.class);
+        org.assertj.core.api.Assertions.assertThat(affectedSpuIds).isNotEmpty();
+        int categoryEventCountBefore = countProductSearchEvents();
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/admin/categories/{id}", 2)
                         .with(adminJwt())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"id\":1,\"name\":\"ROOT\",\"level\":1,\"sortOrder\":1,\"enabled\":false,\"productCount\":0}"))
+                        .content("{\"id\":2,\"name\":\"测试T恤\",\"level\":2,\"sortOrder\":1,\"enabled\":false,\"productCount\":0}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.id").value(1))
+                .andExpect(jsonPath("$.data.id").value(2))
+                .andExpect(jsonPath("$.data.name").value("测试T恤"))
                 .andExpect(jsonPath("$.data.enabled").value(false));
+
+        affectedSpuIds.forEach(spuId -> assertProductSearchEventCount(spuId, 1));
+        int categoryEventCountAfter = countProductSearchEvents();
+        org.assertj.core.api.Assertions.assertThat(categoryEventCountAfter - categoryEventCountBefore)
+                .isEqualTo(affectedSpuIds.size());
+        assertAuditLogExists("DISABLE_CATEGORY", "CATEGORY", "2");
 
         mockMvc.perform(get("/api/admin/inventory").with(adminJwt()))
                 .andExpect(status().isOk())
@@ -191,6 +230,11 @@ class AdminControllerTests {
                 .andExpect(jsonPath("$.data.lastAdjustment.beforeStock").value(6))
                 .andExpect(jsonPath("$.data.lastAdjustment.afterStock").value(15))
                 .andExpect(jsonPath("$.data.lastAdjustment.reason").value("manual count"));
+
+        assertAuditLogExists("ADJUST_STOCK", "SKU", "2001");
+
+        // 库存不属于当前搜索文档，调整库存不应产生额外同步事件。
+        org.assertj.core.api.Assertions.assertThat(countProductSearchEvents()).isEqualTo(categoryEventCountAfter);
     }
 
     @Test
@@ -211,11 +255,23 @@ class AdminControllerTests {
                 .andExpect(jsonPath("$.data.shipment.carrier").value("SF Express"))
                 .andExpect(jsonPath("$.data.availableActions[*]", org.hamcrest.Matchers.not(hasItem("SHIP"))));
 
+        assertAuditLogExists("SHIP_ORDER", "ORDER", "ORDDEMO9001PAID");
+
+        String nonPaidStatusBefore = jdbcTemplate.queryForObject(
+                "SELECT status FROM sales_order WHERE order_no = 'ORDDEMO9001UNPAID'", String.class);
+        org.assertj.core.api.Assertions.assertThat(nonPaidStatusBefore).isEqualTo("UNPAID");
+
         mockMvc.perform(post("/api/admin/orders/{orderNo}/ship", "ORDDEMO9001UNPAID")
                         .with(adminJwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"carrier\":\"SF Express\",\"trackingNo\":\"SF20260717002\"}"))
                 .andExpect(status().isBadRequest());
+
+        String nonPaidStatusAfter = jdbcTemplate.queryForObject(
+                "SELECT status FROM sales_order WHERE order_no = 'ORDDEMO9001UNPAID'", String.class);
+        org.assertj.core.api.Assertions.assertThat(nonPaidStatusAfter).isEqualTo(nonPaidStatusBefore);
+        assertRowCount("SELECT COUNT(*) FROM order_shipment WHERE order_no = ?", 0, "ORDDEMO9001UNPAID");
+        assertAuditLogCount("SHIP_ORDER", "ORDER", "ORDDEMO9001UNPAID", 0);
 
         mockMvc.perform(get("/api/admin/users").with(adminJwt()))
                 .andExpect(status().isOk())
@@ -230,6 +286,8 @@ class AdminControllerTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.userId").value(9001))
                 .andExpect(jsonPath("$.data.status").value("DISABLED"));
+
+        assertAuditLogExists("DISABLE_USER", "USER", "9001");
     }
 
     @Test
@@ -261,10 +319,36 @@ class AdminControllerTests {
                 .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"));
     }
 
-    private void safeUpdate(String sql) {
-        try {
-            jdbcTemplate.update(sql);
-        } catch (DataAccessException ignored) {
-        }
+    private void assertProductSearchEventCount(long spuId, int expectedCount) {
+        Integer eventCount = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM product_search_outbox
+                WHERE spu_id = ? AND event_type = 'PRODUCT_SEARCH_REINDEX_REQUESTED'
+                """, Integer.class, spuId);
+        org.assertj.core.api.Assertions.assertThat(eventCount).isEqualTo(expectedCount);
+    }
+
+    private int countProductSearchEvents() {
+        return jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM product_search_outbox
+                WHERE event_type = 'PRODUCT_SEARCH_REINDEX_REQUESTED'
+                """, Integer.class);
+    }
+
+    private void assertAuditLogExists(String action, String targetType, String targetId) {
+        assertAuditLogCount(action, targetType, targetId, 1);
+    }
+
+    private void assertAuditLogCount(
+            String action, String targetType, String targetId, int expectedCount) {
+        Integer auditCount = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM admin_audit_log
+                WHERE action = ? AND target_type = ? AND target_id = ? AND result = 'SUCCESS'
+                """, Integer.class, action, targetType, targetId);
+        org.assertj.core.api.Assertions.assertThat(auditCount).isEqualTo(expectedCount);
+    }
+
+    private void assertRowCount(String sql, int expectedCount, Object... arguments) {
+        Integer rowCount = jdbcTemplate.queryForObject(sql, Integer.class, arguments);
+        org.assertj.core.api.Assertions.assertThat(rowCount).isEqualTo(expectedCount);
     }
 }

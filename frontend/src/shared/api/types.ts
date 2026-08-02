@@ -48,7 +48,12 @@ export type BodyMeasurementsPatchRequest = {
   weightKg?: number | null;
 };
 
-export type RecommendationStatus = "STRONG_MATCH" | "WEAK_FALLBACK" | "EMPTY" | "ERROR";
+export type RecommendationStatus =
+  | "STRONG_MATCH"
+  | "PARTIAL_MATCH"
+  | "BROWSE_FALLBACK"
+  | "EMPTY"
+  | "FAILED";
 export type OutfitRole = "TOP" | "BOTTOM" | "OUTER" | "SHOES" | "ACCESSORY" | "OTHER";
 
 export type UserPreferencesRequest = {

@@ -1,0 +1,244 @@
+package com.recommendation.intelligentoutfitrecommendationsystem.product;
+
+import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch._types.ErrorCause;
+import co.elastic.clients.elasticsearch.core.BulkRequest;
+import co.elastic.clients.elasticsearch.core.BulkResponse;
+import co.elastic.clients.elasticsearch.core.CountResponse;
+import co.elastic.clients.elasticsearch.core.bulk.BulkResponseItem;
+import co.elastic.clients.elasticsearch.indices.CreateIndexResponse;
+import co.elastic.clients.elasticsearch.indices.ElasticsearchIndicesClient;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.mapper.ProductMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ElasticsearchSearchProperties;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchIndexLifecycleService;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchIndexRow;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchIndexService;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchUnavailableException;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.cache.ProductSearchCacheVersionService;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.sync.ProductSearchRebuildCompensator;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class ProductSearchIndexServiceTests {
+
+    @Mock
+    private ElasticsearchClient client;
+    @Mock
+    private ElasticsearchIndicesClient indicesClient;
+    @Mock
+    private ProductMapper productMapper;
+    @Mock
+    private ProductSearchIndexLifecycleService lifecycleService;
+    @Mock
+    private ProductSearchRebuildCompensator rebuildCompensator;
+    @Mock
+    private ProductSearchCacheVersionService cacheVersionService;
+
+    private final SimpleMeterRegistry registry = new SimpleMeterRegistry();
+    private final ApplicationMetrics metrics = new ApplicationMetrics(registry);
+    private ProductSearchIndexService service;
+
+    @BeforeEach
+    void setUp() {
+        ElasticsearchSearchProperties properties = new ElasticsearchSearchProperties();
+        properties.setIndexPrefix("product_");
+        properties.setIndexAlias("product_current");
+        properties.setBulkBatchSize(200);
+        service = new ProductSearchIndexService(
+                client, productMapper, properties, lifecycleService, cacheVersionService, metrics);
+    }
+
+    @Test
+    void deletesNewIndexWhenBulkWriteFails() throws IOException {
+        prepareRowsAndCreatedIndex();
+        when(client.bulk(any(BulkRequest.class))).thenThrow(new IOException("bulk failed"));
+
+        assertThatThrownBy(service::rebuild).isInstanceOf(ProductSearchUnavailableException.class);
+
+        verify(lifecycleService).deleteFailedIndex(org.mockito.ArgumentMatchers.startsWith("product_"));
+        verify(lifecycleService, never()).pruneHistory();
+        assertThat(registry.get("app.product.search.rebuild.executions")
+                .tag("outcome", "error").counter().count()).isEqualTo(1);
+    }
+
+    @Test
+    void doesNotDeleteWhenIndexCreationWasNotConfirmed() throws IOException {
+        when(client.indices()).thenReturn(indicesClient);
+        when(productMapper.findAllSearchIndexRows()).thenReturn(List.of(row()));
+        when(indicesClient.create(any(java.util.function.Function.class)))
+                .thenThrow(new IOException("create failed"));
+
+        assertThatThrownBy(service::rebuild).isInstanceOf(ProductSearchUnavailableException.class);
+
+        verify(lifecycleService, never()).deleteFailedIndex(any());
+    }
+
+    @Test
+    void keepsOriginalFailureWhenFailedIndexCleanupAlsoFails() throws IOException {
+        prepareRowsAndCreatedIndex();
+        when(client.bulk(any(BulkRequest.class))).thenThrow(new IOException("bulk failed"));
+        doThrow(new IllegalStateException("cleanup failed"))
+                .when(lifecycleService).deleteFailedIndex(any());
+
+        assertThatThrownBy(service::rebuild)
+                .isInstanceOf(ProductSearchUnavailableException.class)
+                .hasMessage("商品搜索索引重建失败")
+                .satisfies(error -> assertThat(error.getSuppressed())
+                        .extracting(Throwable::getMessage)
+                        .contains("cleanup failed"));
+    }
+
+    @Test
+    void returnsSuccessWhenPostSwitchRetentionCleanupFails() throws IOException {
+        prepareSuccessfulRebuild();
+        doThrow(new IllegalStateException("cleanup failed")).when(lifecycleService).pruneHistory();
+
+        var result = service.rebuild();
+
+        assertThat(result.documentCount()).isEqualTo(1);
+        verify(lifecycleService).pruneHistory();
+        verify(lifecycleService, never()).deleteFailedIndex(any());
+        assertThat(registry.get("app.product.search.rebuild.executions")
+                .tag("outcome", "success").counter().count()).isEqualTo(1);
+        assertThat(registry.get("app.product.search.rebuild.duration")
+                .tag("outcome", "success").timer().count()).isEqualTo(1);
+    }
+
+    @Test
+    void compensatesEventsCreatedDuringFullRebuild() throws IOException {
+        service = new ProductSearchIndexService(
+                client, productMapper, properties(), lifecycleService,
+                Optional.of(rebuildCompensator), cacheVersionService, metrics);
+        when(rebuildCompensator.captureWatermark()).thenReturn(10L);
+        prepareSuccessfulRebuild();
+
+        service.rebuild();
+
+        verify(rebuildCompensator).compensateAfter(10L);
+    }
+
+    @Test
+    void advancesCacheVersionAfterCompensationAndBeforeHistoryPruning() throws IOException {
+        service = new ProductSearchIndexService(
+                client, productMapper, properties(), lifecycleService,
+                Optional.of(rebuildCompensator), cacheVersionService, metrics);
+        when(rebuildCompensator.captureWatermark()).thenReturn(10L);
+        prepareSuccessfulRebuild();
+
+        service.rebuild();
+
+        var order = inOrder(
+                indicesClient, rebuildCompensator, cacheVersionService, lifecycleService);
+        order.verify(indicesClient).updateAliases(any(java.util.function.Function.class));
+        order.verify(rebuildCompensator).compensateAfter(10L);
+        order.verify(cacheVersionService, times(1)).incrementVersion();
+        order.verify(lifecycleService).pruneHistory();
+    }
+
+    @Test
+    void propagatesVersionFailureAndDelegatesSafeCleanup() throws IOException {
+        prepareSuccessfulRebuild();
+        doThrow(new IllegalStateException("version failed"))
+                .when(cacheVersionService).incrementVersion();
+
+        assertThatThrownBy(service::rebuild)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("version failed");
+
+        // 别名可能已经切换成功，生命周期服务会重新读取别名并保护当前索引。
+        verify(lifecycleService).deleteFailedIndex(org.mockito.ArgumentMatchers.startsWith("product_"));
+        verify(lifecycleService, never()).pruneHistory();
+    }
+
+    @Test
+    void recordsBulkItemFailuresBeforeFailingRebuild() throws IOException {
+        prepareRowsAndCreatedIndex();
+        BulkResponse bulkResponse = mock(BulkResponse.class);
+        BulkResponseItem failedItem = mock(BulkResponseItem.class);
+        ErrorCause error = mock(ErrorCause.class);
+        when(error.reason()).thenReturn("mapping rejected");
+        when(failedItem.error()).thenReturn(error);
+        when(bulkResponse.errors()).thenReturn(true);
+        when(bulkResponse.items()).thenReturn(List.of(failedItem));
+        when(client.bulk(any(BulkRequest.class))).thenReturn(bulkResponse);
+
+        assertThatThrownBy(service::rebuild)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("商品索引批量写入失败");
+
+        assertThat(registry.get("app.product.search.rebuild.bulk.failures").counter().count())
+                .isEqualTo(1);
+        assertThat(registry.get("app.product.search.rebuild.executions")
+                .tag("outcome", "error").counter().count()).isEqualTo(1);
+    }
+
+    @Test
+    void recordsDocumentDriftBeforeFailingRebuild() throws IOException {
+        prepareRowsAndCreatedIndex();
+        BulkResponse bulkResponse = mock(BulkResponse.class);
+        when(bulkResponse.errors()).thenReturn(false);
+        when(client.bulk(any(BulkRequest.class))).thenReturn(bulkResponse);
+        when(client.count(any(java.util.function.Function.class)))
+                .thenReturn(CountResponse.of(builder -> builder.count(3).shards(shards -> shards
+                        .failed(0).successful(1).total(1))));
+
+        assertThatThrownBy(service::rebuild)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("商品索引文档数量不一致");
+
+        assertThat(registry.get("app.product.search.rebuild.document.drift").summary().totalAmount())
+                .isEqualTo(2);
+    }
+
+    private void prepareRowsAndCreatedIndex() throws IOException {
+        when(client.indices()).thenReturn(indicesClient);
+        when(productMapper.findAllSearchIndexRows()).thenReturn(List.of(row()));
+        when(indicesClient.create(any(java.util.function.Function.class)))
+                .thenReturn(mock(CreateIndexResponse.class));
+    }
+
+    private void prepareSuccessfulRebuild() throws IOException {
+        prepareRowsAndCreatedIndex();
+        BulkResponse bulkResponse = mock(BulkResponse.class);
+        when(bulkResponse.errors()).thenReturn(false);
+        when(client.bulk(any(BulkRequest.class))).thenReturn(bulkResponse);
+        when(client.count(any(java.util.function.Function.class)))
+                .thenReturn(CountResponse.of(builder -> builder.count(1).shards(shards -> shards
+                        .failed(0).successful(1).total(1))));
+    }
+
+    private ProductSearchIndexRow row() {
+        return new ProductSearchIndexRow(
+                1001L, "TSHIRT_001", "基础款T恤", "纯棉短袖", "上装", "合身",
+                "纯棉", "casual", "日常", "summer", "on_sale");
+    }
+
+    private ElasticsearchSearchProperties properties() {
+        ElasticsearchSearchProperties properties = new ElasticsearchSearchProperties();
+        properties.setIndexPrefix("product_");
+        properties.setIndexAlias("product_current");
+        properties.setBulkBatchSize(200);
+        return properties;
+    }
+}

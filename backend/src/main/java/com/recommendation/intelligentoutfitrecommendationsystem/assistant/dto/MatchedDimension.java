@@ -1,13 +1,13 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 /** A structured recommendation claim that Java can verify against one candidate fact. */
 public record MatchedDimension(
         String dimension,
-        @JsonAlias("requested_value") String requestedValue,
-        @JsonAlias("candidate_value") String candidateValue,
-        @JsonAlias("evidence_source") String evidenceSource
+        @JsonProperty("requested_value") String requestedValue,
+        @JsonProperty("candidate_value") String candidateValue,
+        @JsonProperty("evidence_source") String evidenceSource
 ) {
     public MatchedDimension {
         dimension = trim(dimension);

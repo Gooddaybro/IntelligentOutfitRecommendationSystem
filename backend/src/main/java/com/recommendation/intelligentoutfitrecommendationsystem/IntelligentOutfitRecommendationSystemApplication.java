@@ -4,6 +4,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.common.cache.Cac
 import com.recommendation.intelligentoutfitrecommendationsystem.order.service.OrderTimeoutProperties;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.service.OrderIdempotencyProperties;
 import com.recommendation.intelligentoutfitrecommendationsystem.payment.service.PaymentProviderProperties;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ElasticsearchSearchProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -17,7 +18,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
         OrderTimeoutProperties.class,
         OrderIdempotencyProperties.class,
         CacheTtlProperties.class,
-        PaymentProviderProperties.class
+        PaymentProviderProperties.class,
+        ElasticsearchSearchProperties.class
 })
 @SpringBootApplication
 public class IntelligentOutfitRecommendationSystemApplication {

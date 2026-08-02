@@ -13,8 +13,11 @@ import com.recommendation.intelligentoutfitrecommendationsystem.product.model.Re
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidateLiveFact;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidateSnapshot;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.SkuSearchItem;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.cache.ProductSearchCacheKeyFactory;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.cache.ProductSearchCacheVersionService;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.service.ProductCatalogService;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.service.RecommendationCandidateQueryService;
+import com.recommendation.intelligentoutfitrecommendationsystem.product.search.ProductSearchService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -45,6 +48,15 @@ class ProductCatalogServiceTests {
     @Mock
     private RedisCacheService redisCacheService;
 
+    @Mock
+    private ProductSearchService productSearchService;
+
+    @Mock
+    private ProductSearchCacheVersionService productSearchCacheVersionService;
+
+    @Mock
+    private ProductSearchCacheKeyFactory productSearchCacheKeyFactory;
+
     private ProductCatalogService service;
     private RecommendationCandidateQueryService candidateService;
 
@@ -53,7 +65,13 @@ class ProductCatalogServiceTests {
         CacheTtlProperties cacheTtlProperties = new CacheTtlProperties();
         cacheTtlProperties.setProductDetailJitterMinutes(0);
         cacheTtlProperties.setRecommendationCandidatesJitterMinutes(0);
-        service = new ProductCatalogService(productMapper, redisCacheService, cacheTtlProperties);
+        service = new ProductCatalogService(
+                productMapper,
+                productSearchService,
+                redisCacheService,
+                cacheTtlProperties,
+                productSearchCacheVersionService,
+                productSearchCacheKeyFactory);
         candidateService = new RecommendationCandidateQueryService(
                 productMapper, redisCacheService, cacheTtlProperties);
     }
@@ -79,47 +97,90 @@ class ProductCatalogServiceTests {
     @Test
     void searchProductsReturnsCachedListWithoutQueryingMapper() {
         List<ProductSearchItem> cachedProducts = List.of(productSearchItem());
-        when(redisCacheService.getList(anyString(), eq(ProductSearchItem.class)))
+        when(productSearchCacheVersionService.currentVersion()).thenReturn(7L);
+        when(productSearchCacheKeyFactory.create(7L, "tshirt_basic_001", ""))
+                .thenReturn("product:search-versioned:v7:tshirt_basic_001:");
+        when(redisCacheService.getList(
+                "product:search-versioned:v7:tshirt_basic_001:", ProductSearchItem.class))
                 .thenReturn(Optional.of(cachedProducts));
 
         var products = service.searchProducts(" TSHIRT_BASIC_001 ", null);
 
         assertThat(products).extracting(ProductSearchItem::getSpuCode)
                 .containsExactly("TSHIRT_BASIC_001");
-        verify(productMapper, never()).searchProducts(any(), any());
+        verify(redisCacheService).getList(
+                "product:search-versioned:v7:tshirt_basic_001:", ProductSearchItem.class);
+        verify(productSearchService, never()).search(any(), any());
         verify(redisCacheService, never()).setValue(any(), any(), any());
     }
 
     @Test
     void searchProductsCachesMapperResultOnMiss() {
         List<ProductSearchItem> mapperProducts = List.of(productSearchItem());
-        when(redisCacheService.getList(anyString(), eq(ProductSearchItem.class)))
+        when(productSearchCacheVersionService.currentVersion()).thenReturn(7L);
+        when(productSearchCacheKeyFactory.create(7L, "tshirt_basic_001", ""))
+                .thenReturn("product:search-versioned:v7:tshirt_basic_001:");
+        when(redisCacheService.getList(
+                "product:search-versioned:v7:tshirt_basic_001:", ProductSearchItem.class))
                 .thenReturn(Optional.empty());
-        when(productMapper.searchProducts("TSHIRT_BASIC_001", null))
+        when(productSearchService.search("TSHIRT_BASIC_001", null))
                 .thenReturn(mapperProducts);
 
         var products = service.searchProducts(" TSHIRT_BASIC_001 ", null);
 
         assertThat(products).extracting(ProductSearchItem::getSpuCode)
                 .containsExactly("TSHIRT_BASIC_001");
-        verify(productMapper).searchProducts("TSHIRT_BASIC_001", null);
-        verify(redisCacheService).setValue(anyString(), eq(mapperProducts), any(Duration.class));
+        verify(productSearchService).search("TSHIRT_BASIC_001", null);
+        verify(redisCacheService).setValue(
+                eq("product:search-versioned:v7:tshirt_basic_001:"),
+                eq(mapperProducts),
+                any(Duration.class));
     }
 
     @Test
     void searchProductsPassesCategoryToMapperAndCacheKey() {
         List<ProductSearchItem> mapperProducts = List.of(productSearchItem());
-        when(redisCacheService.getList(anyString(), eq(ProductSearchItem.class)))
+        when(productSearchCacheVersionService.currentVersion()).thenReturn(7L);
+        when(productSearchCacheKeyFactory.create(7L, "coat", "\u5916\u5957"))
+                .thenReturn("product:search-versioned:v7:coat:\u5916\u5957");
+        when(redisCacheService.getList(
+                "product:search-versioned:v7:coat:\u5916\u5957", ProductSearchItem.class))
                 .thenReturn(Optional.empty());
-        when(productMapper.searchProducts("TSHIRT_BASIC_001", "\u5916\u5957"))
+        when(productSearchService.search("Coat", "\u5916\u5957"))
                 .thenReturn(mapperProducts);
 
-        service.searchProducts(" TSHIRT_BASIC_001 ", " \u5916\u5957 ");
+        service.searchProducts(" Coat ", " \u5916\u5957 ");
+
+        verify(productSearchCacheKeyFactory).create(7L, "coat", "\u5916\u5957");
+        verify(redisCacheService).getList(
+                "product:search-versioned:v7:coat:\u5916\u5957", ProductSearchItem.class);
+        verify(productSearchService).search("Coat", "\u5916\u5957");
+        verify(redisCacheService).setValue(
+                eq("product:search-versioned:v7:coat:\u5916\u5957"),
+                eq(mapperProducts),
+                any(Duration.class));
+    }
+
+    @Test
+    void searchProductsUsesDifferentKeysForDifferentVersions() {
+        List<ProductSearchItem> cachedProducts = List.of(productSearchItem());
+        when(productSearchCacheVersionService.currentVersion()).thenReturn(7L, 8L);
+        when(productSearchCacheKeyFactory.create(7L, "coat", "\u5916\u5957"))
+                .thenReturn("product:search-versioned:v7:coat:\u5916\u5957");
+        when(productSearchCacheKeyFactory.create(8L, "coat", "\u5916\u5957"))
+                .thenReturn("product:search-versioned:v8:coat:\u5916\u5957");
+        when(redisCacheService.getList(anyString(), eq(ProductSearchItem.class)))
+                .thenReturn(Optional.of(cachedProducts));
+
+        service.searchProducts(" Coat ", " \u5916\u5957 ");
+        service.searchProducts(" Coat ", " \u5916\u5957 ");
 
         ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
-        verify(redisCacheService).getList(keyCaptor.capture(), eq(ProductSearchItem.class));
-        assertThat(keyCaptor.getValue()).isEqualTo("product:search:tshirt_basic_001:\u5916\u5957");
-        verify(productMapper).searchProducts("TSHIRT_BASIC_001", "\u5916\u5957");
+        verify(redisCacheService, org.mockito.Mockito.times(2))
+                .getList(keyCaptor.capture(), eq(ProductSearchItem.class));
+        assertThat(keyCaptor.getAllValues()).containsExactly(
+                "product:search-versioned:v7:coat:\u5916\u5957",
+                "product:search-versioned:v8:coat:\u5916\u5957");
     }
 
     @Test

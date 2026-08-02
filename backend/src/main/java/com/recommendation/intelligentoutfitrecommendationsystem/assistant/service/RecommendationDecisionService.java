@@ -1,11 +1,11 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.assistant.service;
 
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantRecommendationItem;
-import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.AssistantMentionedItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.DemandIntent;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.MatchedDimension;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.PythonProductRef;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.RecommendationDecision;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.RecommendationStatus;
 import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate;
 
 import java.math.BigDecimal;
@@ -23,13 +23,13 @@ import java.util.Set;
  */
 public class RecommendationDecisionService {
 
-    private final OutfitRoleResolver roleResolver = new OutfitRoleResolver();
+    private final OutfitRoleValidator roleValidator = new OutfitRoleValidator();
 
     /**
-     * 从同一份 Java 候选池分别生成“安全提及”和“强推荐”两级结果。
+     * 从同一份不可变 Java 候选池生成最终决策。
      *
-     * <p>精确命中且可售的引用可以作为普通商品展示；只有结构化证据也与 Java 事实一致时，
-     * 才进入强推荐列表，避免把 Python 文本提及误标成已经核验的 AI 推荐。</p>
+     * 无候选和零采信引用分别降级为 EMPTY 与 BROWSE_FALLBACK；搭配建议只有同时覆盖上装和下装才是完整匹配。
+     * 决策异常不在此处吞掉，由调用方统一映射为 FAILED，防止正常降级与系统故障混淆。
      */
     public RecommendationDecision decide(
             DemandIntent intent,
@@ -39,7 +39,7 @@ public class RecommendationDecisionService {
         List<RecommendationCandidate> safeCandidates = candidates == null ? List.of() : candidates;
         List<PythonProductRef> safeRefs = refs == null ? List.of() : refs;
         if (safeCandidates.isEmpty()) {
-            return new RecommendationDecision("EMPTY", List.of(), List.of(), safeRefs.size());
+            return new RecommendationDecision(RecommendationStatus.EMPTY, List.of(), safeRefs.size());
         }
 
         Map<String, RecommendationCandidate> candidateById = new LinkedHashMap<>();
@@ -49,33 +49,41 @@ public class RecommendationDecisionService {
             }
         }
         Set<String> seen = new LinkedHashSet<>();
-        List<AssistantMentionedItem> mentioned = new ArrayList<>();
         List<AssistantRecommendationItem> accepted = new ArrayList<>();
         int discarded = 0;
         for (PythonProductRef ref : safeRefs) {
             RecommendationCandidate candidate = ref == null ? null
                     : candidateById.get(key(ref.spuId(), ref.skuId()));
-            if (candidate == null || !seen.add(key(ref.spuId(), ref.skuId())) || !isPurchasable(candidate)) {
-                discarded++;
-                continue;
-            }
-            String outfitRole = roleResolver.resolve(candidate.getCategoryName());
-            mentioned.add(new AssistantMentionedItem(ref.spuId(), ref.skuId(), outfitRole));
-            if (!hasValidEvidence(intent, candidate, ref.matchedDimensions())) {
+            if (candidate == null || !seen.add(key(ref.spuId(), ref.skuId()))
+                    || !isPurchasable(candidate) || !hasValidEvidence(intent, candidate, ref.matchedDimensions())) {
                 discarded++;
                 continue;
             }
             accepted.add(new AssistantRecommendationItem(
                     ref.spuId(), ref.skuId(), normalizeReason(ref.reason()), ref.rankScore(),
-                    ref.matchedDimensions(), outfitRole
+                    ref.matchedDimensions(), roleValidator.validate(candidate.getCategoryName(), ref.outfitRole())
             ));
         }
         return new RecommendationDecision(
-                accepted.isEmpty() ? "WEAK_FALLBACK" : "STRONG_MATCH",
-                mentioned,
+                resolveStatus(intent, accepted),
                 accepted,
                 discarded
         );
+    }
+
+    private RecommendationStatus resolveStatus(DemandIntent intent, List<AssistantRecommendationItem> accepted) {
+        if (accepted.isEmpty()) {
+            return RecommendationStatus.BROWSE_FALLBACK;
+        }
+        if (intent == null || !"OUTFIT_ADVICE".equals(intent.requestType())) {
+            return RecommendationStatus.STRONG_MATCH;
+        }
+        Set<String> acceptedRoles = accepted.stream()
+                .map(AssistantRecommendationItem::outfitRole)
+                .collect(java.util.stream.Collectors.toSet());
+        return acceptedRoles.contains("TOP") && acceptedRoles.contains("BOTTOM")
+                ? RecommendationStatus.STRONG_MATCH
+                : RecommendationStatus.PARTIAL_MATCH;
     }
 
     private boolean hasValidEvidence(

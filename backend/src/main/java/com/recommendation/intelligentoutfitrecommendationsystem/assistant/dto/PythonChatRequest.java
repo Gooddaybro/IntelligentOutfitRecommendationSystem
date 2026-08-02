@@ -17,7 +17,7 @@ public record PythonChatRequest(
         @JsonProperty("chat_history") List<PythonChatHistoryItem> chatHistory,
         @JsonProperty("user_context") PythonUserContext userContext,
         @JsonProperty("candidates") List<PythonProductCandidate> candidates,
-        @JsonProperty("demand_intent") DemandIntent demandIntent,
+        @JsonProperty("demand_intent") EffectiveDemand demandIntent,
         @JsonProperty("debug") Boolean debug
 ) {
     public PythonChatRequest(

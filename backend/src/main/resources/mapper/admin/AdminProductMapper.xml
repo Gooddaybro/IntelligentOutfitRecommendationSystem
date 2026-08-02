@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recommendation.intelligentoutfitrecommendationsystem.admin.mapper.AdminProductMapper">
+    <sql id="adminProductColumns">
+        p.id AS spu_id,
+        p.spu_code,
+        p.name,
+        p.category_id,
+        c.name AS category_name,
+        p.main_image_url,
+        MIN(s.sale_price) AS min_price,
+        MAX(s.sale_price) AS max_price,
+        COUNT(DISTINCT s.id) AS sku_count,
+        COALESCE(SUM(i.available_stock), 0) AS total_stock,
+        p.status,
+        p.created_at,
+        p.description
+    </sql>
+
+    <!--
+        Product rows aggregate SKU prices and inventory at the SPU boundary so the admin list can stay flat
+        while product variants continue to live in normalized SKU tables.
+    -->
+    <select id="findProducts" resultType="com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminProductResponse">
+        SELECT
+        <include refid="adminProductColumns" />
+        FROM product_spu p
+        JOIN category c ON c.id = p.category_id
+        LEFT JOIN product_sku s ON s.spu_id = p.id
+        LEFT JOIN inventory i ON i.sku_id = s.id
+        GROUP BY p.id, p.spu_code, p.name, p.category_id, c.name,
+                 p.main_image_url, p.status, p.created_at, p.description
+        ORDER BY p.id ASC
+    </select>
+
+    <select id="findProductById" resultType="com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminProductResponse">
+        SELECT
+        <include refid="adminProductColumns" />
+        FROM product_spu p
+        JOIN category c ON c.id = p.category_id
+        LEFT JOIN product_sku s ON s.spu_id = p.id
+        LEFT JOIN inventory i ON i.sku_id = s.id
+        WHERE p.id = #{spuId}
+        GROUP BY p.id, p.spu_code, p.name, p.category_id, c.name,
+                 p.main_image_url, p.status, p.created_at, p.description
+    </select>
+
+    <select id="countProductById" resultType="long">
+        SELECT COUNT(*)
+        FROM product_spu
+        WHERE id = #{spuId}
+    </select>
+
+    <!-- MyBatis owns generated-key backfill for SPU writes; services must read AdminProductWrite.id after insert. -->
+    <insert id="insertProduct" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO product_spu (spu_code, name, category_id, description, main_image_url, status)
+        VALUES (#{spuCode}, #{name}, #{categoryId}, #{description}, #{mainImageUrl}, #{status})
+    </insert>
+
+    <update id="updateProduct">
+        UPDATE product_spu
+        SET spu_code = #{spuCode}, name = #{name}, category_id = #{categoryId},
+            description = #{description}, main_image_url = #{mainImageUrl},
+            status = #{status}, updated_at = CURRENT_TIMESTAMP(6)
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateProductStatus">
+        UPDATE product_spu
+        SET status = #{status}, updated_at = CURRENT_TIMESTAMP(6)
+        WHERE id = #{spuId}
+    </update>
+
+    <update id="updateSkuStatusBySpuId">
+        UPDATE product_sku
+        SET status = #{status}, updated_at = CURRENT_TIMESTAMP(6)
+        WHERE spu_id = #{spuId}
+    </update>
+
+    <select id="findCategories" resultType="com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminCategoryResponse">
+        SELECT c.id, c.name, c.parent_id, c.level, c.sort_order,
+               CASE WHEN c.status = 'active' THEN TRUE ELSE FALSE END AS enabled,
+               COUNT(p.id) AS product_count
+        FROM category c
+        LEFT JOIN product_spu p ON p.category_id = c.id
+        GROUP BY c.id, c.name, c.parent_id, c.level, c.sort_order, c.status
+        ORDER BY c.sort_order ASC, c.id ASC
+    </select>
+
+    <select id="findCategoryById" resultType="com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminCategoryResponse">
+        SELECT c.id, c.name, c.parent_id, c.level, c.sort_order,
+               CASE WHEN c.status = 'active' THEN TRUE ELSE FALSE END AS enabled,
+               COUNT(p.id) AS product_count
+        FROM category c
+        LEFT JOIN product_spu p ON p.category_id = c.id
+        WHERE c.id = #{categoryId}
+        GROUP BY c.id, c.name, c.parent_id, c.level, c.sort_order, c.status
+    </select>
+
+    <select id="findCategoryNameById" resultType="string">
+        SELECT name
+        FROM category
+        WHERE id = #{categoryId}
+    </select>
+
+    <select id="findProductIdsByCategoryId" resultType="long">
+        SELECT id
+        FROM product_spu
+        WHERE category_id = #{categoryId}
+        ORDER BY id
+    </select>
+
+    <update id="updateCategory">
+        UPDATE category
+        <set>
+            name = #{name},
+            status = #{status},
+            <if test="sortOrder != null">
+                sort_order = #{sortOrder},
+            </if>
+            updated_at = CURRENT_TIMESTAMP(6)
+        </set>
+        WHERE id = #{categoryId}
+    </update>
+
+    <select id="findFirstSkuIdBySpuId" resultType="java.lang.Long">
+        SELECT MIN(id)
+        FROM product_sku
+        WHERE spu_id = #{spuId}
+    </select>
+
+    <select id="findFirstColorId" resultType="java.lang.Long">
+        SELECT id
+        FROM color
+        ORDER BY id
+        LIMIT 1
+    </select>
+
+    <select id="findFirstSizeId" resultType="java.lang.Long">
+        SELECT id
+        FROM size_option
+        ORDER BY id
+        LIMIT 1
+    </select>
+
+    <!-- MyBatis owns generated-key backfill for default SKU writes before inventory is initialized. -->
+    <insert id="insertDefaultSku" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO product_sku
+            (sku_code, spu_id, color_id, size_id, sale_price, original_price, status)
+        VALUES
+            (#{skuCode}, #{spuId}, #{colorId}, #{sizeId}, #{salePrice}, #{originalPrice}, #{status})
+    </insert>
+
+    <insert id="insertInventoryIfAbsent">
+        INSERT INTO inventory (sku_id, available_stock, locked_stock, sold_stock)
+        SELECT #{skuId}, 0, 0, 0
+        WHERE NOT EXISTS (SELECT 1 FROM inventory WHERE sku_id = #{skuId})
+    </insert>
+
+    <update id="updateDefaultSku">
+        UPDATE product_sku
+        SET sale_price = #{salePrice}, original_price = #{originalPrice},
+            status = #{status}, updated_at = CURRENT_TIMESTAMP(6)
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateAllSkuStatuses">
+        UPDATE product_sku
+        SET status = #{status}, updated_at = CURRENT_TIMESTAMP(6)
+        WHERE spu_id = #{spuId}
+    </update>
+
+    <select id="findProductStyleTags" resultType="string">
+        SELECT st.code
+        FROM product_style_tag pst
+        JOIN style_tag st ON st.id = pst.style_tag_id
+        WHERE pst.spu_id = #{spuId}
+        ORDER BY st.id
+    </select>
+
+    <select id="findStyleTagId" resultType="java.lang.Long">
+        SELECT id
+        FROM style_tag
+        WHERE code = #{tag} OR name = #{tag}
+        ORDER BY id
+        LIMIT 1
+    </select>
+
+    <delete id="deleteStyleTagsBySpuId">
+        DELETE FROM product_style_tag
+        WHERE spu_id = #{spuId}
+    </delete>
+
+    <insert id="insertStyleTag">
+        INSERT INTO product_style_tag (spu_id, style_tag_id)
+        VALUES (#{spuId}, #{tagId})
+    </insert>
+</mapper>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recommendation.intelligentoutfitrecommendationsystem.admin.mapper.AdminAuditMapper">
+    <insert id="insertAuditLog">
+        INSERT INTO admin_audit_log (operator, action, target_type, target_id, result, summary)
+        VALUES (#{operator}, #{action}, #{targetType}, #{targetId}, #{result}, #{summary})
+    </insert>
+
+    <select id="findAuditLogs" resultType="com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminAuditLogResponse">
+        SELECT id, operator, action, target_type, target_id, result, summary, created_at
+        FROM admin_audit_log
+        ORDER BY created_at DESC, id DESC
+        LIMIT #{limit}
+    </select>
+</mapper>

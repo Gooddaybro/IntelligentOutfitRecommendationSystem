@@ -1,8 +1,8 @@
 import { Send, SlidersHorizontal, Square } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../shared/api/client";
 import { streamAssistantChat } from "../../shared/api/assistantStream";
-import type { AssistantChatRequest, DemandIntent, MentionedItem, RecommendationCandidate, RecommendationStatus, RecommendedItem } from "../../shared/api/types";
+import type { AssistantChatRequest, DemandIntent, RecommendationCandidate, RecommendationStatus, RecommendedItem } from "../../shared/api/types";
 import type { Dispatch, FormEvent, MutableRefObject, SetStateAction } from "react";
 
 export type ChatMessage = {
@@ -34,12 +34,9 @@ export type ChatPanelState = {
 };
 
 export type RecommendationResultMeta = {
-  hasAiResult: boolean;
-  hasStrongMatch: boolean;
   recommendedItems?: RecommendedItem[];
-  mentionedItems?: MentionedItem[];
   recommendationId?: string;
-  recommendationStatus?: RecommendationStatus;
+  recommendationStatus: RecommendationStatus;
   resolvedIntent?: DemandIntent;
 };
 
@@ -99,6 +96,12 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
   const setError = state?.setError ?? setInternalError;
   const abortRef = state?.abortRef ?? internalAbortRef;
 
+  useEffect(() => () => {
+    requestSequenceRef.current += 1;
+    abortRef.current?.abort();
+    abortRef.current = null;
+  }, [abortRef]);
+
   const requestFilters = useMemo<Partial<AssistantChatRequest>>(
     () => ({
       category: filters.category || undefined,
@@ -128,26 +131,23 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
 
   function orderCandidatesByRecommendations(
     candidates: RecommendationCandidate[],
-    recommendedItems: RecommendedItem[] = [],
-    mentionedItems?: MentionedItem[]
+    spuIds: number[],
+    recommendedItems: RecommendedItem[] = []
   ) {
-    // 老版本没有 mentionedItems 时，只允许用推荐结果中完整的 SPU/SKU 做兼容绑定。
-    // 明确返回空数组则表示本轮没有绑定商品，不能回退到旧字段。
-    const effectiveMentionedItems = mentionedItems ?? recommendedItems.flatMap((item) =>
-      item.skuId === undefined ? [] : [{ spuId: item.spuId, skuId: item.skuId, outfitRole: item.outfitRole }]
-    );
+    const idOrder = new Map(spuIds.map((id, index) => [id, index]));
     const skuOrder = new Map(
-      effectiveMentionedItems
+      recommendedItems
+        .filter((item) => item.skuId !== undefined)
         .map((item, index) => [`${item.spuId}:${item.skuId}`, index])
     );
 
-    if (!skuOrder.size) {
-      return attachRecommendationFacts(candidates, recommendedItems, effectiveMentionedItems);
+    if (!idOrder.size && !skuOrder.size) {
+      return attachRecommendationReasons(candidates, recommendedItems);
     }
 
     return [...candidates].sort((first, second) => {
-      const firstOrder = skuOrder.get(`${first.spuId}:${first.skuId}`);
-      const secondOrder = skuOrder.get(`${second.spuId}:${second.skuId}`);
+      const firstOrder = skuOrder.get(`${first.spuId}:${first.skuId}`) ?? idOrder.get(first.spuId);
+      const secondOrder = skuOrder.get(`${second.spuId}:${second.skuId}`) ?? idOrder.get(second.spuId);
 
       if (firstOrder === undefined && secondOrder === undefined) {
         return 0;
@@ -162,47 +162,35 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
       }
 
       return firstOrder - secondOrder;
-    }).map((candidate) => attachRecommendationFact(candidate, recommendedItems, effectiveMentionedItems));
+    }).map((candidate) => attachRecommendationReason(candidate, recommendedItems));
   }
 
-  function attachRecommendationFacts(
-    candidates: RecommendationCandidate[],
-    recommendedItems: RecommendedItem[],
-    mentionedItems: MentionedItem[]
-  ) {
-    return candidates.map((candidate) => attachRecommendationFact(candidate, recommendedItems, mentionedItems));
+  function attachRecommendationReasons(candidates: RecommendationCandidate[], recommendedItems: RecommendedItem[]) {
+    return candidates.map((candidate) => attachRecommendationReason(candidate, recommendedItems));
   }
 
-  function attachRecommendationFact(
-    candidate: RecommendationCandidate,
-    recommendedItems: RecommendedItem[],
-    mentionedItems: MentionedItem[]
-  ) {
-    const recommended = recommendedItems.find(
-      (item) => item.skuId !== undefined && item.spuId === candidate.spuId && item.skuId === candidate.skuId
-    );
+  function attachRecommendationReason(candidate: RecommendationCandidate, recommendedItems: RecommendedItem[]) {
+    const matched =
+      recommendedItems.find((item) => item.skuId !== undefined && item.spuId === candidate.spuId && item.skuId === candidate.skuId) ??
+      recommendedItems.find((item) => item.spuId === candidate.spuId);
 
-    if (recommended) {
-      return {
-        ...candidate,
-        recommendationReason: recommended.reason,
-        rankScore: recommended.rankScore,
-        outfitRole: recommended.outfitRole
-      };
+    if (!matched) {
+      return candidate;
     }
 
-    // 普通提及没有强推荐证据，因此只能用 Java 返回的完整 SPU/SKU 精确绑定，禁止同 SPU 猜测 SKU。
-    const mentioned = mentionedItems.find(
-      (item) => item.spuId === candidate.spuId && item.skuId === candidate.skuId
-    );
-    return mentioned ? { ...candidate, outfitRole: mentioned.outfitRole } : candidate;
+    return {
+      ...candidate,
+      recommendationReason: matched.reason,
+      rankScore: matched.rankScore,
+      outfitRole: matched.outfitRole
+    };
   }
 
   async function updateRecommendations(
+    spuIds: number[],
     recommendedItems: RecommendedItem[] = [],
-    mentionedItems?: MentionedItem[],
     recommendationId?: string,
-    recommendationStatus: RecommendationStatus = "WEAK_FALLBACK",
+    recommendationStatus: RecommendationStatus = "BROWSE_FALLBACK",
     intentSnapshot?: DemandIntent,
     localRequestId?: number
   ) {
@@ -211,11 +199,8 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
         ? await api.recommendationSnapshot(recommendationId)
         : await api.recommendationCandidates(requestFilters);
       if (localRequestId !== undefined && localRequestId !== requestSequenceRef.current) return;
-      onRecommendations(orderCandidatesByRecommendations(candidates, recommendedItems, mentionedItems), {
-        hasAiResult: true,
-        hasStrongMatch: recommendationStatus === "STRONG_MATCH",
+      onRecommendations(orderCandidatesByRecommendations(candidates, spuIds, recommendedItems), {
         recommendedItems,
-        mentionedItems,
         recommendationId,
         recommendationStatus,
         resolvedIntent: intentSnapshot
@@ -224,12 +209,9 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
       if (localRequestId !== undefined && localRequestId !== requestSequenceRef.current) return;
       setError("候选快照读取失败，请重试");
       onRecommendations([], {
-        hasAiResult: true,
-        hasStrongMatch: false,
         recommendedItems: [],
-        mentionedItems: [],
         recommendationId,
-        recommendationStatus: "ERROR",
+        recommendationStatus: "FAILED",
         resolvedIntent: intentSnapshot
       });
     }
@@ -246,7 +228,8 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
     setError("");
     setMessages((current) => [...current, { role: "user", content: message }, { role: "assistant", content: "" }]);
     setIsStreaming(true);
-    abortRef.current = new AbortController();
+    const localAbortController = new AbortController();
+    abortRef.current = localAbortController;
     const effectiveRequestFilters = requestFilters;
     const localRequestId = ++requestSequenceRef.current;
 
@@ -283,10 +266,10 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
               });
             }
             await updateRecommendations(
+              event.spuIds,
               event.recommendedItems,
-              event.mentionedItems,
               event.recommendationId,
-              event.recommendationStatus ?? "WEAK_FALLBACK",
+              event.recommendationStatus ?? "BROWSE_FALLBACK",
               event.resolvedIntent,
               localRequestId
             );
@@ -295,7 +278,7 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
             setError(event.message);
           }
         },
-        abortRef.current.signal
+        localAbortController.signal
       );
     } catch (streamError) {
       if (streamError instanceof Error && streamError.name === "AbortError") {
@@ -318,16 +301,18 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
         return next;
       });
       await updateRecommendations(
+        fallback.recommendedSpuIds,
         fallback.recommendedItems ?? [],
-        fallback.mentionedItems,
         fallback.recommendationId,
-        fallback.recommendationStatus ?? "WEAK_FALLBACK",
+        fallback.recommendationStatus ?? "BROWSE_FALLBACK",
         fallback.resolvedIntent,
         localRequestId
       );
     } finally {
-      setIsStreaming(false);
-      abortRef.current = null;
+      if (localRequestId === requestSequenceRef.current && abortRef.current === localAbortController) {
+        setIsStreaming(false);
+        abortRef.current = null;
+      }
     }
   }
 

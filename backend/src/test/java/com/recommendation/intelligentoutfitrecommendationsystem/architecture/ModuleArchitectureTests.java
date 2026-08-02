@@ -49,6 +49,14 @@ class ModuleArchitectureTests {
                             "..user..");
 
     @ArchTest
+    static final ArchRule ADMIN_SERVICES_MUST_NOT_DEPEND_ON_JDBC =
+            noClasses().that().resideInAPackage(BASE_PACKAGE + ".admin.service..")
+                    .should().dependOnClassesThat().resideInAnyPackage(
+                            "org.springframework.jdbc..",
+                            "java.sql..",
+                            "javax.sql..");
+
+    @ArchTest
     static final ArchRule MAPPERS_MUST_STAY_INSIDE_THEIR_MODULE =
             classes().should(new ArchCondition<>(
                     "access only Mappers from their own module") {

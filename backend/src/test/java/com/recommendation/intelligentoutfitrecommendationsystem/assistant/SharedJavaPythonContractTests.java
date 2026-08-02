@@ -35,6 +35,14 @@ class SharedJavaPythonContractTests {
     void javaRequestDtosMatchSharedContractFieldNames() throws Exception {
         JsonNode contract = readSharedContract();
 
+        assertThat(contractFields(contract, "intent_constraint")).isEqualTo(Set.of(
+                "id", "field", "operator", "values", "strength", "origin", "originTurnId",
+                "derivedFromConstraintId", "scope", "weight"
+        ));
+        assertThat(contractFields(contract, "demand_intent")).isEqualTo(Set.of(
+                "version", "requestType", "requestedCapabilities", "hardFilters", "softPreferences",
+                "subjectMeasurements"
+        ));
         assertThat(jsonPropertyNames(PythonChatRequest.class))
                 .isEqualTo(contractFields(contract, "python_chat_request"));
         assertThat(jsonPropertyNames(PythonChatHistoryItem.class))
@@ -49,6 +57,9 @@ class SharedJavaPythonContractTests {
     void javaResponseDtosMatchFieldsConsumedFromSharedContract() throws Exception {
         JsonNode contract = readSharedContract();
 
+        assertThat(contractFields(contract, "product_ref")).isEqualTo(Set.of(
+                "spu_id", "sku_id", "reason", "rank_score", "matched_dimensions", "outfit_role"
+        ));
         assertThat(jsonPropertyNames(PythonChatResponse.class))
                 .isEqualTo(contractFields(contract, "java_consumed_chat_response"));
         assertThat(jsonPropertyNames(PythonProductRef.class))

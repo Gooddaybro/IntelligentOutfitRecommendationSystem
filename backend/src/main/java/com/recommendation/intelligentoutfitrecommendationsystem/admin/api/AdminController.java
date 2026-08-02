@@ -14,7 +14,12 @@ import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminS
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminSkuResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminUserResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminUserStatusRequest;
-import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminCatalogService;
+import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminAnalyticsService;
+import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminAuditLogService;
+import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminInventoryService;
+import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminOrderService;
+import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminProductService;
+import com.recommendation.intelligentoutfitrecommendationsystem.admin.service.AdminUserService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.api.ApiResponse;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -32,25 +37,42 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/admin")
 public class AdminController {
-    private final AdminCatalogService adminCatalogService;
+    private final AdminProductService adminProductService;
+    private final AdminInventoryService adminInventoryService;
+    private final AdminOrderService adminOrderService;
+    private final AdminUserService adminUserService;
+    private final AdminAnalyticsService adminAnalyticsService;
+    private final AdminAuditLogService adminAuditLogService;
 
-    public AdminController(AdminCatalogService adminCatalogService) {
-        this.adminCatalogService = adminCatalogService;
+    public AdminController(
+            AdminProductService adminProductService,
+            AdminInventoryService adminInventoryService,
+            AdminOrderService adminOrderService,
+            AdminUserService adminUserService,
+            AdminAnalyticsService adminAnalyticsService,
+            AdminAuditLogService adminAuditLogService
+    ) {
+        this.adminProductService = adminProductService;
+        this.adminInventoryService = adminInventoryService;
+        this.adminOrderService = adminOrderService;
+        this.adminUserService = adminUserService;
+        this.adminAnalyticsService = adminAnalyticsService;
+        this.adminAuditLogService = adminAuditLogService;
     }
 
     @GetMapping("/overview")
     public ApiResponse<AdminOverviewResponse> getOverview() {
-        return ApiResponse.ok(adminCatalogService.getOverview());
+        return ApiResponse.ok(adminAnalyticsService.getOverview());
     }
 
     @GetMapping("/products")
     public ApiResponse<List<AdminProductResponse>> listProducts() {
-        return ApiResponse.ok(adminCatalogService.listProducts());
+        return ApiResponse.ok(adminProductService.listProducts());
     }
 
     @PostMapping("/products")
     public ApiResponse<AdminProductResponse> createProduct(@RequestBody AdminProductInput request) {
-        return ApiResponse.ok(adminCatalogService.createProduct(request));
+        return ApiResponse.ok(adminProductService.createProduct(request));
     }
 
     @PutMapping("/products/{spuId}")
@@ -58,7 +80,7 @@ public class AdminController {
             @PathVariable Long spuId,
             @RequestBody AdminProductInput request
     ) {
-        return ApiResponse.ok(adminCatalogService.updateProduct(spuId, request));
+        return ApiResponse.ok(adminProductService.updateProduct(spuId, request));
     }
 
     @PostMapping("/products/{spuId}/status")
@@ -66,12 +88,12 @@ public class AdminController {
             @PathVariable Long spuId,
             @RequestBody AdminProductStatusRequest request
     ) {
-        return ApiResponse.ok(adminCatalogService.changeProductStatus(spuId, request));
+        return ApiResponse.ok(adminProductService.changeProductStatus(spuId, request));
     }
 
     @GetMapping("/categories")
     public ApiResponse<List<AdminCategoryResponse>> listCategories() {
-        return ApiResponse.ok(adminCatalogService.listCategories());
+        return ApiResponse.ok(adminProductService.listCategories());
     }
 
     @PutMapping("/categories/{id}")
@@ -79,12 +101,12 @@ public class AdminController {
             @PathVariable Long id,
             @RequestBody AdminCategoryRequest request
     ) {
-        return ApiResponse.ok(adminCatalogService.updateCategory(id, request));
+        return ApiResponse.ok(adminProductService.updateCategory(id, request));
     }
 
     @GetMapping("/inventory")
     public ApiResponse<List<AdminSkuResponse>> listInventory() {
-        return ApiResponse.ok(adminCatalogService.listInventory());
+        return ApiResponse.ok(adminInventoryService.listInventory());
     }
 
     @PostMapping("/inventory/{skuId}/adjustments")
@@ -92,12 +114,12 @@ public class AdminController {
             @PathVariable Long skuId,
             @RequestBody AdminInventoryAdjustmentRequest request
     ) {
-        return ApiResponse.ok(adminCatalogService.adjustInventory(skuId, request));
+        return ApiResponse.ok(adminInventoryService.adjustInventory(skuId, request));
     }
 
     @GetMapping("/orders")
     public ApiResponse<List<AdminOrderResponse>> listOrders() {
-        return ApiResponse.ok(adminCatalogService.listOrders());
+        return ApiResponse.ok(adminOrderService.listOrders());
     }
 
     @PostMapping("/orders/{orderNo}/ship")
@@ -105,12 +127,12 @@ public class AdminController {
             @PathVariable String orderNo,
             @RequestBody AdminShipOrderRequest request
     ) {
-        return ApiResponse.ok(adminCatalogService.shipOrder(orderNo, request));
+        return ApiResponse.ok(adminOrderService.shipOrder(orderNo, request));
     }
 
     @GetMapping("/users")
     public ApiResponse<List<AdminUserResponse>> listUsers() {
-        return ApiResponse.ok(adminCatalogService.listUsers());
+        return ApiResponse.ok(adminUserService.listUsers());
     }
 
     @PostMapping("/users/{userId}/status")
@@ -118,16 +140,16 @@ public class AdminController {
             @PathVariable Long userId,
             @RequestBody AdminUserStatusRequest request
     ) {
-        return ApiResponse.ok(adminCatalogService.changeUserStatus(userId, request));
+        return ApiResponse.ok(adminUserService.changeUserStatus(userId, request));
     }
 
     @GetMapping("/analytics")
     public ApiResponse<AdminAnalyticsResponse> getAnalytics() {
-        return ApiResponse.ok(adminCatalogService.getAnalytics());
+        return ApiResponse.ok(adminAnalyticsService.getAnalytics());
     }
 
     @GetMapping("/audit-logs")
     public ApiResponse<List<AdminAuditLogResponse>> listAuditLogs() {
-        return ApiResponse.ok(adminCatalogService.listAuditLogs());
+        return ApiResponse.ok(adminAuditLogService.listAuditLogs());
     }
 }

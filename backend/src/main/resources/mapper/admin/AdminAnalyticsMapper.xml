@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recommendation.intelligentoutfitrecommendationsystem.admin.mapper.AdminAnalyticsMapper">
+
+    <!-- Overview aggregate keeps product visibility scoped to SPUs that the storefront can sell. -->
+    <select id="countOnSaleProducts" resultType="long">
+        SELECT COUNT(*)
+        FROM product_spu
+        WHERE status = 'on_sale'
+    </select>
+
+    <select id="countSkus" resultType="long">
+        SELECT COUNT(*)
+        FROM product_sku
+    </select>
+
+    <!-- Inventory risk is threshold-driven by the service but still uses safe parameter binding. -->
+    <select id="countLowStockSkus" resultType="long">
+        SELECT COUNT(*)
+        FROM inventory
+        WHERE available_stock &lt;= #{threshold}
+    </select>
+
+    <select id="countPendingShipmentOrders" resultType="long">
+        SELECT COUNT(*)
+        FROM sales_order
+        WHERE status = 'PAID'
+    </select>
+
+    <select id="countAfterSaleOrders" resultType="long">
+        SELECT COUNT(*)
+        FROM after_sale_request
+        WHERE status IN ('REQUESTED', 'PENDING', 'APPROVED')
+    </select>
+
+    <select id="countOrders" resultType="long">
+        SELECT COUNT(*)
+        FROM sales_order
+    </select>
+
+    <select id="sumPaidAmount" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(total_amount), 0)
+        FROM sales_order
+        WHERE status IN ('PAID', 'SHIPPED', 'COMPLETED')
+    </select>
+
+    <!-- Funnel queries are fixed statements so callers cannot pass SQL fragments into analytics reads. -->
+    <select id="countExposureEvents" resultType="long">
+        SELECT COUNT(*) FROM behavior_event WHERE LOWER(event_type) LIKE '%expos%'
+    </select>
+
+    <select id="countClickEvents" resultType="long">
+        SELECT COUNT(*) FROM behavior_event WHERE LOWER(event_type) LIKE '%click%'
+    </select>
+
+    <select id="countCartEvents" resultType="long">
+        SELECT COUNT(*) FROM behavior_event WHERE LOWER(event_type) LIKE '%cart%'
+    </select>
+
+    <select id="countPurchasedOrders" resultType="long">
+        SELECT COUNT(*) FROM sales_order WHERE status IN ('PAID', 'SHIPPED', 'COMPLETED')
+    </select>
+
+    <!-- Raw order rows stay chronologically stable before the service folds them into day labels. -->
+    <select id="findOrderTrendRows" resultType="com.recommendation.intelligentoutfitrecommendationsystem.admin.model.AdminOrderTrendRow">
+        SELECT status, total_amount, created_at
+        FROM sales_order
+        ORDER BY created_at ASC, id ASC
+    </select>
+
+    <!-- Hot products aggregate paid order lines only, preserving the legacy dashboard ranking and limit. -->
+    <select id="findAnalyticsHotProducts" resultType="com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminAnalyticsHotProduct">
+        SELECT oi.spu_id, p.name, SUM(oi.quantity) AS sales, COALESCE(SUM(oi.line_amount), 0) AS paid_amount
+        FROM order_item oi
+        JOIN sales_order o ON o.id = oi.order_id
+        LEFT JOIN product_spu p ON p.id = oi.spu_id
+        WHERE o.status IN ('PAID', 'SHIPPED', 'COMPLETED')
+        GROUP BY oi.spu_id, p.name
+        ORDER BY sales DESC, paid_amount DESC, oi.spu_id ASC
+        LIMIT 10
+    </select>
+
+    <!-- Category trend uses denormalized order-item category names to reflect the sold-at-time catalog snapshot. -->
+    <select id="findCategoryTrend" resultType="com.recommendation.intelligentoutfitrecommendationsystem.admin.dto.AdminCategoryTrendPoint">
+        SELECT oi.category_name, SUM(oi.quantity) AS sales
+        FROM order_item oi
+        JOIN sales_order o ON o.id = oi.order_id
+        WHERE o.status IN ('PAID', 'SHIPPED', 'COMPLETED')
+        GROUP BY oi.category_name
+        ORDER BY sales DESC, oi.category_name ASC
+        LIMIT 10
+    </select>
+</mapper>

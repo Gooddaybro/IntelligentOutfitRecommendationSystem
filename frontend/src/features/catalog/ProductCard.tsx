@@ -25,11 +25,10 @@ type ProductCardProps = {
   variant?: ProductCardVariant;
   recommendationStatus?: RecommendationStatus;
   isAttributed?: boolean;
-  isMentioned?: boolean;
 };
 
-export function ProductCard({ candidate, onAction, actionMetadata, position, onBehaviorEvent, variant = "standard", recommendationStatus, isAttributed = false, isMentioned = false }: ProductCardProps) {
-  const shouldShowAiFacts = recommendationStatus === "STRONG_MATCH" && isAttributed;
+export function ProductCard({ candidate, onAction, actionMetadata, position, onBehaviorEvent, variant = "standard", recommendationStatus, isAttributed = false }: ProductCardProps) {
+  const shouldShowAiFacts = (recommendationStatus === "STRONG_MATCH" || recommendationStatus === "PARTIAL_MATCH") && isAttributed;
 
   return (
     <article
@@ -47,7 +46,6 @@ export function ProductCard({ candidate, onAction, actionMetadata, position, onB
     >
       <Link className="product-image" to={`/app/products/${candidate.spuId}`} aria-label={`查看${candidate.name}详情`}>
         {shouldShowAiFacts && <span className="ai-match-badge">AI 推荐</span>}
-        {!shouldShowAiFacts && isMentioned && <span className="conversation-mention-badge">对话提及</span>}
         {candidate.mainImageUrl ? (
           <img src={candidate.mainImageUrl} alt={candidate.name} onError={(event) => { event.currentTarget.style.display = "none"; }} />
         ) : (
