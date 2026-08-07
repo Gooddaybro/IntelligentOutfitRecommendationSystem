@@ -53,13 +53,13 @@
   - Proxy `/api` and `/actuator` to Java backend.
 - `docker-compose.demo.yml`
   - App containers and one-shot search index init.
-- `../.env.demo.example`
-  - Root demo env values without real secrets.
-- `../scripts/start-demo.sh`
+- `.env.demo.example`
+  - Java repository demo env values without real secrets.
+- `scripts/start-demo.sh`
   - One-command full demo startup.
-- `../scripts/stop-demo.sh`
+- `scripts/stop-demo.sh`
   - Stop demo stack.
-- `../README.md`, `observability/README.md`, `docs/elasticsearch/README.md`
+- `README.md`, `observability/README.md`, `docs/elasticsearch/README.md`
   - Update run instructions and known observability scope.
 
 ---
@@ -172,20 +172,20 @@
 - Create: `frontend/Dockerfile`
 - Create: `frontend/nginx.conf`
 - Create: `docker-compose.demo.yml`
-- Create: `../.env.demo.example`
-- Create: `../scripts/start-demo.sh`
-- Create: `../scripts/stop-demo.sh`
+- Create: `.env.demo.example`
+- Create: `scripts/start-demo.sh`
+- Create: `scripts/stop-demo.sh`
 
 **Interfaces:**
 - Produces: `sh scripts/start-demo.sh`
 - Produces: `sh scripts/stop-demo.sh`
-- Produces: `docker compose -f IntelligentOutfitRecommendationSystem/docker-compose.yml -f IntelligentOutfitRecommendationSystem/docker-compose.demo.yml up`
+- Produces: `docker compose -f docker-compose.yml -f docker-compose.demo.yml up`
 
 - [ ] Add Dockerfiles using existing Maven, npm, and Python dependency files.
 - [ ] Add `docker-compose.demo.yml` with `backend-web`, `backend-worker`, `python-ai`, `frontend`, and `search-index-init`.
 - [ ] Use Compose service names instead of `localhost` inside containers.
 - [ ] Add healthchecks for Python and Java readiness.
-- [ ] Add startup/stop scripts that run from the workspace root and hide the long Compose command.
+- [ ] Add startup/stop scripts that run from the Java project root and hide the long Compose command.
 - [ ] Run `docker compose -f docker-compose.yml -f docker-compose.demo.yml config` from the Java project; expected exit 0.
 - [ ] Run shell syntax checks on the scripts.
 - [ ] Commit with `feat: add docker demo stack`.
@@ -193,7 +193,7 @@
 ## Task 7: Documentation closure and final verification
 
 **Files:**
-- Modify: `../README.md`
+- Modify: `README.md`
 - Modify: `docs/elasticsearch/README.md`
 - Modify: `observability/README.md`
 - Modify: `docs/superpowers/specs/2026-08-07-recommendation-es-recall-and-one-click-docker.md`
@@ -208,5 +208,6 @@
 - [ ] Run targeted Java tests from Tasks 1-5.
 - [ ] Run `cd backend && sh ./mvnw verify` if local runtime budget allows; otherwise report the exact blocking condition.
 - [ ] Run `docker compose -f docker-compose.yml -f docker-compose.demo.yml config`.
+- [ ] Attempt Docker image build; if Docker Hub base image metadata cannot be resolved, report the exact network failure and rerun in a network with registry access.
 - [ ] Run `git diff --check`.
 - [ ] Commit with `docs: document recommendation recall and docker demo`.

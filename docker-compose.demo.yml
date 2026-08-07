@@ -1,7 +1,7 @@
 services:
   python-ai:
     build:
-      context: ../AI-Clothing-Shopping-Assistant-System
+      context: ${PYTHON_AI_CONTEXT:-../AI-Clothing-Shopping-Assistant-System}
     image: intelligent-outfit-python-ai:demo
     container_name: intelligent_outfit_python_ai
     environment:
@@ -142,4 +142,3 @@ services:
         condition: service_healthy
       search-index-init:
         condition: service_completed_successfully
-

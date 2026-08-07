@@ -26,7 +26,7 @@ docker compose ps elasticsearch kibana
 - Elasticsearch：`http://localhost:9200`
 - Kibana：`http://localhost:5601`
 
-如果使用工作区根目录的一键演示脚本：
+如果使用 Java 项目根目录的一键演示脚本：
 
 ```bash
 cp .env.demo.example .env

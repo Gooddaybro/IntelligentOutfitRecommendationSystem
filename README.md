@@ -6,9 +6,35 @@ This repository is organized as a full-stack project while keeping the original 
 Intelligent Outfit Recommendation System/
 ├── backend/          # Java Spring Boot backend
 ├── frontend/         # React + TypeScript + Vite frontend
+├── scripts/          # Local demo entrypoints
+├── .env.demo.example # Non-secret Docker demo defaults
 ├── docs/             # Development documents and contracts
 ├── docker-compose.yml
+├── docker-compose.demo.yml
 └── README.md
+```
+
+## One-Command Demo
+
+Clone `AI-Clothing-Shopping-Assistant-System` beside this repository, then run:
+
+```bash
+cp .env.demo.example .env
+sh scripts/start-demo.sh
+```
+
+This starts MySQL, Redis, RabbitMQ, LangGraph PostgreSQL, Elasticsearch, Kibana,
+the Java backend, the Python AI service, the React frontend, and a one-shot
+product search index rebuild.
+
+If the Python repository is not beside this one, set `PYTHON_AI_CONTEXT` to its
+path before running the script. The demo enables recommendation ES recall with
+`APP_RECOMMENDATION_ES_RECALL_ENABLED=true`.
+
+Stop the demo without deleting volumes:
+
+```bash
+sh scripts/stop-demo.sh
 ```
 
 ## Backend

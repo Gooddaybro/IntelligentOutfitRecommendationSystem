@@ -365,14 +365,14 @@ flowchart TD
 
 建议新增：
 
-- 根目录或 Java 项目内：`docker-compose.demo.yml`
+- Java 项目内：`docker-compose.demo.yml`
 - Java 后端：`backend/Dockerfile`
 - Python AI：`../AI-Clothing-Shopping-Assistant-System/Dockerfile`
 - 前端：`frontend/Dockerfile`
 - 前端 Nginx：`frontend/nginx.conf`
-- 根目录：`.env.demo.example`
-- 根目录：`scripts/start-demo.sh`
-- 根目录：`scripts/stop-demo.sh`
+- Java 项目内：`.env.demo.example`
+- Java 项目内：`scripts/start-demo.sh`
+- Java 项目内：`scripts/stop-demo.sh`
 
 是否合并到现有 `docker-compose.yml` 有两个选择：
 
@@ -457,6 +457,9 @@ cd <repo>
 cp .env.demo.example .env
 sh scripts/start-demo.sh
 ```
+
+如果 Python AI 仓库没有和 Java 仓库同级放置，启动前设置
+`PYTHON_AI_CONTEXT=/path/to/AI-Clothing-Shopping-Assistant-System`。
 
 验收：
 
