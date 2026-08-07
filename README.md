@@ -23,18 +23,28 @@ cp .env.demo.example .env
 sh scripts/start-demo.sh
 ```
 
-This starts MySQL, Redis, RabbitMQ, LangGraph PostgreSQL, Elasticsearch, Kibana,
-the Java backend, the Python AI service, the React frontend, and a one-shot
-product search index rebuild.
+This starts MySQL, Redis, RabbitMQ, LangGraph PostgreSQL, Elasticsearch, the
+Java backend, the Python AI service, the React frontend, and a one-shot product
+search index rebuild.
+
+Kibana is optional because it is only used for Elasticsearch inspection. Start
+it when needed:
+
+```bash
+COMPOSE_PROFILES=observability sh scripts/start-demo.sh
+```
 
 If the Python repository is not beside this one, set `PYTHON_AI_CONTEXT` to its
 path before running the script. The demo enables recommendation ES recall with
 `APP_RECOMMENDATION_ES_RECALL_ENABLED=true`.
 
-If Docker Hub access is unstable, override the base image variables in `.env`:
-`JDK_BASE_IMAGE`, `JRE_BASE_IMAGE`, `NODE_BASE_IMAGE`, `NGINX_BASE_IMAGE`, and
-`PYTHON_BASE_IMAGE`. `MAVEN_REPO_URL` only affects dependency downloads inside
-the backend Docker build.
+If registry access is unstable, override the image variables in `.env`.
+Runtime service images use `MYSQL_IMAGE`, `REDIS_IMAGE`, `RABBITMQ_IMAGE`,
+`LANGGRAPH_POSTGRES_IMAGE`, `ELASTICSEARCH_IMAGE`, `KIBANA_IMAGE`, and
+`CURL_IMAGE`. Build base images use `JDK_BASE_IMAGE`, `JRE_BASE_IMAGE`,
+`NODE_BASE_IMAGE`, `NGINX_BASE_IMAGE`, and `PYTHON_BASE_IMAGE`.
+`MAVEN_REPO_URL`, `PIP_INDEX_URL`, and `PIP_TRUSTED_HOST` only affect dependency
+downloads inside the backend and Python Docker builds.
 
 Stop the demo without deleting volumes:
 

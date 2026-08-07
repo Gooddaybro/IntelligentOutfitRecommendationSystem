@@ -4,6 +4,8 @@ services:
       context: ${PYTHON_AI_CONTEXT:-../AI-Clothing-Shopping-Assistant-System}
       args:
         PYTHON_BASE_IMAGE: ${PYTHON_BASE_IMAGE:-python:3.12-slim}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-}
     image: intelligent-outfit-python-ai:demo
     container_name: intelligent_outfit_python_ai
     environment:
@@ -84,7 +86,7 @@ services:
         condition: service_healthy
 
   search-index-init:
-    image: curlimages/curl:8.11.1
+    image: ${CURL_IMAGE:-curlimages/curl:8.11.1}
     container_name: intelligent_outfit_search_index_init
     entrypoint: ["sh", "-c"]
     command:
