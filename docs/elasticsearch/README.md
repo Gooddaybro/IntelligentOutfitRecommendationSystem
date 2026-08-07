@@ -36,6 +36,10 @@ sh scripts/start-demo.sh
 脚本会启动全栈容器，并在 Java 后端 readiness 通过后调用
 `POST /internal/search/products/rebuild` 初始化 `product_current`。
 
+如果失败发生在 `load metadata for docker.io/library/...` 或
+`TLS handshake timeout`，说明 Docker 正在拉基础镜像元数据但当前网络到
+Docker Hub 不稳定。先配置 Docker registry mirror 或换网络，再重新执行同一个脚本。
+
 ## 健康检查
 
 ```powershell

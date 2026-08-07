@@ -1,7 +1,7 @@
 # 推荐 ES 召回与一键 Docker 启动开发设计
 
 日期：2026-08-07
-状态：开发中，按 `docs/superpowers/plans/2026-08-07-recommendation-es-recall-and-docker-demo.md` 执行
+状态：已实现主要开发项；Docker Compose 配置已验证，完整镜像构建受本机 Docker Hub TLS 超时阻塞
 适用项目：`IntelligentOutfitRecommendationSystem` + `AI-Clothing-Shopping-Assistant-System` + `outfit-project-contract`
 
 ## 1. 结论
@@ -16,9 +16,7 @@
 
 还没有：
 
-- 推荐候选召回使用 ES。现在 `RecommendationCandidateQueryService` 仍只按 MySQL 硬过滤查 SKU 候选。
-- 一键启动完整系统。当前 Compose 只启动 MySQL、Redis、RabbitMQ、LangGraph PostgreSQL、Elasticsearch、Kibana 等基础设施；Java 后端、Python AI、React 前端仍需要手动跑。
-- 一键启动后的搜索索引初始化流程。虽然已有重建接口，但还没有被脚本或容器启动流程串起来。
+- 完整镜像构建的本机验证。当前 Compose 配置、脚本 dry-run、后端/前端/Python 构建测试已通过；实际 Docker build 卡在 Docker Hub 基础镜像 metadata TLS 握手超时。
 
 推荐做法：
 
@@ -51,7 +49,7 @@ flowchart LR
   - 根据用户画像、历史、已解析硬约束构造 `RecommendationCandidateQuery`。
   - 调用 `recommendationCandidateQueryService.findCandidates(query)`。
 - `backend/src/main/java/com/recommendation/intelligentoutfitrecommendationsystem/product/service/RecommendationCandidateQueryService.java`
-  - 当前只查 MySQL 的 `findRecommendationCandidateSnapshots`。
+  - 已支持在功能开关开启且 `recallText` 非空时先走 ES 召回 SPU ID，再回 MySQL 展开 SKU 候选；ES 不可用时降级到 MySQL。
   - Redis 只缓存静态快照。
   - 价格、库存每次从 MySQL `findRecommendationCandidateLiveFacts` 补齐。
 - `backend/src/main/resources/mapper/product/ProductMapper.xml`
@@ -60,7 +58,7 @@ flowchart LR
   - Python 接收 Java 提供的 `candidates`。
   - Python 不应该返回无法追溯到 Java 候选的商品。
 
-判断：推荐召回应放在 `RecommendationCandidateQueryService`，而不是 Python 层、前端层、或另起一套推荐搜索服务。
+判断：推荐召回已放在 `RecommendationCandidateQueryService`，没有让 Python 层、前端层、或另起一套推荐搜索服务承担 ES 查询。
 
 ### 2.2 商品搜索 ES 现状
 
@@ -97,7 +95,7 @@ flowchart LR
 - `elasticsearch`
 - `kibana`
 
-没有包含：
+新增的 `docker-compose.demo.yml` 已包含：
 
 - Java 后端 Web 服务容器。
 - Java Worker 容器。
@@ -105,7 +103,10 @@ flowchart LR
 - React 前端生产容器。
 - Nginx/API 反向代理。
 - 一键启动后的索引重建步骤。
-- Prometheus/Grafana 服务；但 `observability/README.md` 已经写了 `prometheus grafana` 启动说明，Compose 里暂未定义。
+
+仍未包含：
+
+- Prometheus/Grafana 服务；当前 `observability/README.md` 已明确默认 Compose 只提供配置资产，不再声称可以直接启动观测服务。
 
 根目录 `README.md` 仍要求手动执行：
 
@@ -113,7 +114,7 @@ flowchart LR
 - Java：进入 `backend` 后执行 Maven 启动。
 - 前端：进入 `frontend` 后执行 `npm ci`、`npm run dev`。
 
-判断：现在不是“别人拉下来后一条命令完整运行”的状态；最多只能算“一键启动部分依赖”。
+判断：项目已经具备“一条脚本启动完整本地演示环境”的结构；本机完整构建验证目前受 Docker Hub TLS 超时阻塞，需要在可拉取基础镜像的网络下复测。
 
 ## 3. 与生产级/面试级项目的差异
 
