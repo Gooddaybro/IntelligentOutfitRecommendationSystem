@@ -1,7 +1,7 @@
 # 推荐 ES 召回与一键 Docker 启动开发设计
 
 日期：2026-08-07
-状态：草案，待确认后再开发
+状态：开发中，按 `docs/superpowers/plans/2026-08-07-recommendation-es-recall-and-docker-demo.md` 执行
 适用项目：`IntelligentOutfitRecommendationSystem` + `AI-Clothing-Shopping-Assistant-System` + `outfit-project-contract`
 
 ## 1. 结论

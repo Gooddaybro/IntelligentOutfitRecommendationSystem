@@ -1,0 +1,145 @@
+services:
+  python-ai:
+    build:
+      context: ../AI-Clothing-Shopping-Assistant-System
+    image: intelligent-outfit-python-ai:demo
+    container_name: intelligent_outfit_python_ai
+    environment:
+      AI_RUNTIME_ENV: ${AI_RUNTIME_ENV:-development}
+      APP_INTERNAL_API_TOKEN: ${APP_INTERNAL_API_TOKEN:-demo-internal-token-change-me}
+      LANGGRAPH_CHECKPOINTER_BACKEND: ${LANGGRAPH_CHECKPOINTER_BACKEND:-postgres}
+      LANGGRAPH_CHECKPOINTER_DSN: postgresql://${LANGGRAPH_POSTGRES_USERNAME:-langgraph}:${LANGGRAPH_POSTGRES_PASSWORD:-change-me-locally}@langgraph-postgres:5432/${LANGGRAPH_POSTGRES_DATABASE:-langgraph}
+      JINA_API_KEY: ${JINA_API_KEY:-}
+      JINA_EMBEDDING_MODEL: ${JINA_EMBEDDING_MODEL:-jina-embeddings-v4}
+      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-}
+      KIMI_CHAT_MODEL: ${KIMI_CHAT_MODEL:-kimi-k2.5}
+      ENABLE_LLM_PREFERENCE_MAPPER: ${ENABLE_LLM_PREFERENCE_MAPPER:-false}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-30}
+      LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-2}
+      LLM_MAX_CONCURRENCY: ${LLM_MAX_CONCURRENCY:-8}
+      RAG_TIMEOUT_SECONDS: ${RAG_TIMEOUT_SECONDS:-20}
+      STREAM_SAFETY_TAIL_CHARS: ${STREAM_SAFETY_TAIL_CHARS:-64}
+    ports:
+      - "${PYTHON_AI_HOST_PORT:-8000}:8000"
+    depends_on:
+      langgraph-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  backend-web:
+    build:
+      context: ./backend
+    image: intelligent-outfit-backend:demo
+    container_name: intelligent_outfit_backend_web
+    environment:
+      SPRING_PROFILES_ACTIVE: web
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-intelligent_outfit}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-123456}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-app}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-app-dev-password}
+      APP_INTERNAL_API_TOKEN: ${APP_INTERNAL_API_TOKEN:-demo-internal-token-change-me}
+      APP_JWT_SECRET: ${APP_JWT_SECRET:-demo-jwt-secret-change-before-production-2026}
+      APP_AI_PYTHON_BASE_URL: http://python-ai:8000
+      APP_AI_PYTHON_INTERNAL_TOKEN: ${APP_INTERNAL_API_TOKEN:-demo-internal-token-change-me}
+      APP_ELASTICSEARCH_ENABLED: "true"
+      APP_ELASTICSEARCH_URIS: http://elasticsearch:9200
+      APP_RECOMMENDATION_ES_RECALL_ENABLED: ${APP_RECOMMENDATION_ES_RECALL_ENABLED:-true}
+      APP_PRODUCT_SEARCH_SYNC_ENABLED: ${APP_PRODUCT_SEARCH_SYNC_ENABLED:-true}
+      APP_PRODUCT_SEARCH_SYNC_PUBLISHER_ENABLED: ${APP_PRODUCT_SEARCH_SYNC_PUBLISHER_ENABLED:-true}
+      APP_PRODUCT_SEARCH_SYNC_LISTENER_ENABLED: "false"
+      APP_AI_TASK_PUBLISHER_ENABLED: ${APP_AI_TASK_PUBLISHER_ENABLED:-true}
+      APP_AI_TASK_LISTENER_ENABLED: "false"
+      APP_PAYMENT_ALIPAY_CALLBACK_SECRET: ${APP_PAYMENT_ALIPAY_CALLBACK_SECRET:-demo-alipay-callback-secret}
+      APP_PAYMENT_WECHAT_CALLBACK_SECRET: ${APP_PAYMENT_WECHAT_CALLBACK_SECRET:-demo-wechat-callback-secret}
+    ports:
+      - "${JAVA_BACKEND_HOST_PORT:-8080}:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      langgraph-postgres:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      python-ai:
+        condition: service_healthy
+
+  search-index-init:
+    image: curlimages/curl:8.11.1
+    container_name: intelligent_outfit_search_index_init
+    entrypoint: ["sh", "-c"]
+    command:
+      - >
+        curl --fail --silent --show-error --retry 20 --retry-delay 3
+        -X POST
+        -H "X-Internal-Token: ${APP_INTERNAL_API_TOKEN:-demo-internal-token-change-me}"
+        http://backend-web:8080/internal/search/products/rebuild
+    depends_on:
+      backend-web:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    restart: "no"
+
+  backend-worker:
+    image: intelligent-outfit-backend:demo
+    container_name: intelligent_outfit_backend_worker
+    environment:
+      SPRING_PROFILES_ACTIVE: worker
+      SPRING_MAIN_WEB_APPLICATION_TYPE: none
+      SPRING_FLYWAY_ENABLED: "false"
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-intelligent_outfit}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-123456}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-app}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-app-dev-password}
+      APP_INTERNAL_API_TOKEN: ${APP_INTERNAL_API_TOKEN:-demo-internal-token-change-me}
+      APP_AI_PYTHON_BASE_URL: http://python-ai:8000
+      APP_AI_PYTHON_INTERNAL_TOKEN: ${APP_INTERNAL_API_TOKEN:-demo-internal-token-change-me}
+      APP_ELASTICSEARCH_ENABLED: "true"
+      APP_ELASTICSEARCH_URIS: http://elasticsearch:9200
+      APP_PRODUCT_SEARCH_SYNC_ENABLED: ${APP_PRODUCT_SEARCH_SYNC_ENABLED:-true}
+      APP_PRODUCT_SEARCH_SYNC_PUBLISHER_ENABLED: "false"
+      APP_PRODUCT_SEARCH_SYNC_LISTENER_ENABLED: ${APP_PRODUCT_SEARCH_SYNC_LISTENER_ENABLED:-true}
+      APP_AI_TASK_PUBLISHER_ENABLED: "false"
+      APP_AI_TASK_LISTENER_ENABLED: ${APP_AI_TASK_LISTENER_ENABLED:-true}
+    depends_on:
+      search-index-init:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: ""
+    image: intelligent-outfit-frontend:demo
+    container_name: intelligent_outfit_frontend
+    ports:
+      - "${FRONTEND_HOST_PORT:-3000}:80"
+    depends_on:
+      backend-web:
+        condition: service_healthy
+      search-index-init:
+        condition: service_completed_successfully
+
