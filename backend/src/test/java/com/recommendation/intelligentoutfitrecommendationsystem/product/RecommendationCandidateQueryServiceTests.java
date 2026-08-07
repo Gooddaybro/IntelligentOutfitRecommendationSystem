@@ -134,6 +134,7 @@ class RecommendationCandidateQueryServiceTests {
                 .tags("engine", "mysql", "outcome", "fallback").counter().count())
                 .isEqualTo(1);
         verify(productMapper).findRecommendationCandidateSnapshots(any());
+        verify(redisCacheService, never()).setValue(anyString(), any(), any());
     }
 
     @Test

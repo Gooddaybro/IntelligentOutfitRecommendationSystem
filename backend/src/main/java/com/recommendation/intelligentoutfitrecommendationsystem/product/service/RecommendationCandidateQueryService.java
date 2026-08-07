@@ -115,16 +115,19 @@ public class RecommendationCandidateQueryService {
                     useEsRecall,
                     useEsRecall ? "elasticsearch" : "mysql",
                     useEsRecall ? "success" : "disabled",
-                    null);
+                    null,
+                    false);
         } else {
             lookup = useEsRecall
                     ? findEsRecallSnapshotLookup(normalizedQuery)
-                    : findMySqlSnapshots(normalizedQuery, "disabled");
-            redisCacheService.setValue(
-                    cacheKey,
-                    lookup.snapshots(),
-                    cacheTtlProperties.recommendationCandidatesTtl()
-            );
+                    : findMySqlSnapshots(normalizedQuery, "disabled", true);
+            if (lookup.cacheable()) {
+                redisCacheService.setValue(
+                        cacheKey,
+                        lookup.snapshots(),
+                        cacheTtlProperties.recommendationCandidatesTtl()
+                );
+            }
         }
         List<RecommendationCandidate> candidates = hydrateRecommendationCandidates(
                 lookup.snapshots(), normalizedQuery.getBudgetMax(), lookup.preserveSnapshotOrder());
@@ -145,13 +148,13 @@ public class RecommendationCandidateQueryService {
                     new ProductSearchCriteria(query.getRecallText(), query.getCategory(), recallProperties.getLimit()));
         } catch (ProductSearchUnavailableException exception) {
             recordRecall("elasticsearch", "unavailable", Duration.ZERO);
-            return findMySqlSnapshots(query, "fallback");
+            return findMySqlSnapshots(query, "fallback", false);
         } catch (RuntimeException exception) {
             recordRecall("elasticsearch", "error", Duration.ZERO);
             throw exception;
         }
         if (orderedSpuIds.isEmpty()) {
-            return new SnapshotLookup(List.of(), true, "elasticsearch", "empty", 0);
+            return new SnapshotLookup(List.of(), true, "elasticsearch", "empty", 0, true);
         }
         List<RecommendationCandidateSnapshot> snapshots =
                 productMapper.findRecommendationCandidateSnapshotsBySpuIds(query, orderedSpuIds);
@@ -160,16 +163,22 @@ public class RecommendationCandidateQueryService {
                 true,
                 "elasticsearch",
                 "success",
-                orderedSpuIds.size());
+                orderedSpuIds.size(),
+                true);
     }
 
-    private SnapshotLookup findMySqlSnapshots(RecommendationCandidateQuery query, String outcome) {
+    private SnapshotLookup findMySqlSnapshots(
+            RecommendationCandidateQuery query,
+            String outcome,
+            boolean cacheable
+    ) {
         return new SnapshotLookup(
                 productMapper.findRecommendationCandidateSnapshots(query),
                 false,
                 "mysql",
                 outcome,
-                null);
+                null,
+                cacheable);
     }
 
     private List<RecommendationCandidateSnapshot> orderSnapshotsBySpuIds(
@@ -352,7 +361,8 @@ public class RecommendationCandidateQueryService {
             boolean preserveSnapshotOrder,
             String engine,
             String outcome,
-            Integer spuHits
+            Integer spuHits,
+            boolean cacheable
     ) {
     }
 
