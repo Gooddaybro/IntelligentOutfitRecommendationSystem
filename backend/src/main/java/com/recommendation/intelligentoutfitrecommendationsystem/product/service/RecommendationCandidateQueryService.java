@@ -23,6 +23,7 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HexFormat;
@@ -99,6 +100,7 @@ public class RecommendationCandidateQueryService {
      * @return 已补齐实时价格和库存并按确定性规则排序的候选
      */
     public List<RecommendationCandidate> findCandidates(RecommendationCandidateQuery query) {
+        long startedNanos = System.nanoTime();
         RecommendationCandidateQuery normalizedQuery = normalizeRecommendationQuery(query);
         if (normalizedQuery.getBudgetMax() != null && normalizedQuery.getBudgetMax() < 0) {
             throw new BadRequestException("budgetMax must not be negative");
@@ -106,20 +108,28 @@ public class RecommendationCandidateQueryService {
         boolean useEsRecall = shouldUseEsRecall(normalizedQuery);
         String cacheKey = recommendationCandidatesCacheKey(normalizedQuery, useEsRecall);
         var cachedSnapshots = redisCacheService.getList(cacheKey, RecommendationCandidateSnapshot.class);
-        List<RecommendationCandidateSnapshot> snapshots;
+        SnapshotLookup lookup;
         if (cachedSnapshots.isPresent()) {
-            snapshots = cachedSnapshots.get();
+            lookup = new SnapshotLookup(
+                    cachedSnapshots.get(),
+                    useEsRecall,
+                    useEsRecall ? "elasticsearch" : "mysql",
+                    useEsRecall ? "success" : "disabled",
+                    null);
         } else {
-            snapshots = useEsRecall
-                    ? findEsRecallSnapshots(normalizedQuery)
-                    : productMapper.findRecommendationCandidateSnapshots(normalizedQuery);
+            lookup = useEsRecall
+                    ? findEsRecallSnapshotLookup(normalizedQuery)
+                    : findMySqlSnapshots(normalizedQuery, "disabled");
             redisCacheService.setValue(
                     cacheKey,
-                    snapshots,
+                    lookup.snapshots(),
                     cacheTtlProperties.recommendationCandidatesTtl()
             );
         }
-        return hydrateRecommendationCandidates(snapshots, normalizedQuery.getBudgetMax(), useEsRecall);
+        List<RecommendationCandidate> candidates = hydrateRecommendationCandidates(
+                lookup.snapshots(), normalizedQuery.getBudgetMax(), lookup.preserveSnapshotOrder());
+        recordRecallMetrics(lookup, candidates.size(), elapsed(startedNanos));
+        return candidates;
     }
 
     private boolean shouldUseEsRecall(RecommendationCandidateQuery query) {
@@ -128,20 +138,38 @@ public class RecommendationCandidateQueryService {
                 && hasText(query.getRecallText());
     }
 
-    private List<RecommendationCandidateSnapshot> findEsRecallSnapshots(RecommendationCandidateQuery query) {
+    private SnapshotLookup findEsRecallSnapshotLookup(RecommendationCandidateQuery query) {
         List<Long> orderedSpuIds;
         try {
             orderedSpuIds = recommendationSearchGateway.search(
                     new ProductSearchCriteria(query.getRecallText(), query.getCategory(), recallProperties.getLimit()));
         } catch (ProductSearchUnavailableException exception) {
-            return productMapper.findRecommendationCandidateSnapshots(query);
+            recordRecall("elasticsearch", "unavailable", Duration.ZERO);
+            return findMySqlSnapshots(query, "fallback");
+        } catch (RuntimeException exception) {
+            recordRecall("elasticsearch", "error", Duration.ZERO);
+            throw exception;
         }
         if (orderedSpuIds.isEmpty()) {
-            return List.of();
+            return new SnapshotLookup(List.of(), true, "elasticsearch", "empty", 0);
         }
         List<RecommendationCandidateSnapshot> snapshots =
                 productMapper.findRecommendationCandidateSnapshotsBySpuIds(query, orderedSpuIds);
-        return orderSnapshotsBySpuIds(snapshots, orderedSpuIds);
+        return new SnapshotLookup(
+                orderSnapshotsBySpuIds(snapshots, orderedSpuIds),
+                true,
+                "elasticsearch",
+                "success",
+                orderedSpuIds.size());
+    }
+
+    private SnapshotLookup findMySqlSnapshots(RecommendationCandidateQuery query, String outcome) {
+        return new SnapshotLookup(
+                productMapper.findRecommendationCandidateSnapshots(query),
+                false,
+                "mysql",
+                outcome,
+                null);
     }
 
     private List<RecommendationCandidateSnapshot> orderSnapshotsBySpuIds(
@@ -297,6 +325,35 @@ public class RecommendationCandidateQueryService {
 
     private boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private void recordRecallMetrics(SnapshotLookup lookup, int candidateCount, Duration duration) {
+        recordRecall(lookup.engine(), lookup.outcome(), duration);
+        if (metrics != null && lookup.spuHits() != null) {
+            metrics.recordRecommendationRecallSpuHits(lookup.spuHits());
+        }
+        if (metrics != null) {
+            metrics.recordRecommendationRecallCandidates(candidateCount);
+        }
+    }
+
+    private void recordRecall(String engine, String outcome, Duration duration) {
+        if (metrics != null) {
+            metrics.recordRecommendationRecall(engine, outcome, duration);
+        }
+    }
+
+    private Duration elapsed(long startedNanos) {
+        return Duration.ofNanos(System.nanoTime() - startedNanos);
+    }
+
+    private record SnapshotLookup(
+            List<RecommendationCandidateSnapshot> snapshots,
+            boolean preserveSnapshotOrder,
+            String engine,
+            String outcome,
+            Integer spuHits
+    ) {
     }
 
     private String sha256Hex(String value) {

@@ -76,6 +76,11 @@ class RecommendationCandidateQueryServiceTests {
         List<RecommendationCandidate> candidates = service.findCandidates(query);
 
         assertThat(candidates).extracting(RecommendationCandidate::getSpuId).containsExactly(1002L);
+        assertThat(registry.get("app.recommendation.recall.requests")
+                .tags("engine", "mysql", "outcome", "disabled").counter().count())
+                .isEqualTo(1);
+        assertThat(registry.get("app.recommendation.recall.candidates").summary().count())
+                .isEqualTo(1);
         verify(recallGateway, never()).search(any());
         verify(productMapper).findRecommendationCandidateSnapshots(any());
         verify(productMapper, never()).findRecommendationCandidateSnapshotsBySpuIds(any(), any());
@@ -98,6 +103,11 @@ class RecommendationCandidateQueryServiceTests {
 
         assertThat(candidates).extracting(RecommendationCandidate::getSpuId)
                 .containsExactly(1002L, 1001L);
+        assertThat(registry.get("app.recommendation.recall.requests")
+                .tags("engine", "elasticsearch", "outcome", "success").counter().count())
+                .isEqualTo(1);
+        assertThat(registry.get("app.recommendation.recall.spu.hits").summary().totalAmount())
+                .isEqualTo(2);
         verify(productMapper, never()).findRecommendationCandidateSnapshots(any());
     }
 
@@ -117,6 +127,12 @@ class RecommendationCandidateQueryServiceTests {
         List<RecommendationCandidate> candidates = service.findCandidates(query);
 
         assertThat(candidates).extracting(RecommendationCandidate::getSkuId).containsExactly(2101L);
+        assertThat(registry.get("app.recommendation.recall.requests")
+                .tags("engine", "elasticsearch", "outcome", "unavailable").counter().count())
+                .isEqualTo(1);
+        assertThat(registry.get("app.recommendation.recall.requests")
+                .tags("engine", "mysql", "outcome", "fallback").counter().count())
+                .isEqualTo(1);
         verify(productMapper).findRecommendationCandidateSnapshots(any());
     }
 
@@ -131,6 +147,9 @@ class RecommendationCandidateQueryServiceTests {
 
         assertThat(service.findCandidates(query)).isEmpty();
 
+        assertThat(registry.get("app.recommendation.recall.requests")
+                .tags("engine", "elasticsearch", "outcome", "empty").counter().count())
+                .isEqualTo(1);
         verify(productMapper, never()).findRecommendationCandidateSnapshots(any());
         verify(productMapper, never()).findRecommendationCandidateSnapshotsBySpuIds(any(), any());
         verify(productMapper, never()).findRecommendationCandidateLiveFacts(any());
