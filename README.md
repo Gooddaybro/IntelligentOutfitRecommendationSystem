@@ -31,6 +31,11 @@ If the Python repository is not beside this one, set `PYTHON_AI_CONTEXT` to its
 path before running the script. The demo enables recommendation ES recall with
 `APP_RECOMMENDATION_ES_RECALL_ENABLED=true`.
 
+If Docker Hub access is unstable, override the base image variables in `.env`:
+`JDK_BASE_IMAGE`, `JRE_BASE_IMAGE`, `NODE_BASE_IMAGE`, `NGINX_BASE_IMAGE`, and
+`PYTHON_BASE_IMAGE`. `MAVEN_REPO_URL` only affects dependency downloads inside
+the backend Docker build.
+
 Stop the demo without deleting volumes:
 
 ```bash

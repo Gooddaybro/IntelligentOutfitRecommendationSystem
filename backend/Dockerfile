@@ -1,13 +1,22 @@
-FROM eclipse-temurin:21-jdk-jammy AS build
+ARG JDK_BASE_IMAGE=eclipse-temurin:21-jdk-jammy
+ARG JRE_BASE_IMAGE=eclipse-temurin:21-jre-jammy
+
+FROM ${JDK_BASE_IMAGE} AS build
+
+ARG MAVEN_REPO_URL=https://repo.maven.apache.org/maven2
 
 WORKDIR /workspace
 COPY .mvn .mvn
 COPY mvnw pom.xml ./
+RUN if [ "$MAVEN_REPO_URL" != "https://repo.maven.apache.org/maven2" ]; then \
+        mkdir -p /root/.m2 \
+        && sed "s|__MAVEN_REPO_URL__|$MAVEN_REPO_URL|g" .mvn/docker-settings.xml > /root/.m2/settings.xml; \
+    fi
 RUN sh ./mvnw -q -DskipTests dependency:go-offline
 COPY src src
 RUN sh ./mvnw -q -DskipTests package
 
-FROM eclipse-temurin:21-jre-jammy
+FROM ${JRE_BASE_IMAGE}
 
 WORKDIR /app
 RUN apt-get update \
