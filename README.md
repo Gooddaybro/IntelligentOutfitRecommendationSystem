@@ -17,23 +17,41 @@ Intelligent Outfit Recommendation System/
 
 ## One-Command Demo
 
-Clone `AI-Clothing-Shopping-Assistant-System` beside this repository, then run:
+Prerequisites:
+
+- Docker Desktop or Docker Engine with Docker Compose v2.
+- Clone `AI-Clothing-Shopping-Assistant-System` beside this repository, or set
+  `PYTHON_AI_CONTEXT` to its absolute path before running the script.
+
+Default startup, using official image registries:
 
 ```bash
 cp .env.demo.example .env
 sh scripts/start-demo.sh
 ```
 
-For China mainland networks, use the DaoCloud mirror example instead:
+China mainland startup, using public DaoCloud mirror variables:
 
 ```bash
 cp .env.daocloud.example .env
 sh scripts/start-demo.sh
 ```
 
+国内网络优先用 `.env.daocloud.example`。它只把 Docker 镜像、Maven 仓库和
+pip 源切到更容易访问的公开镜像源，不改变端口、demo 密码或业务开关。如果公开
+镜像源临时不可用，直接在 `.env` 里替换对应的 `*_IMAGE`、`MAVEN_REPO_URL`
+或 `PIP_INDEX_URL` 即可。
+
 This starts MySQL, Redis, RabbitMQ, LangGraph PostgreSQL, Elasticsearch, the
 Java backend, the Python AI service, the React frontend, and a one-shot product
 search index rebuild.
+
+After startup, check these local endpoints:
+
+- Frontend: <http://localhost:3000>
+- Java backend health: <http://localhost:8080/actuator/health>
+- Python AI health: <http://localhost:8000/health>
+- Elasticsearch health: <http://localhost:9200/_cluster/health>
 
 Kibana is optional because it is only used for Elasticsearch inspection. Start
 it when needed:
@@ -65,6 +83,12 @@ Stop the demo without deleting volumes:
 
 ```bash
 sh scripts/stop-demo.sh
+```
+
+Stop the demo and delete demo volumes:
+
+```bash
+sh scripts/stop-demo.sh -v
 ```
 
 ## Backend
