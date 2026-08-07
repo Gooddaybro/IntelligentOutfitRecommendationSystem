@@ -8,6 +8,7 @@ Intelligent Outfit Recommendation System/
 ├── frontend/         # React + TypeScript + Vite frontend
 ├── scripts/          # Local demo entrypoints
 ├── .env.demo.example # Non-secret Docker demo defaults
+├── .env.daocloud.example # Docker demo defaults with DaoCloud image mirrors
 ├── docs/             # Development documents and contracts
 ├── docker-compose.yml
 ├── docker-compose.demo.yml
@@ -20,6 +21,13 @@ Clone `AI-Clothing-Shopping-Assistant-System` beside this repository, then run:
 
 ```bash
 cp .env.demo.example .env
+sh scripts/start-demo.sh
+```
+
+For China mainland networks, use the DaoCloud mirror example instead:
+
+```bash
+cp .env.daocloud.example .env
 sh scripts/start-demo.sh
 ```
 
@@ -45,6 +53,13 @@ Runtime service images use `MYSQL_IMAGE`, `REDIS_IMAGE`, `RABBITMQ_IMAGE`,
 `NODE_BASE_IMAGE`, `NGINX_BASE_IMAGE`, and `PYTHON_BASE_IMAGE`.
 `MAVEN_REPO_URL`, `PIP_INDEX_URL`, and `PIP_TRUSTED_HOST` only affect dependency
 downloads inside the backend and Python Docker builds.
+
+The DaoCloud example only changes image and dependency download sources; service
+ports, demo secrets, and application feature flags stay the same as
+`.env.demo.example`. It uses DaoCloud's Docker Hub mirror for Docker Hub images
+and DaoCloud's Elastic mirror for Elasticsearch/Kibana. Public mirrors can be
+rate-limited or temporarily unavailable, so replace the image variables with
+your own reachable registry if pulls still fail.
 
 Stop the demo without deleting volumes:
 
