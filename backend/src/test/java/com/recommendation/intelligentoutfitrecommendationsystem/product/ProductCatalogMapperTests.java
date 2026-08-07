@@ -208,4 +208,22 @@ class ProductCatalogMapperTests {
             assertThat(fact.getAvailableStock()).isZero();
         });
     }
+
+    @Test
+    void findRecommendationCandidateSnapshotsBySpuIdsKeepsExistingHardFilters() {
+        var query = new RecommendationCandidateQuery("外套", "commute", "autumn", null, null, 400);
+
+        var snapshots = mapper.findRecommendationCandidateSnapshotsBySpuIds(query, List.of(1001L, 1002L));
+
+        assertThat(snapshots).isNotEmpty();
+        assertThat(snapshots).extracting("spuId").containsOnly(1002L);
+        assertThat(snapshots).extracting("spuCode").containsOnly("JACKET_COMMUTE_001");
+    }
+
+    @Test
+    void findRecommendationCandidateSnapshotsBySpuIdsReturnsEmptyForEmptyIds() {
+        var query = new RecommendationCandidateQuery("外套", null, null, null, null, 400);
+
+        assertThat(mapper.findRecommendationCandidateSnapshotsBySpuIds(query, List.of())).isEmpty();
+    }
 }

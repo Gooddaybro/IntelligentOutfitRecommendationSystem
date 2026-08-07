@@ -162,6 +162,25 @@ class AssistantContextServiceTests {
     }
 
     @Test
+    void candidateQueryCarriesUserMessageAsRecallText() {
+        UserProfileService profiles = mock(UserProfileService.class);
+        RecommendationCandidateQueryService candidates = mock(RecommendationCandidateQueryService.class);
+        ConversationApplicationService conversations = mock(ConversationApplicationService.class);
+        AssistantContextService service = new AssistantContextService(profiles, candidates, conversations);
+        when(conversations.getMessages(anyLong(), anyString())).thenReturn(List.of());
+        when(candidates.findCandidates(any())).thenReturn(List.of());
+
+        service.buildContext(10L, "thread-recall-text",
+                new AssistantChatRequest("thread-recall-text", " 通勤半裙 ",
+                        null, null, null, null, null, null, null));
+
+        ArgumentCaptor<RecommendationCandidateQuery> query =
+                ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
+        verify(candidates).findCandidates(query.capture());
+        assertThat(query.getValue().getRecallText()).isEqualTo("通勤半裙");
+    }
+
+    @Test
     void blankExplicitFiltersAreNotAddedToCandidateQuery() {
         UserProfileService profiles = mock(UserProfileService.class);
         RecommendationCandidateQueryService candidates = mock(RecommendationCandidateQueryService.class);
