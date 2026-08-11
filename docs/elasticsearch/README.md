@@ -26,6 +26,22 @@ docker compose ps elasticsearch kibana
 - Elasticsearch：`http://localhost:9200`
 - Kibana：`http://localhost:5601`
 
+如果使用 Java 项目根目录的一键演示脚本：
+
+```bash
+cp .env.demo.example .env
+sh scripts/start-demo.sh
+```
+
+脚本会启动全栈容器，并在 Java 后端 readiness 通过后调用
+`POST /internal/search/products/rebuild` 初始化 `product_current`。
+
+如果失败发生在 `load metadata for docker.io/library/...` 或
+`TLS handshake timeout`，说明 Docker 正在拉基础镜像元数据但当前网络到
+Docker Hub 不稳定。先配置 Docker registry mirror 或换网络，再重新执行同一个脚本。
+也可以在 `.env` 中覆盖 `JDK_BASE_IMAGE`、`JRE_BASE_IMAGE`、`NODE_BASE_IMAGE`、
+`NGINX_BASE_IMAGE` 和 `PYTHON_BASE_IMAGE` 指向可访问的镜像源。
+
 ## 健康检查
 
 ```powershell
@@ -166,6 +182,15 @@ $env:APP_ELASTICSEARCH_RETAINED_HISTORY_COUNT = '2'
 设置为 `0` 表示成功后只保留当前索引。负数会使应用启动失败，防止产生含义不明确的删除策略。
 
 商城的 `/api/products` 与内部 `/internal/products/search` 地址保持不变。开启 ES 时先使用 ES 找到有序 SPU ID，再从 MySQL 补齐当前价格和上下架状态；连接失败、服务端错误或别名尚不存在时自动回退到 MySQL LIKE。功能开关默认关闭，因此没有 ES 的环境不受影响。
+
+聊天推荐候选召回可以单独打开：
+
+```powershell
+$env:APP_RECOMMENDATION_ES_RECALL_ENABLED = 'true'
+```
+
+推荐召回仍只使用 ES 返回 SPU ID，SKU、价格、库存、性别和可售状态继续由 MySQL 校验。召回质量评测见
+[recommendation-recall-evaluation.md](recommendation-recall-evaluation.md)。
 
 ### 手工恢复实验索引
 

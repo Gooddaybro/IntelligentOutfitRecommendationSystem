@@ -26,6 +26,10 @@ public class RecommendationCandidateQuery {
      * Target gender for hard candidate filtering: male or female.
      */
     private String gender;
+    /**
+     * Natural-language text used only for optional Elasticsearch recall.
+     */
+    private String recallText;
 
     public RecommendationCandidateQuery(
             String category,
@@ -35,6 +39,18 @@ public class RecommendationCandidateQuery {
             String fit,
             Integer budgetMax
     ) {
-        this(category, style, season, material, fit, budgetMax, null);
+        this(category, style, season, material, fit, budgetMax, null, null);
+    }
+
+    public RecommendationCandidateQuery(
+            String category,
+            String style,
+            String season,
+            String material,
+            String fit,
+            Integer budgetMax,
+            String gender
+    ) {
+        this(category, style, season, material, fit, budgetMax, gender, null);
     }
 }

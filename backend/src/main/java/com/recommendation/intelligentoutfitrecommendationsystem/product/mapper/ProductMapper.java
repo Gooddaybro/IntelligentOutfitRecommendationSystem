@@ -53,6 +53,11 @@ public interface ProductMapper {
             @Param("query") RecommendationCandidateQuery query
     );
 
+    List<RecommendationCandidateSnapshot> findRecommendationCandidateSnapshotsBySpuIds(
+            @Param("query") RecommendationCandidateQuery query,
+            @Param("spuIds") List<Long> spuIds
+    );
+
     List<RecommendationCandidateLiveFact> findRecommendationCandidateLiveFacts(
             @Param("skuIds") List<Long> skuIds
     );

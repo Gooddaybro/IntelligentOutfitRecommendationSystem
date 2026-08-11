@@ -364,6 +364,112 @@
         ORDER BY p.id ASC, sku.id ASC
     </select>
 
+    <!--
+        ES 推荐召回只给有序 SPU ID；这里继续使用 MySQL 展开 SKU 级候选并应用硬过滤。
+        空 SPU 列表返回空结果，避免动态 IN 子句生成非法 SQL。
+    -->
+    <select id="findRecommendationCandidateSnapshotsBySpuIds" resultMap="RecommendationCandidateSnapshotMap">
+        <bind name="categoryValue" value="query.category == null ? null : query.category.trim()" />
+        <bind name="styleValue" value="query.style == null ? null : query.style.trim()" />
+        <bind name="seasonValue" value="query.season == null ? null : query.season.trim()" />
+        <bind name="materialValue" value="query.material == null ? null : query.material.trim()" />
+        <bind name="fitValue" value="query.fit == null ? null : query.fit.trim()" />
+        <bind name="genderValue" value="query.gender == null ? null : query.gender.trim().toLowerCase()" />
+        SELECT
+            p.id AS spu_id,
+            sku.id AS sku_id,
+            sku.sku_code,
+            p.spu_code,
+            p.name,
+            c.name AS category_name,
+            p.main_image_url,
+            f.name AS fit_type,
+            co.name AS color,
+            so.code AS size,
+            (
+                SELECT GROUP_CONCAT(m.name ORDER BY m.id SEPARATOR ',')
+                FROM product_material pm
+                JOIN material m ON m.id = pm.material_id
+                WHERE pm.spu_id = p.id
+            ) AS materials,
+            (
+                SELECT GROUP_CONCAT(se.code ORDER BY se.id SEPARATOR ',')
+                FROM product_season ps
+                JOIN season se ON se.id = ps.season_id
+                WHERE ps.spu_id = p.id
+            ) AS seasons,
+            (
+                SELECT GROUP_CONCAT(st.code ORDER BY st.id SEPARATOR ',')
+                FROM product_style_tag pst
+                JOIN style_tag st ON st.id = pst.style_tag_id
+                WHERE pst.spu_id = p.id
+            ) AS style_tags,
+            (
+                SELECT GROUP_CONCAT(CONCAT(pa.attr_name, ':', pa.attr_value) ORDER BY pa.id SEPARATOR ',')
+                FROM product_attribute pa
+                WHERE pa.spu_id = p.id
+            ) AS attribute_tags
+        FROM product_spu p
+        JOIN category c ON c.id = p.category_id
+        LEFT JOIN fit_type f ON f.id = p.fit_type_id
+        JOIN product_sku sku ON sku.spu_id = p.id
+        JOIN color co ON co.id = sku.color_id
+        JOIN size_option so ON so.id = sku.size_id
+        WHERE p.status = 'on_sale'
+          AND sku.status = 'on_sale'
+        <choose>
+            <when test="spuIds != null and spuIds.size() > 0">
+                AND p.id IN
+                <foreach collection="spuIds" item="spuId" open="(" separator="," close=")">
+                    #{spuId}
+                </foreach>
+            </when>
+            <otherwise>
+                AND 1 = 0
+            </otherwise>
+        </choose>
+        <if test="categoryValue != null and categoryValue != ''">
+            AND c.name = #{categoryValue}
+        </if>
+        <if test="fitValue != null and fitValue != ''">
+            AND f.code = #{fitValue}
+        </if>
+        <if test="styleValue != null and styleValue != ''">
+            AND EXISTS (
+                SELECT 1
+                FROM product_style_tag pst
+                JOIN style_tag st ON st.id = pst.style_tag_id
+                WHERE pst.spu_id = p.id AND st.code = #{styleValue}
+            )
+        </if>
+        <if test="seasonValue != null and seasonValue != ''">
+            AND EXISTS (
+                SELECT 1
+                FROM product_season ps
+                JOIN season se ON se.id = ps.season_id
+                WHERE ps.spu_id = p.id AND se.code = #{seasonValue}
+            )
+        </if>
+        <if test="materialValue != null and materialValue != ''">
+            AND EXISTS (
+                SELECT 1
+                FROM product_material pm
+                JOIN material m ON m.id = pm.material_id
+                WHERE pm.spu_id = p.id AND m.name = #{materialValue}
+            )
+        </if>
+        <if test="genderValue != null and genderValue != ''">
+            AND EXISTS (
+                SELECT 1
+                FROM product_attribute gender_attr
+                WHERE gender_attr.spu_id = p.id
+                  AND gender_attr.attr_name = '适用性别'
+                  AND gender_attr.attr_value IN (#{genderValue}, 'unisex')
+            )
+        </if>
+        ORDER BY p.id ASC, sku.id ASC
+    </select>
+
     <!-- 每次推荐前批量读取 MySQL 价格和库存；未返回的 SKU 视为已下架。 -->
     <select id="findRecommendationCandidateLiveFacts" resultMap="RecommendationCandidateLiveFactMap">
         SELECT

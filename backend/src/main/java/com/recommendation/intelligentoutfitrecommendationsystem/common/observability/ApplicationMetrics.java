@@ -50,6 +50,9 @@ public class ApplicationMetrics {
             "success", "duplicate", "retry", "dlq", "error");
     private static final Set<String> PRODUCT_SEARCH_SYNC_RETRY_STAGES = Set.of("1", "2", "3");
     private static final Set<String> PRODUCT_SEARCH_REBUILD_OUTCOMES = Set.of("success", "error");
+    private static final Set<String> RECOMMENDATION_RECALL_ENGINES = Set.of("mysql", "elasticsearch");
+    private static final Set<String> RECOMMENDATION_RECALL_OUTCOMES = Set.of(
+            "success", "fallback", "empty", "disabled", "unavailable", "error");
 
     private final MeterRegistry registry;
     private final DistributionSummary candidateSummary;
@@ -228,6 +231,29 @@ public class ApplicationMetrics {
         if (safeDrift > 0L) {
             registry.summary("app.product.search.rebuild.document.drift").record(safeDrift);
         }
+    }
+
+    public void recordRecommendationRecall(String engine, String outcome, Duration duration) {
+        String safeEngine = bounded(normalize(engine), RECOMMENDATION_RECALL_ENGINES);
+        String safeOutcome = bounded(normalize(outcome), RECOMMENDATION_RECALL_OUTCOMES);
+        registry.counter(
+                "app.recommendation.recall.requests",
+                "engine", safeEngine,
+                "outcome", safeOutcome
+        ).increment();
+        registry.timer(
+                "app.recommendation.recall.duration",
+                "engine", safeEngine,
+                "outcome", safeOutcome
+        ).record(nonNegative(duration));
+    }
+
+    public void recordRecommendationRecallSpuHits(int count) {
+        registry.summary("app.recommendation.recall.spu.hits").record(Math.max(0, count));
+    }
+
+    public void recordRecommendationRecallCandidates(int count) {
+        registry.summary("app.recommendation.recall.candidates").record(Math.max(0, count));
     }
 
     private String bounded(String value, Set<String> allowed) {

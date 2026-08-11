@@ -120,6 +120,13 @@ export type RecommendedItem = {
   outfitRole?: OutfitRole;
 };
 
+/** Java 已确认属于本轮可售候选的对话提及商品；不代表强推荐或推荐归因。 */
+export type MentionedItem = {
+  spuId: number;
+  skuId: number;
+  outfitRole?: OutfitRole;
+};
+
 export type SubjectMeasurements = {
   heightCm?: number;
   weightKg?: number;
@@ -252,6 +259,7 @@ export type AssistantChatResponse = {
   answer: string;
   recommendedSpuIds: number[];
   recommendedItems?: RecommendedItem[];
+  mentionedItems?: MentionedItem[];
   candidatesCount: number;
   resolvedIntent?: DemandIntent;
   recommendationId?: string;

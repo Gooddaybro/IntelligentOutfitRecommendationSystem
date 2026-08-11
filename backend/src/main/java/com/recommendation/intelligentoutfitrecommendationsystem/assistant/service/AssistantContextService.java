@@ -178,7 +178,8 @@ public class AssistantContextService {
                 explicitFilter(request.material()),
                 explicitCodeFilter(request.fit()),
                 effectiveDemand.hardInteger("budgetMax").orElse(null),
-                lowerCanonical(effectiveDemand.hardValue("targetGender").orElse(null))
+                lowerCanonical(effectiveDemand.hardValue("targetGender").orElse(null)),
+                explicitFilter(request.message())
         );
         return new AssistantContext(
                 profile,

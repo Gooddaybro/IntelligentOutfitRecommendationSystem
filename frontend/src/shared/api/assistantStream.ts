@@ -1,5 +1,5 @@
 import { getAccessToken } from "./client";
-import type { AssistantChatRequest, DemandIntent, RecommendationStatus, RecommendedItem } from "./types";
+import type { AssistantChatRequest, DemandIntent, MentionedItem, RecommendationStatus, RecommendedItem } from "./types";
 
 export type AssistantStreamEvent =
   | { type: "thread"; threadId: string }
@@ -11,6 +11,7 @@ export type AssistantStreamEvent =
       answer?: string;
       spuIds: number[];
       recommendedItems?: RecommendedItem[];
+      mentionedItems?: MentionedItem[];
       resolvedIntent?: DemandIntent;
       recommendationId?: string;
       recommendationStatus?: RecommendationStatus;
@@ -88,6 +89,42 @@ function normalizeRecommendedItems(payload: unknown): RecommendedItem[] {
   return normalized;
 }
 
+/** 兼容同步与 SSE 命名差异，但不从文本或缺失的 SKU 推断商品身份。 */
+function normalizeMentionedItems(payload: unknown): MentionedItem[] | undefined {
+  const record = payload as Record<string, unknown>;
+  const hasCamelCaseField = Object.prototype.hasOwnProperty.call(record, "mentionedItems");
+  const hasSnakeCaseField = Object.prototype.hasOwnProperty.call(record, "mentioned_items");
+  if (!hasCamelCaseField && !hasSnakeCaseField) {
+    return undefined;
+  }
+  const source = hasCamelCaseField ? record.mentionedItems : record.mentioned_items;
+
+  if (!Array.isArray(source)) {
+    return [];
+  }
+
+  return source.flatMap((item) => {
+    const raw = item as {
+      spuId?: number | string;
+      spu_id?: number | string;
+      skuId?: number | string;
+      sku_id?: number | string;
+      outfitRole?: MentionedItem["outfitRole"];
+      outfit_role?: MentionedItem["outfitRole"];
+    };
+    const spuId = raw.spuId ?? raw.spu_id;
+    const skuId = raw.skuId ?? raw.sku_id;
+    if (spuId === undefined || spuId === null || skuId === undefined || skuId === null) {
+      return [];
+    }
+    return [{
+      spuId: Number(spuId),
+      skuId: Number(skuId),
+      outfitRole: raw.outfitRole ?? raw.outfit_role
+    }];
+  });
+}
+
 export function parseSseEventBlock(block: string): AssistantStreamEvent | null {
   const lines = block.split("\n");
   const eventName = lines
@@ -151,6 +188,7 @@ export function parseSseEventBlock(block: string): AssistantStreamEvent | null {
       recommendation_status?: unknown;
     };
     const recommendedItems = normalizeRecommendedItems(donePayload);
+    const mentionedItems = normalizeMentionedItems(donePayload);
     const ids = donePayload.recommendedSpuIds ?? donePayload.recommended_spu_ids ?? recommendedItems.map((item) => item.spuId);
     return {
       type: "done",
@@ -158,6 +196,7 @@ export function parseSseEventBlock(block: string): AssistantStreamEvent | null {
       answer: donePayload.answer,
       spuIds: Array.isArray(ids) ? ids.map(Number) : [],
       recommendedItems,
+      mentionedItems,
       resolvedIntent: donePayload.resolvedIntent ?? donePayload.resolved_intent,
       recommendationId: donePayload.recommendationId ?? donePayload.recommendation_id,
       recommendationStatus: normalizeLegacyRecommendationStatus(
