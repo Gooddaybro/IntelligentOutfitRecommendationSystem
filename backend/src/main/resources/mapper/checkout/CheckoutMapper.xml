@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recommendation.intelligentoutfitrecommendationsystem.checkout.mapper.CheckoutMapper">
+
+    <!--
+        一次查询读取当前用户选择的购物车数量、商品状态、当前售价与可售库存。
+        前端只提交 skuIds；数量、价格、金额和商品快照都不能从请求体进入本查询。
+    -->
+    <select id="findCartFacts"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.checkout.model.CheckoutFactRow">
+        SELECT
+            ci.sku_id,
+            sku.spu_id,
+            sku.sku_code,
+            spu.spu_code,
+            spu.name AS product_name,
+            c.name AS category_name,
+            co.name AS color,
+            so.code AS size,
+            sku.sale_price,
+            ci.quantity,
+            spu.main_image_url,
+            sku.status AS sku_status,
+            spu.status AS spu_status,
+            COALESCE(inv.available_stock, 0) AS available_stock
+        FROM cart_item ci
+        JOIN product_sku sku ON sku.id = ci.sku_id
+        JOIN product_spu spu ON spu.id = sku.spu_id
+        JOIN category c ON c.id = spu.category_id
+        JOIN color co ON co.id = sku.color_id
+        JOIN size_option so ON so.id = sku.size_id
+        LEFT JOIN inventory inv ON inv.sku_id = sku.id
+        WHERE ci.user_id = #{userId}
+          AND ci.sku_id IN
+        <foreach collection="skuIds" item="skuId" open="(" separator="," close=")">
+            #{skuId}
+        </foreach>
+        ORDER BY ci.id ASC
+    </select>
+
+</mapper>

@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recommendation.intelligentoutfitrecommendationsystem.address.mapper.AddressMapper">
+
+    <!--
+        地址写事务锁定稳定存在的父用户行，而不是只锁当前地址集合。这样即使用户还没有地址，
+        两个并发首地址创建也会串行执行，避免同时判断自己是第一条并产生两个默认地址。
+    -->
+    <select id="lockUserById" resultType="long">
+        SELECT id
+        FROM user_account
+        WHERE id = #{userId}
+        FOR UPDATE
+    </select>
+
+    <select id="countByUserId" resultType="int">
+        SELECT COUNT(1)
+        FROM user_address
+        WHERE user_id = #{userId}
+    </select>
+
+    <insert id="insert"
+            parameterType="com.recommendation.intelligentoutfitrecommendationsystem.address.model.UserAddress"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_address (
+            user_id,
+            recipient_name,
+            phone,
+            province,
+            city,
+            district,
+            detail,
+            is_default
+        ) VALUES (
+            #{userId},
+            #{recipientName},
+            #{phone},
+            #{province},
+            #{city},
+            #{district},
+            #{detail},
+            #{isDefault}
+        )
+    </insert>
+
+    <select id="findAllByUserId"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.address.model.UserAddress">
+        SELECT
+            id,
+            user_id,
+            recipient_name,
+            phone,
+            province,
+            city,
+            district,
+            detail,
+            is_default,
+            created_at,
+            updated_at
+        FROM user_address
+        WHERE user_id = #{userId}
+        ORDER BY is_default DESC, updated_at DESC, id DESC
+    </select>
+
+    <!-- 所有权在 SQL 中完成，调用方无法通过一个已知 addressId 绕过当前 userId。 -->
+    <select id="findByIdAndUserId"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.address.model.UserAddress">
+        SELECT
+            id,
+            user_id,
+            recipient_name,
+            phone,
+            province,
+            city,
+            district,
+            detail,
+            is_default,
+            created_at,
+            updated_at
+        FROM user_address
+        WHERE id = #{addressId}
+          AND user_id = #{userId}
+    </select>
+
+    <update id="updateByIdAndUserId"
+            parameterType="com.recommendation.intelligentoutfitrecommendationsystem.address.model.UserAddress">
+        UPDATE user_address
+        SET recipient_name = #{recipientName},
+            phone = #{phone},
+            province = #{province},
+            city = #{city},
+            district = #{district},
+            detail = #{detail},
+            updated_at = CURRENT_TIMESTAMP(6)
+        WHERE id = #{id}
+          AND user_id = #{userId}
+    </update>
+
+    <delete id="deleteByIdAndUserId">
+        DELETE FROM user_address
+        WHERE id = #{addressId}
+          AND user_id = #{userId}
+    </delete>
+
+    <update id="clearDefaultByUserId">
+        UPDATE user_address
+        SET is_default = FALSE
+        WHERE user_id = #{userId}
+          AND is_default = TRUE
+    </update>
+
+    <update id="setDefaultByIdAndUserId">
+        UPDATE user_address
+        SET is_default = TRUE,
+            updated_at = CURRENT_TIMESTAMP(6)
+        WHERE id = #{addressId}
+          AND user_id = #{userId}
+    </update>
+
+    <!-- 删除默认地址后，按列表的稳定顺序选择唯一候补项。 -->
+    <select id="findReplacementByUserId"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.address.model.UserAddress">
+        SELECT
+            id,
+            user_id,
+            recipient_name,
+            phone,
+            province,
+            city,
+            district,
+            detail,
+            is_default,
+            created_at,
+            updated_at
+        FROM user_address
+        WHERE user_id = #{userId}
+        ORDER BY updated_at DESC, id DESC
+        LIMIT 1
+    </select>
+
+</mapper>

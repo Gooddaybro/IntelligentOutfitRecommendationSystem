@@ -40,6 +40,7 @@ class ModuleArchitectureTests {
                             "..auth..",
                             "..behavior..",
                             "..cart..",
+                            "..checkout..",
                             "..conversation..",
                             "..favorite..",
                             "..inventory..",
