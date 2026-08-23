@@ -266,7 +266,8 @@ class PaymentControllerTests {
                         .content("""
                                 {
                                   "source": "CART",
-                                  "skuIds": [%d]
+                                  "skuIds": [%d],
+                                  "addressId": 1
                                 }
                                 """.formatted(skuId)))
                 .andExpect(status().isOk())

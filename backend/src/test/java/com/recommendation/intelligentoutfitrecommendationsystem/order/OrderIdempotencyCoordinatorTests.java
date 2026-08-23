@@ -240,6 +240,7 @@ class OrderIdempotencyCoordinatorTests {
                 null,
                 null,
                 null,
+                null,
                 null
         );
     }

@@ -1,9 +1,12 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.order;
 
+import com.recommendation.intelligentoutfitrecommendationsystem.address.mapper.AddressMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.address.model.UserAddress;
 import com.recommendation.intelligentoutfitrecommendationsystem.auth.mapper.UserAuthMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.auth.model.UserAccount;
 import com.recommendation.intelligentoutfitrecommendationsystem.cart.mapper.CartMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.mapper.OrderMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderAddressSnapshot;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderCheckoutItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.SalesOrder;
@@ -31,6 +34,9 @@ class OrderMapperTests {
 
     @Autowired
     private CartMapper cartMapper;
+
+    @Autowired
+    private AddressMapper addressMapper;
 
     @Autowired
     private OrderMapper orderMapper;
@@ -77,6 +83,35 @@ class OrderMapperTests {
         assertThat(orderMapper.findOrdersByUserId(ownerId)).extracting(SalesOrder::getOrderNo)
                 .contains(order.getOrderNo());
         assertThat(orderMapper.findOrderByUserIdAndOrderNo(otherUserId, order.getOrderNo())).isNull();
+    }
+
+    @Test
+    void addressSnapshotKeepsCheckoutTextAfterSourceAddressChangesAndDeletion() {
+        Long userId = createUser();
+        UserAddress address = address(userId, "林木", "13800000000", "文一路 88 号");
+        addressMapper.insert(address);
+        SalesOrder order = order(userId, "ORDADDRESS" + userId);
+        orderMapper.insertOrder(order);
+        OrderAddressSnapshot snapshot = new OrderAddressSnapshot(
+                address.getId(),
+                address.getRecipientName(),
+                address.getPhone(),
+                address.getProvince(),
+                address.getCity(),
+                address.getDistrict(),
+                address.getDetail()
+        );
+
+        orderMapper.insertAddressSnapshot(order.getId(), snapshot);
+        address.setRecipientName("新收件人");
+        address.setDetail("新地址 99 号");
+        addressMapper.updateByIdAndUserId(address);
+
+        assertThat(orderMapper.findAddressSnapshotByOrderId(order.getId())).isEqualTo(snapshot);
+
+        addressMapper.deleteByIdAndUserId(address.getId(), userId);
+
+        assertThat(orderMapper.findAddressSnapshotByOrderId(order.getId())).isEqualTo(snapshot);
     }
 
     @Test
@@ -165,6 +200,28 @@ class OrderMapperTests {
         item.setLineAmount(new BigDecimal("299.00"));
         item.setMainImageUrl("/images/products/jacket-commute-main.svg");
         return item;
+    }
+
+    private SalesOrder order(Long userId, String orderNo) {
+        SalesOrder order = new SalesOrder();
+        order.setOrderNo(orderNo);
+        order.setUserId(userId);
+        order.setTotalAmount(new BigDecimal("299.00"));
+        order.setStatus("UNPAID");
+        return order;
+    }
+
+    private UserAddress address(Long userId, String recipientName, String phone, String detail) {
+        UserAddress address = new UserAddress();
+        address.setUserId(userId);
+        address.setRecipientName(recipientName);
+        address.setPhone(phone);
+        address.setProvince("浙江省");
+        address.setCity("杭州市");
+        address.setDistrict("西湖区");
+        address.setDetail(detail);
+        address.setIsDefault(true);
+        return address;
     }
 
     private Long createUser() {

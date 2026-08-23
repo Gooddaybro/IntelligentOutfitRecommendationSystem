@@ -2,6 +2,8 @@ package com.recommendation.intelligentoutfitrecommendationsystem.order;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.OrderResponse;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderAddressSnapshot;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -11,6 +13,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.UUID;
 
@@ -59,7 +63,9 @@ class OrderControllerTests {
                         .content("""
                                 {
                                   "source": "CART",
-                                  "skuIds": [2103, 2203]
+                                  "skuIds": [2103, 2203],
+                                  "addressId": 1,
+                                  "totalAmount": 0.01
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -110,7 +116,8 @@ class OrderControllerTests {
                         .content("""
                                 {
                                   "source": "BUY_NOW",
-                                  "skuIds": [2101]
+                                  "skuIds": [2101],
+                                  "addressId": 1
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
@@ -199,7 +206,8 @@ class OrderControllerTests {
         String body = """
                 {
                   "source": "CART",
-                  "skuIds": [2103]
+                  "skuIds": [2103],
+                  "addressId": 1
                 }
                 """;
 
@@ -367,7 +375,8 @@ class OrderControllerTests {
                         .content("""
                                 {
                                   "source": "CART",
-                                  "skuIds": [2005]
+                                  "skuIds": [2005],
+                                  "addressId": 1
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -397,7 +406,8 @@ class OrderControllerTests {
                         .content("""
                                 {
                                   "source": "CART",
-                                  "skuIds": [2005]
+                                  "skuIds": [2005],
+                                  "addressId": 1
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -436,11 +446,66 @@ class OrderControllerTests {
                         .content("""
                                 {
                                   "source": "CART",
-                                  "skuIds": []
+                                  "skuIds": [],
+                                  "addressId": 1
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("validation_failed"));
+    }
+
+    @Test
+    void rejectsCartCheckoutWithoutAddressId() throws Exception {
+        String accessToken = registerAndLogin(nextUsername());
+        addCartItem(accessToken, 2103, 1);
+
+        mockMvc.perform(post("/api/orders")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "source": "CART",
+                                  "skuIds": [2103]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("validation_failed"));
+    }
+
+    @Test
+    void orderResponseExposesTheHistoricalAddressSnapshot() {
+        OrderAddressSnapshot snapshot = new OrderAddressSnapshot(
+                7L,
+                "林木",
+                "13800000000",
+                "浙江省",
+                "杭州市",
+                "西湖区",
+                "文一路 88 号"
+        );
+        OrderResponse response = new OrderResponse(
+                "ORD-ADDRESS",
+                "UNPAID",
+                new BigDecimal("299.00"),
+                List.of(),
+                snapshot,
+                null,
+                null,
+                null,
+                null
+        );
+
+        JsonNode address = objectMapper.valueToTree(response).path("address");
+
+        assertThat(address.path("id").asLong()).isEqualTo(7L);
+        assertThat(address.path("recipientName").asText()).isEqualTo("林木");
+        assertThat(address.path("phone").asText()).isEqualTo("13800000000");
+        assertThat(address.path("province").asText()).isEqualTo("浙江省");
+        assertThat(address.path("city").asText()).isEqualTo("杭州市");
+        assertThat(address.path("district").asText()).isEqualTo("西湖区");
+        assertThat(address.path("detail").asText()).isEqualTo("文一路 88 号");
+        assertThat(address.size()).isEqualTo(7);
     }
 
     private void addCartItem(String accessToken, long skuId, int quantity) throws Exception {

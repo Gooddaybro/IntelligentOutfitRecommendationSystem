@@ -1,5 +1,6 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.order.mapper;
 
+import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderAddressSnapshot;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderCheckoutItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.SalesOrder;
@@ -21,6 +22,25 @@ public interface OrderMapper {
     void insertOrder(SalesOrder order);
 
     void insertItems(@Param("items") List<OrderItem> items);
+
+    /**
+     * 为订单固化下单时的收货地址。
+     *
+     * @param orderId 已创建订单的内部 ID
+     * @param snapshot 与可变地址簿脱钩的完整地址文本
+     */
+    void insertAddressSnapshot(
+            @Param("orderId") Long orderId,
+            @Param("snapshot") OrderAddressSnapshot snapshot
+    );
+
+    /**
+     * 按订单读取历史收货地址，仅供已通过订单归属校验的详情流程使用。
+     *
+     * @param orderId 已校验归属的订单内部 ID
+     * @return 下单时地址快照；未写入时返回 null
+     */
+    OrderAddressSnapshot findAddressSnapshotByOrderId(@Param("orderId") Long orderId);
 
     List<SalesOrder> findOrdersByUserId(@Param("userId") Long userId);
 

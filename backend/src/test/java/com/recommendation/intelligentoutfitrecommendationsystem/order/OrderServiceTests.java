@@ -9,7 +9,9 @@ import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.BuyNow
 import com.recommendation.intelligentoutfitrecommendationsystem.inventory.service.InventoryApplicationService;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.CancelOrderRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.CreateOrderRequest;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.OrderResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.mapper.OrderMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderAddressSnapshot;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderCheckoutItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderOperation;
@@ -30,6 +32,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -87,7 +90,7 @@ class OrderServiceTests {
 
     @Test
     void createOrderFromCartRecalculatesAmountLocksStockAndStoresSnapshots() {
-        var request = new CreateOrderRequest("CART", List.of(2102L, 2202L));
+        var request = new CreateOrderRequest("CART", List.of(2102L, 2202L), 1L);
         when(orderMapper.findCheckoutItemsFromCart(10L, List.of(2102L, 2202L)))
                 .thenReturn(List.of(checkoutItem(2102L, "299.00", 1), checkoutItem(2202L, "199.00", 2)));
         doAnswer(invocation -> {
@@ -142,7 +145,7 @@ class OrderServiceTests {
 
     @Test
     void createOrderRejectsUnsupportedSourceForThisPhase() {
-        var request = new CreateOrderRequest("BUY_NOW", List.of(2102L));
+        var request = new CreateOrderRequest("BUY_NOW", List.of(2102L), 1L);
 
         assertThatThrownBy(() -> service.createOrder(10L, IDEMPOTENCY_KEY, request))
                 .isInstanceOf(BadRequestException.class)
@@ -213,7 +216,7 @@ class OrderServiceTests {
 
     @Test
     void createOrderRejectsSkuNotOwnedByCurrentUsersCart() {
-        var request = new CreateOrderRequest("CART", List.of(2102L, 2202L));
+        var request = new CreateOrderRequest("CART", List.of(2102L, 2202L), 1L);
         when(orderMapper.findCheckoutItemsFromCart(10L, List.of(2102L, 2202L)))
                 .thenReturn(List.of(checkoutItem(2102L, "299.00", 1)));
 
@@ -224,7 +227,7 @@ class OrderServiceTests {
 
     @Test
     void createOrderStopsBeforePersistingWhenStockIsInsufficient() {
-        var request = new CreateOrderRequest("CART", List.of(2102L));
+        var request = new CreateOrderRequest("CART", List.of(2102L), 1L);
         when(orderMapper.findCheckoutItemsFromCart(10L, List.of(2102L)))
                 .thenReturn(List.of(checkoutItem(2102L, "299.00", 1)));
         doThrow(new BadRequestException("insufficient stock for sku: 2102"))
@@ -235,6 +238,52 @@ class OrderServiceTests {
                 .hasMessage("insufficient stock for sku: 2102");
         verify(orderMapper, never()).insertOrder(any(SalesOrder.class));
         verify(cartService, never()).removePurchasedItems(any(), any());
+    }
+
+    @Test
+    void getOrderDetailLoadsStoredAddressSnapshot() {
+        SalesOrder order = salesOrder(88L, 10L, "ORDDETAIL1", "UNPAID");
+        OrderAddressSnapshot snapshot = addressSnapshot();
+        when(orderMapper.findOrderByUserIdAndOrderNo(10L, "ORDDETAIL1")).thenReturn(order);
+        when(orderMapper.findItemsByOrderId(88L)).thenReturn(List.of(orderItem(2102L, 1)));
+        when(orderMapper.findAddressSnapshotByOrderId(88L)).thenReturn(snapshot);
+
+        OrderResponse response = service.getOrderDetail(10L, "ORDDETAIL1");
+
+        assertThat(response.address()).isEqualTo(snapshot);
+        verify(orderMapper).findAddressSnapshotByOrderId(88L);
+    }
+
+    @Test
+    void idempotentReplayLoadsStoredAddressSnapshotByOrderId() {
+        var request = new CreateOrderRequest("CART", List.of(2102L), 7L);
+        SalesOrder order = salesOrder(88L, 10L, "ORDREPLAY1", "UNPAID");
+        OrderAddressSnapshot snapshot = addressSnapshot();
+        when(orderMapper.findOrderByUserIdAndId(10L, 88L)).thenReturn(order);
+        when(orderMapper.findItemsByOrderId(88L)).thenReturn(List.of(orderItem(2102L, 1)));
+        when(orderMapper.findAddressSnapshotByOrderId(88L)).thenReturn(snapshot);
+        doAnswer(invocation -> {
+                    Function<Long, OrderResponse> replayLoader = invocation.getArgument(5);
+                    return new IdempotentOrderResult(replayLoader.apply(88L), true);
+                })
+                .when(idempotencyCoordinator)
+                .execute(any(), any(), any(), any(), any(), any());
+
+        OrderResponse response = service.createOrder(10L, IDEMPOTENCY_KEY, request).order();
+
+        assertThat(response.address()).isEqualTo(snapshot);
+        verify(orderMapper).findAddressSnapshotByOrderId(88L);
+    }
+
+    @Test
+    void listOrdersDoesNotLoadAddressSnapshots() {
+        SalesOrder order = salesOrder(88L, 10L, "ORDLIST1", "UNPAID");
+        when(orderMapper.findOrdersByUserId(10L)).thenReturn(List.of(order));
+
+        List<OrderResponse> responses = service.listOrders(10L);
+
+        assertThat(responses).singleElement().extracting(OrderResponse::address).isNull();
+        verify(orderMapper, never()).findAddressSnapshotByOrderId(any());
     }
 
     @Test
@@ -344,5 +393,17 @@ class OrderServiceTests {
         item.setQuantity(quantity);
         item.setLineAmount(new BigDecimal("299.00").multiply(BigDecimal.valueOf(quantity)));
         return item;
+    }
+
+    private OrderAddressSnapshot addressSnapshot() {
+        return new OrderAddressSnapshot(
+                7L,
+                "林木",
+                "13800000000",
+                "浙江省",
+                "杭州市",
+                "西湖区",
+                "文一路 88 号"
+        );
     }
 }

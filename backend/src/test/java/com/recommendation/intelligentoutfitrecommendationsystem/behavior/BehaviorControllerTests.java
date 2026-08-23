@@ -145,7 +145,8 @@ class BehaviorControllerTests {
                         .content("""
                                 {
                                   "source": "CART",
-                                  "skuIds": [2101]
+                                  "skuIds": [2101],
+                                  "addressId": 1
                                 }
                                 """))
                 .andExpect(status().isOk())

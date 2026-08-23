@@ -56,6 +56,47 @@
         </foreach>
     </insert>
 
+    <!--
+        source_address_id 只保留下单时的审计线索；后续详情展示完全依赖同行文本，
+        不与可变地址簿做实时关联。
+    -->
+    <insert id="insertAddressSnapshot">
+        INSERT INTO order_address_snapshot (
+            order_id,
+            source_address_id,
+            recipient_name,
+            phone,
+            province,
+            city,
+            district,
+            detail
+        ) VALUES (
+            #{orderId},
+            #{snapshot.sourceAddressId},
+            #{snapshot.recipientName},
+            #{snapshot.phone},
+            #{snapshot.province},
+            #{snapshot.city},
+            #{snapshot.district},
+            #{snapshot.detail}
+        )
+    </insert>
+
+    <!-- 快照提供独立查询契约，订单列表不联表，避免列表结果膨胀。 -->
+    <select id="findAddressSnapshotByOrderId"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderAddressSnapshot">
+        SELECT
+            source_address_id,
+            recipient_name,
+            phone,
+            province,
+            city,
+            district,
+            detail
+        FROM order_address_snapshot
+        WHERE order_id = #{orderId}
+    </select>
+
     <select id="findOrdersByUserId"
             resultType="com.recommendation.intelligentoutfitrecommendationsystem.order.model.SalesOrder">
         SELECT

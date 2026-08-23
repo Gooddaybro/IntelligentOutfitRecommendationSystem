@@ -13,6 +13,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.Create
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.OrderItemResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.OrderResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.mapper.OrderMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderAddressSnapshot;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderCheckoutItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderOperation;
@@ -88,7 +89,7 @@ public class OrderService {
      * 从当前用户购物车创建待支付订单。
      *
      * @param userId 当前认证用户 ID，只能来自服务端 JWT 上下文
-     * @param request 前端选择的购物车 SKU 集合，不能携带价格、数量或 userId
+     * @param request 前端选择的购物车 SKU 集合和收货地址 ID，不能携带价格、数量、金额或 userId
      * @return 创建后的订单快照
      */
     public IdempotentOrderResult createOrder(
@@ -209,7 +210,7 @@ public class OrderService {
         if (order == null) {
             throw new ResourceNotFoundException("idempotent order not found");
         }
-        return toResponse(order, orderMapper.findItemsByOrderId(orderId));
+        return toDetailResponse(order);
     }
 
     public List<OrderResponse> listOrders(Long userId) {
@@ -228,7 +229,7 @@ public class OrderService {
         if (order == null) {
             throw new ResourceNotFoundException("order not found: " + orderNo);
         }
-        return toResponse(order, orderMapper.findItemsByOrderId(order.getId()));
+        return toDetailResponse(order);
     }
 
     /**
@@ -398,11 +399,33 @@ public class OrderService {
     }
 
     private OrderResponse toResponse(SalesOrder order, List<OrderItem> items) {
+        return toResponse(order, items, null);
+    }
+
+    /**
+     * 在订单归属已校验后组装商品和收货地址快照。
+     *
+     * 列表流程不调用该方法，避免为每个订单额外读取详情快照。
+     */
+    private OrderResponse toDetailResponse(SalesOrder order) {
+        return toResponse(
+                order,
+                orderMapper.findItemsByOrderId(order.getId()),
+                orderMapper.findAddressSnapshotByOrderId(order.getId())
+        );
+    }
+
+    private OrderResponse toResponse(
+            SalesOrder order,
+            List<OrderItem> items,
+            OrderAddressSnapshot address
+    ) {
         return new OrderResponse(
                 order.getOrderNo(),
                 order.getStatus(),
                 order.getTotalAmount(),
                 items.stream().map(this::toItemResponse).toList(),
+                address,
                 order.getCreatedAt(),
                 order.getPaidAt(),
                 order.getClosedAt(),
