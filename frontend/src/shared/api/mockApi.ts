@@ -192,7 +192,7 @@ export const mockApi = {
     const merchandiseAmount = items.reduce((sum, item) => sum + item.salePrice * item.quantity, 0);
     return { items, merchandiseAmount, shippingAmount: 0, discountAmount: 0, payableAmount: merchandiseAmount, invalidReasons };
   },
-  createOrder: async (skuIds: number[], addressId?: number) => {
+  createOrder: async (skuIds: number[], addressId: number, _idempotencyKey: string) => {
     const items = cartItems.filter((item) => skuIds.includes(item.skuId)).map((item) => ({ ...item, productName: item.name, lineAmount: item.salePrice * item.quantity }));
     const order = { orderNo: `DEMO-${Date.now()}`, status: "PENDING_PAYMENT", totalAmount: items.reduce((sum, item) => sum + item.lineAmount, 0), items, createdAt: new Date().toISOString(), address: addressBook.find((item) => item.id === addressId) } satisfies OrderResponse;
     orders = [order, ...orders];

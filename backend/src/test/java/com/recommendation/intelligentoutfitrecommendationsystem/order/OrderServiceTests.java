@@ -92,7 +92,7 @@ class OrderServiceTests {
 
     @BeforeEach
     void executeClaimedOrderActions() {
-        lenient().when(requestFingerprint.cart(any())).thenReturn("a".repeat(64));
+        lenient().when(requestFingerprint.cart(any(), any())).thenReturn("a".repeat(64));
         lenient().when(requestFingerprint.buyNow(any(), any())).thenReturn("b".repeat(64));
         lenient().when(idempotencyCoordinator.execute(any(), any(), any(), any(), any(), any()))
                 .thenAnswer(invocation -> {
@@ -165,6 +165,7 @@ class OrderServiceTests {
         assertThat(response.totalAmount()).isEqualByComparingTo("697.00");
         assertThat(response.address()).isEqualTo(addressSnapshot());
         verify(applicationMetrics).recordOrderCreation("cart", "created");
+        verify(requestFingerprint).cart(List.of(2102L, 2202L), 7L);
         verify(idempotencyCoordinator).execute(
                 eq(10L),
                 eq(OrderOperation.CART_CHECKOUT),

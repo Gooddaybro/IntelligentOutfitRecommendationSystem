@@ -113,7 +113,7 @@ public class OrderService {
             validateUserId(userId);
             validateRequest(request);
             List<Long> skuIds = normalizeSkuIds(request.skuIds());
-            String fingerprint = requestFingerprint.cart(skuIds);
+            String fingerprint = requestFingerprint.cart(skuIds, request.addressId());
             IdempotentOrderResult result = idempotencyCoordinator.execute(
                     userId,
                     OrderOperation.CART_CHECKOUT,

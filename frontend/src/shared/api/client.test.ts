@@ -1,6 +1,33 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "./client";
 
+describe("order api client", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it("sends the required address and Idempotency-Key when creating an order", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve(JSON.stringify({ data: { orderNo: "ORD1" } }))
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.createOrder([2102, 2202], 7, "2d36f872-e8d1-4e4f-b12e-a9702c88e890");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/orders",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ source: "CART", skuIds: [2102, 2202], addressId: 7 })
+      })
+    );
+    expect((fetchMock.mock.calls[0][1].headers as Headers).get("Idempotency-Key"))
+      .toBe("2d36f872-e8d1-4e4f-b12e-a9702c88e890");
+  });
+});
+
 describe("payment api client", () => {
   beforeEach(() => {
     localStorage.clear();

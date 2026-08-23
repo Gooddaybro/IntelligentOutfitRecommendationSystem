@@ -10,6 +10,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.order.service.Id
 import com.recommendation.intelligentoutfitrecommendationsystem.order.service.OrderCreationResult;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.service.OrderIdempotencyCoordinator;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.service.OrderIdempotencyProperties;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.service.OrderRequestFingerprint;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -108,20 +109,21 @@ class OrderIdempotencyCoordinatorTests {
     }
 
     @Test
-    void duplicateClaimWithSameFingerprintReplaysCommittedOrder() {
+    void duplicateClaimWithSameCartItemsAndAddressReplaysCommittedOrder() {
         when(transactionManager.getTransaction(any())).thenReturn(transactionStatus);
         String key = UUID.randomUUID().toString();
+        String fingerprint = new OrderRequestFingerprint().cart(List.of(2102L, 2202L), 7L);
         doThrow(new DuplicateKeyException("duplicate claim"))
                 .when(mapper).insert(any(OrderIdempotencyRecord.class));
-        when(mapper.findByKey(10L, "BUY_NOW", key))
-                .thenReturn(existingRecord(key, "a".repeat(64), 91L));
+        when(mapper.findByKey(10L, "CART_CHECKOUT", key))
+                .thenReturn(existingRecord("CART_CHECKOUT", key, fingerprint, 91L));
         AtomicInteger executions = new AtomicInteger();
 
         IdempotentOrderResult result = coordinator.execute(
                 10L,
-                OrderOperation.BUY_NOW,
+                OrderOperation.CART_CHECKOUT,
                 key,
-                "a".repeat(64),
+                fingerprint,
                 () -> {
                     executions.incrementAndGet();
                     return new OrderCreationResult(92L, order("ORD-NEW"));
@@ -135,19 +137,52 @@ class OrderIdempotencyCoordinatorTests {
     }
 
     @Test
-    void duplicateClaimWithDifferentFingerprintReturnsConflict() {
+    void duplicateClaimWithChangedCartAddressReturnsConflict() {
         when(transactionManager.getTransaction(any())).thenReturn(transactionStatus);
         String key = UUID.randomUUID().toString();
+        OrderRequestFingerprint fingerprint = new OrderRequestFingerprint();
         doThrow(new DuplicateKeyException("duplicate claim"))
                 .when(mapper).insert(any(OrderIdempotencyRecord.class));
-        when(mapper.findByKey(10L, "BUY_NOW", key))
-                .thenReturn(existingRecord(key, "b".repeat(64), 91L));
+        when(mapper.findByKey(10L, "CART_CHECKOUT", key))
+                .thenReturn(existingRecord(
+                        "CART_CHECKOUT",
+                        key,
+                        fingerprint.cart(List.of(2102L, 2202L), 7L),
+                        91L
+                ));
 
         assertThatThrownBy(() -> coordinator.execute(
                 10L,
-                OrderOperation.BUY_NOW,
+                OrderOperation.CART_CHECKOUT,
                 key,
-                "a".repeat(64),
+                fingerprint.cart(List.of(2102L, 2202L), 8L),
+                () -> new OrderCreationResult(92L, order("ORD-NEW")),
+                orderId -> order("ORD-1")
+        ))
+                .isInstanceOf(IdempotencyKeyConflictException.class)
+                .hasMessage("Idempotency-Key was already used with different request parameters");
+    }
+
+    @Test
+    void duplicateClaimWithChangedCartItemsReturnsConflict() {
+        when(transactionManager.getTransaction(any())).thenReturn(transactionStatus);
+        String key = UUID.randomUUID().toString();
+        OrderRequestFingerprint fingerprint = new OrderRequestFingerprint();
+        doThrow(new DuplicateKeyException("duplicate claim"))
+                .when(mapper).insert(any(OrderIdempotencyRecord.class));
+        when(mapper.findByKey(10L, "CART_CHECKOUT", key))
+                .thenReturn(existingRecord(
+                        "CART_CHECKOUT",
+                        key,
+                        fingerprint.cart(List.of(2102L, 2202L), 7L),
+                        91L
+                ));
+
+        assertThatThrownBy(() -> coordinator.execute(
+                10L,
+                OrderOperation.CART_CHECKOUT,
+                key,
+                fingerprint.cart(List.of(2102L), 7L),
                 () -> new OrderCreationResult(92L, order("ORD-NEW")),
                 orderId -> order("ORD-1")
         ))
@@ -221,9 +256,18 @@ class OrderIdempotencyCoordinatorTests {
             String fingerprint,
             Long orderId
     ) {
+        return existingRecord("BUY_NOW", key, fingerprint, orderId);
+    }
+
+    private OrderIdempotencyRecord existingRecord(
+            String operation,
+            String key,
+            String fingerprint,
+            Long orderId
+    ) {
         OrderIdempotencyRecord record = new OrderIdempotencyRecord();
         record.setUserId(10L);
-        record.setOperation("BUY_NOW");
+        record.setOperation(operation);
         record.setIdempotencyKey(key);
         record.setRequestFingerprint(fingerprint);
         record.setOrderId(orderId);

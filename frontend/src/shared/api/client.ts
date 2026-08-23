@@ -168,9 +168,10 @@ const httpApi = {
   addFavorite: (spuId: number) => requestJson<RecommendationCandidate[]>("/api/favorites", { method: "POST", body: JSON.stringify({ spuId }) }),
   removeFavorite: (spuId: number) => requestJson<RecommendationCandidate[]>(`/api/favorites/${spuId}`, { method: "DELETE" }),
   checkoutPreview: (skuIds: number[], addressId?: number) => requestJson<CheckoutPreview>("/api/checkout/preview", { method: "POST", body: JSON.stringify({ skuIds, addressId }) }),
-  createOrder: (skuIds: number[], addressId?: number) =>
+  createOrder: (skuIds: number[], addressId: number, idempotencyKey: string) =>
     requestJson<OrderResponse>("/api/orders", {
       method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
       body: JSON.stringify({ source: "CART", skuIds, addressId })
     }),
   buyNow: (skuId: number, quantity: number, recommendationId?: string) =>

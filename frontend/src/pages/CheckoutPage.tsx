@@ -1,5 +1,5 @@
 import { MapPin, PackageCheck, ShieldCheck } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { parseCheckoutSkuIds } from "../features/checkout/checkoutSelection";
 import { api } from "../shared/api/client";
@@ -13,14 +13,21 @@ export function CheckoutPage({ onOrderCreated }: { onOrderCreated: (order: Order
   const [preview, setPreview] = useState<CheckoutPreview>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const submissionIntent = useRef<{ signature: string; idempotencyKey: string } | undefined>(undefined);
+  const intentSignature = `${[...skuIds].sort((left, right) => left - right).join(",")}|${addressId ?? ""}`;
 
   useEffect(() => { api.addresses().then((items) => { setAddresses(items); setAddressId(items.find((item) => item.isDefault)?.id || items[0]?.id); }); }, []);
   useEffect(() => { if (skuIds.length) api.checkoutPreview(skuIds, addressId).then(setPreview).catch((value) => setError(value instanceof Error ? value.message : "结算信息加载失败")); }, [params.toString(), addressId]);
+  useEffect(() => { submissionIntent.current = undefined; }, [intentSignature]);
 
   async function submit() {
     if (!addressId || !preview || preview.invalidReasons.length) return;
+    const intent = submissionIntent.current?.signature === intentSignature
+      ? submissionIntent.current
+      : { signature: intentSignature, idempotencyKey: crypto.randomUUID() };
+    submissionIntent.current = intent;
     setBusy(true); setError("");
-    try { onOrderCreated(await api.createOrder(skuIds, addressId)); } catch (value) { setError(value instanceof Error ? value.message : "订单提交失败"); } finally { setBusy(false); }
+    try { onOrderCreated(await api.createOrder(skuIds, addressId, intent.idempotencyKey)); } catch (value) { setError(value instanceof Error ? value.message : "订单提交失败"); } finally { setBusy(false); }
   }
 
   return <main className="checkout-page">

@@ -24,7 +24,7 @@ describe("前端演示数据接口", () => {
     const [address] = await mockApi.addresses();
     const preview = await mockApi.checkoutPreview([sku.skuId], address.id);
     expect(preview.payableAmount).toBe(sku.salePrice * 2);
-    const order = await mockApi.createOrder([sku.skuId], address.id);
+    const order = await mockApi.createOrder([sku.skuId], address.id, crypto.randomUUID());
     expect(order.address?.id).toBe(address.id);
     await mockApi.payMock(order.orderNo);
     expect((await mockApi.order(order.orderNo)).status).toBe("PAID");
