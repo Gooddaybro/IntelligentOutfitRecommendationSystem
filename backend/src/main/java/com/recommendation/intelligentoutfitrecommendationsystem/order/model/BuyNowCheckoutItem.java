@@ -5,13 +5,12 @@ import lombok.Data;
 import java.math.BigDecimal;
 
 /**
- * 订单创建时的内部结算视图。
+ * 立即购买创建订单时的服务端商品事实投影。
  *
- * 该模型把当前用户购物车数量与商品、SKU、库存事实数据合并到一行，供 OrderService
- * 重算金额、校验上下架状态并生成订单快照；它不是对外 API 响应模型。
+ * 该类型不承载购物车结算；数量来自立即购买请求，商品、价格和状态来自 Java 商品事实库。
  */
 @Data
-public class OrderCheckoutItem {
+public class BuyNowCheckoutItem {
 
     private Long skuId;
 
@@ -38,6 +37,4 @@ public class OrderCheckoutItem {
     private String skuStatus;
 
     private String spuStatus;
-
-    private Integer availableStock;
 }

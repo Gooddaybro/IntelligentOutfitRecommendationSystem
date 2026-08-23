@@ -259,6 +259,7 @@ class PaymentControllerTests {
     }
 
     private String createOrder(String accessToken, long skuId) throws Exception {
+        long addressId = createAddress(accessToken);
         String body = mockMvc.perform(post("/api/orders")
                         .header("Authorization", "Bearer " + accessToken)
                         .header("Idempotency-Key", java.util.UUID.randomUUID().toString())
@@ -267,14 +268,35 @@ class PaymentControllerTests {
                                 {
                                   "source": "CART",
                                   "skuIds": [%d],
-                                  "addressId": 1
+                                  "addressId": %d
                                 }
-                                """.formatted(skuId)))
+                                """.formatted(skuId, addressId)))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
         return objectMapper.readTree(body).path("data").path("orderNo").asText();
+    }
+
+    private long createAddress(String accessToken) throws Exception {
+        String body = mockMvc.perform(post("/api/addresses")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "recipientName": "支付测试用户",
+                                  "phone": "13800138000",
+                                  "province": "浙江省",
+                                  "city": "杭州市",
+                                  "district": "西湖区",
+                                  "detail": "文一路 1 号"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return objectMapper.readTree(body).path("data").get(0).path("id").asLong();
     }
 
     private String registerAndLogin(String username) throws Exception {

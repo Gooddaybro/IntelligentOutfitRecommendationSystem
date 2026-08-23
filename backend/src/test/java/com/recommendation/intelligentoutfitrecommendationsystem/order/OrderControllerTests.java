@@ -55,6 +55,7 @@ class OrderControllerTests {
 
         addCartItem(accessToken, 2103, 1);
         addCartItem(accessToken, 2203, 2);
+        long addressId = createAddress(accessToken);
 
         String createBody = mockMvc.perform(post("/api/orders")
                         .header("Authorization", "Bearer " + accessToken)
@@ -64,10 +65,10 @@ class OrderControllerTests {
                                 {
                                   "source": "CART",
                                   "skuIds": [2103, 2203],
-                                  "addressId": 1,
+                                  "addressId": %d,
                                   "totalAmount": 0.01
                                 }
-                                """))
+                                """.formatted(addressId)))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Idempotency-Replayed", "false"))
                 .andExpect(jsonPath("$.data.orderNo").isNotEmpty())
@@ -367,6 +368,7 @@ class OrderControllerTests {
         String otherToken = registerAndLogin(nextUsername());
 
         addCartItem(ownerToken, 2005, 1);
+        long addressId = createAddress(ownerToken);
 
         String createBody = mockMvc.perform(post("/api/orders")
                         .header("Authorization", "Bearer " + ownerToken)
@@ -376,9 +378,9 @@ class OrderControllerTests {
                                 {
                                   "source": "CART",
                                   "skuIds": [2005],
-                                  "addressId": 1
+                                  "addressId": %d
                                 }
-                                """))
+                                """.formatted(addressId)))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
@@ -398,6 +400,7 @@ class OrderControllerTests {
         String otherToken = registerAndLogin(nextUsername());
 
         addCartItem(ownerToken, 2005, 1);
+        long addressId = createAddress(ownerToken);
 
         String createBody = mockMvc.perform(post("/api/orders")
                         .header("Authorization", "Bearer " + ownerToken)
@@ -407,9 +410,9 @@ class OrderControllerTests {
                                 {
                                   "source": "CART",
                                   "skuIds": [2005],
-                                  "addressId": 1
+                                  "addressId": %d
                                 }
-                                """))
+                                """.formatted(addressId)))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
@@ -519,6 +522,27 @@ class OrderControllerTests {
                                 }
                                 """.formatted(skuId, quantity)))
                 .andExpect(status().isOk());
+    }
+
+    private long createAddress(String accessToken) throws Exception {
+        String body = mockMvc.perform(post("/api/addresses")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "recipientName": "订单测试用户",
+                                  "phone": "13800138000",
+                                  "province": "浙江省",
+                                  "city": "杭州市",
+                                  "district": "西湖区",
+                                  "detail": "文一路 1 号"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return objectMapper.readTree(body).path("data").get(0).path("id").asLong();
     }
 
     private String registerAndLogin(String username) throws Exception {

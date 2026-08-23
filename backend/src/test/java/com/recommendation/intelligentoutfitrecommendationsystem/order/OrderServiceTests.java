@@ -1,7 +1,12 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.order;
 
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorEventService;
+import com.recommendation.intelligentoutfitrecommendationsystem.address.dto.AddressResponse;
+import com.recommendation.intelligentoutfitrecommendationsystem.address.service.AddressService;
 import com.recommendation.intelligentoutfitrecommendationsystem.cart.service.CartService;
+import com.recommendation.intelligentoutfitrecommendationsystem.checkout.model.CheckoutCalculatedItem;
+import com.recommendation.intelligentoutfitrecommendationsystem.checkout.model.CheckoutCalculation;
+import com.recommendation.intelligentoutfitrecommendationsystem.checkout.service.CheckoutCalculator;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
@@ -11,8 +16,8 @@ import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.Cancel
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.CreateOrderRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.OrderResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.mapper.OrderMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.model.BuyNowCheckoutItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderAddressSnapshot;
-import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderCheckoutItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderOperation;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.SalesOrder;
@@ -25,6 +30,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -42,8 +48,10 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -54,6 +62,12 @@ class OrderServiceTests {
 
     @Mock
     private OrderMapper orderMapper;
+
+    @Mock
+    private AddressService addressService;
+
+    @Mock
+    private CheckoutCalculator checkoutCalculator;
 
     @Mock
     private InventoryApplicationService inventoryApplicationService;
@@ -90,9 +104,12 @@ class OrderServiceTests {
 
     @Test
     void createOrderFromCartRecalculatesAmountLocksStockAndStoresSnapshots() {
-        var request = new CreateOrderRequest("CART", List.of(2102L, 2202L), 1L);
-        when(orderMapper.findCheckoutItemsFromCart(10L, List.of(2102L, 2202L)))
-                .thenReturn(List.of(checkoutItem(2102L, "299.00", 1), checkoutItem(2202L, "199.00", 2)));
+        var request = new CreateOrderRequest("CART", List.of(2102L, 2202L), 7L);
+        AddressResponse address = address();
+        CheckoutCalculation calculation = checkoutCalculation();
+        when(addressService.requireOwnedAddress(10L, 7L)).thenReturn(address);
+        when(checkoutCalculator.calculateForOrder(10L, List.of(2102L, 2202L), 7L))
+                .thenReturn(calculation);
         doAnswer(invocation -> {
             SalesOrder order = invocation.getArgument(0);
             order.setId(88L);
@@ -103,9 +120,23 @@ class OrderServiceTests {
 
         ArgumentCaptor<SalesOrder> orderCaptor = ArgumentCaptor.forClass(SalesOrder.class);
         ArgumentCaptor<List<OrderItem>> itemCaptor = ArgumentCaptor.forClass(List.class);
-        verify(orderMapper).insertOrder(orderCaptor.capture());
-        verify(orderMapper).insertItems(itemCaptor.capture());
-        verify(cartService).removePurchasedItems(10L, List.of(2102L, 2202L));
+        InOrder checkoutOrder = inOrder(
+                addressService,
+                checkoutCalculator,
+                inventoryApplicationService,
+                orderMapper,
+                behaviorEventService,
+                cartService
+        );
+        checkoutOrder.verify(addressService).requireOwnedAddress(10L, 7L);
+        checkoutOrder.verify(checkoutCalculator).calculateForOrder(10L, List.of(2102L, 2202L), 7L);
+        checkoutOrder.verify(inventoryApplicationService).lock(2102L, 1);
+        checkoutOrder.verify(inventoryApplicationService).lock(2202L, 2);
+        checkoutOrder.verify(orderMapper).insertOrder(orderCaptor.capture());
+        checkoutOrder.verify(orderMapper).insertItems(itemCaptor.capture());
+        checkoutOrder.verify(orderMapper).insertAddressSnapshot(88L, addressSnapshot());
+        checkoutOrder.verify(behaviorEventService, times(2)).recordBusinessEvent(any());
+        checkoutOrder.verify(cartService).removePurchasedItems(10L, List.of(2102L, 2202L));
         verify(behaviorEventService).recordBusinessEvent(argThat(command ->
                 "ORDER_CREATED".equals(command.eventType())
                         && Long.valueOf(10L).equals(command.userId())
@@ -132,6 +163,7 @@ class OrderServiceTests {
         assertThat(response.orderNo()).startsWith("ORD");
         assertThat(response.status()).isEqualTo("UNPAID");
         assertThat(response.totalAmount()).isEqualByComparingTo("697.00");
+        assertThat(response.address()).isEqualTo(addressSnapshot());
         verify(applicationMetrics).recordOrderCreation("cart", "created");
         verify(idempotencyCoordinator).execute(
                 eq(10L),
@@ -156,7 +188,7 @@ class OrderServiceTests {
     @Test
     void buyNowCreatesUnpaidOrderWithoutTouchingCart() {
         var request = new BuyNowRequest(2102L, 3, "rec_buy_now_test");
-        OrderCheckoutItem checkoutItem = checkoutItem(2102L, "299.00", 0);
+        BuyNowCheckoutItem checkoutItem = checkoutItem(2102L, "299.00", 0);
         when(orderMapper.findCheckoutItemBySkuId(2102L)).thenReturn(checkoutItem);
         doAnswer(invocation -> {
             SalesOrder order = invocation.getArgument(0);
@@ -217,8 +249,9 @@ class OrderServiceTests {
     @Test
     void createOrderRejectsSkuNotOwnedByCurrentUsersCart() {
         var request = new CreateOrderRequest("CART", List.of(2102L, 2202L), 1L);
-        when(orderMapper.findCheckoutItemsFromCart(10L, List.of(2102L, 2202L)))
-                .thenReturn(List.of(checkoutItem(2102L, "299.00", 1)));
+        when(addressService.requireOwnedAddress(10L, 1L)).thenReturn(address());
+        when(checkoutCalculator.calculateForOrder(10L, List.of(2102L, 2202L), 1L))
+                .thenThrow(new ResourceNotFoundException("cart item not found"));
 
         assertThatThrownBy(() -> service.createOrder(10L, IDEMPOTENCY_KEY, request))
                 .isInstanceOf(ResourceNotFoundException.class)
@@ -228,8 +261,9 @@ class OrderServiceTests {
     @Test
     void createOrderStopsBeforePersistingWhenStockIsInsufficient() {
         var request = new CreateOrderRequest("CART", List.of(2102L), 1L);
-        when(orderMapper.findCheckoutItemsFromCart(10L, List.of(2102L)))
-                .thenReturn(List.of(checkoutItem(2102L, "299.00", 1)));
+        when(addressService.requireOwnedAddress(10L, 1L)).thenReturn(address());
+        when(checkoutCalculator.calculateForOrder(10L, List.of(2102L), 1L))
+                .thenReturn(singleItemCalculation());
         doThrow(new BadRequestException("insufficient stock for sku: 2102"))
                 .when(inventoryApplicationService).lock(2102L, 1);
 
@@ -350,8 +384,8 @@ class OrderServiceTests {
         assertThat(cutoffCaptor.getValue()).isAfter(LocalDateTime.now().minusMinutes(31));
     }
 
-    private OrderCheckoutItem checkoutItem(Long skuId, String salePrice, int quantity) {
-        OrderCheckoutItem item = new OrderCheckoutItem();
+    private BuyNowCheckoutItem checkoutItem(Long skuId, String salePrice, int quantity) {
+        BuyNowCheckoutItem item = new BuyNowCheckoutItem();
         item.setSkuId(skuId);
         item.setSpuId(skuId == 2102L ? 1002L : 1003L);
         item.setSkuCode(skuId == 2102L ? "JK-COMMUTE-001-BLK-L" : "PANTS-STRAIGHT-001-BLK-L");
@@ -365,8 +399,63 @@ class OrderServiceTests {
         item.setMainImageUrl("/images/products/item.jpg");
         item.setSkuStatus("on_sale");
         item.setSpuStatus("on_sale");
-        item.setAvailableStock(10);
         return item;
+    }
+
+    private CheckoutCalculation checkoutCalculation() {
+        return new CheckoutCalculation(
+                List.of(
+                        calculatedItem(2102L, "299.00", 1, "299.00"),
+                        calculatedItem(2202L, "199.00", 2, "398.00")
+                ),
+                new BigDecimal("697.00"),
+                new BigDecimal("0.00"),
+                new BigDecimal("0.00"),
+                new BigDecimal("697.00"),
+                List.of()
+        );
+    }
+
+    private CheckoutCalculation singleItemCalculation() {
+        CheckoutCalculatedItem item = calculatedItem(2102L, "299.00", 1, "299.00");
+        return new CheckoutCalculation(
+                List.of(item),
+                new BigDecimal("299.00"),
+                new BigDecimal("0.00"),
+                new BigDecimal("0.00"),
+                new BigDecimal("299.00"),
+                List.of()
+        );
+    }
+
+    private CheckoutCalculatedItem calculatedItem(Long skuId, String salePrice, int quantity, String lineAmount) {
+        return new CheckoutCalculatedItem(
+                skuId,
+                skuId == 2102L ? 1002L : 1003L,
+                skuId == 2102L ? "JK-COMMUTE-001-BLK-L" : "PANTS-STRAIGHT-001-BLK-L",
+                skuId == 2102L ? "JACKET_COMMUTE_001" : "PANTS_STRAIGHT_001",
+                skuId == 2102L ? "commute jacket" : "straight pants",
+                skuId == 2102L ? "jacket" : "pants",
+                "black",
+                "L",
+                new BigDecimal(salePrice),
+                quantity,
+                new BigDecimal(lineAmount),
+                "/images/products/item.jpg"
+        );
+    }
+
+    private AddressResponse address() {
+        return new AddressResponse(
+                7L,
+                "林木",
+                "13800000000",
+                "浙江省",
+                "杭州市",
+                "西湖区",
+                "文一路 88 号",
+                true
+        );
     }
 
     private SalesOrder salesOrder(Long id, Long userId, String orderNo, String status) {

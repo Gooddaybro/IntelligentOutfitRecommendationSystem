@@ -4,10 +4,9 @@ import com.recommendation.intelligentoutfitrecommendationsystem.address.mapper.A
 import com.recommendation.intelligentoutfitrecommendationsystem.address.model.UserAddress;
 import com.recommendation.intelligentoutfitrecommendationsystem.auth.mapper.UserAuthMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.auth.model.UserAccount;
-import com.recommendation.intelligentoutfitrecommendationsystem.cart.mapper.CartMapper;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.mapper.OrderMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.model.BuyNowCheckoutItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderAddressSnapshot;
-import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderCheckoutItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.SalesOrder;
 import org.junit.jupiter.api.Test;
@@ -31,9 +30,6 @@ class OrderMapperTests {
 
     @Autowired
     private UserAuthMapper userAuthMapper;
-
-    @Autowired
-    private CartMapper cartMapper;
 
     @Autowired
     private AddressMapper addressMapper;
@@ -115,31 +111,8 @@ class OrderMapperTests {
     }
 
     @Test
-    void checkoutQueryReturnsSelectedCartItemsWithCurrentProductFacts() {
-        Long userId = createUser();
-        cartMapper.upsertItem(userId, 2103L, 2);
-        cartMapper.upsertItem(userId, 2202L, 1);
-
-        List<OrderCheckoutItem> checkoutItems = orderMapper.findCheckoutItemsFromCart(userId, List.of(2103L));
-
-        assertThat(checkoutItems)
-                .singleElement()
-                .satisfies(item -> {
-                    assertThat(item.getSkuId()).isEqualTo(2103L);
-                    assertThat(item.getQuantity()).isEqualTo(2);
-                    assertThat(item.getSpuId()).isEqualTo(1002L);
-                    assertThat(item.getSkuCode()).isEqualTo("JK-COMMUTE-001-NAVY-L");
-                    assertThat(item.getSpuCode()).isEqualTo("JACKET_COMMUTE_001");
-                    assertThat(item.getSalePrice()).isEqualByComparingTo("299.00");
-                    assertThat(item.getSkuStatus()).isEqualTo("on_sale");
-                    assertThat(item.getSpuStatus()).isEqualTo("on_sale");
-                    assertThat(item.getAvailableStock()).isNotNegative();
-                });
-    }
-
-    @Test
     void checkoutQueryBySkuReturnsCurrentProductFactsWithoutCart() {
-        OrderCheckoutItem checkoutItem = orderMapper.findCheckoutItemBySkuId(2103L);
+        BuyNowCheckoutItem checkoutItem = orderMapper.findCheckoutItemBySkuId(2103L);
 
         assertThat(checkoutItem).satisfies(item -> {
             assertThat(item.getSkuId()).isEqualTo(2103L);
@@ -150,7 +123,6 @@ class OrderMapperTests {
             assertThat(item.getSalePrice()).isEqualByComparingTo("299.00");
             assertThat(item.getSkuStatus()).isEqualTo("on_sale");
             assertThat(item.getSpuStatus()).isEqualTo("on_sale");
-            assertThat(item.getAvailableStock()).isNotNegative();
         });
     }
 

@@ -2,7 +2,12 @@ package com.recommendation.intelligentoutfitrecommendationsystem.order.service;
 
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorEventCommand;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorEventService;
+import com.recommendation.intelligentoutfitrecommendationsystem.address.dto.AddressResponse;
+import com.recommendation.intelligentoutfitrecommendationsystem.address.service.AddressService;
 import com.recommendation.intelligentoutfitrecommendationsystem.cart.service.CartService;
+import com.recommendation.intelligentoutfitrecommendationsystem.checkout.model.CheckoutCalculatedItem;
+import com.recommendation.intelligentoutfitrecommendationsystem.checkout.model.CheckoutCalculation;
+import com.recommendation.intelligentoutfitrecommendationsystem.checkout.service.CheckoutCalculator;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.observability.ApplicationMetrics;
@@ -13,8 +18,8 @@ import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.Create
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.OrderItemResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.dto.OrderResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.mapper.OrderMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.model.BuyNowCheckoutItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderAddressSnapshot;
-import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderCheckoutItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderOperation;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.SalesOrder;
@@ -24,7 +29,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
@@ -56,6 +60,10 @@ public class OrderService {
 
     private final OrderMapper orderMapper;
 
+    private final AddressService addressService;
+
+    private final CheckoutCalculator checkoutCalculator;
+
     private final InventoryApplicationService inventoryApplicationService;
 
     private final CartService cartService;
@@ -69,6 +77,8 @@ public class OrderService {
 
     public OrderService(
             OrderMapper orderMapper,
+            AddressService addressService,
+            CheckoutCalculator checkoutCalculator,
             InventoryApplicationService inventoryApplicationService,
             CartService cartService,
             BehaviorEventService behaviorEventService,
@@ -77,6 +87,8 @@ public class OrderService {
             ApplicationMetrics metrics
     ) {
         this.orderMapper = orderMapper;
+        this.addressService = addressService;
+        this.checkoutCalculator = checkoutCalculator;
         this.inventoryApplicationService = inventoryApplicationService;
         this.cartService = cartService;
         this.behaviorEventService = behaviorEventService;
@@ -107,7 +119,7 @@ public class OrderService {
                     OrderOperation.CART_CHECKOUT,
                     idempotencyKey,
                     fingerprint,
-                    () -> createOrderFromCart(userId, skuIds),
+                    () -> createOrderFromCart(userId, skuIds, request.addressId()),
                     orderId -> loadOrderForReplay(userId, orderId)
             );
             metrics.recordOrderCreation("cart", result.replayed() ? "replayed" : "created");
@@ -150,43 +162,86 @@ public class OrderService {
         }
     }
 
-    private OrderCreationResult createOrderFromCart(Long userId, List<Long> skuIds) {
-        List<OrderCheckoutItem> checkoutItems = orderMapper.findCheckoutItemsFromCart(userId, skuIds);
-        if (checkoutItems.size() != skuIds.size()) {
-            throw new ResourceNotFoundException("cart item not found");
-        }
-        OrderCreationResult creation = createUnpaidOrderFromCheckoutItems(userId, checkoutItems, null);
+    /**
+     * 在幂等协调器开启的事务内，把可信结算结果固化为购物车订单。
+     *
+     * 地址必须先读取，随后重新结算并锁定全部库存；只有订单快照完整写入后才清理购物车，
+     * 任一步骤抛出异常都由外层事务连同幂等占位一起回滚。
+     *
+     * @param userId 当前认证用户 ID
+     * @param skuIds 已规范化的购物车 SKU 集合
+     * @param addressId 当前用户选择的地址簿 ID
+     * @return 已持久化订单及其首次响应快照
+     */
+    private OrderCreationResult createOrderFromCart(Long userId, List<Long> skuIds, Long addressId) {
+        AddressResponse address = addressService.requireOwnedAddress(userId, addressId);
+        CheckoutCalculation calculation = checkoutCalculator.calculateForOrder(userId, skuIds, addressId);
+        List<OrderItem> orderItems = calculation.items().stream()
+                .map(this::toOrderItem)
+                .toList();
+        calculation.items().forEach(item -> inventoryApplicationService.lock(item.skuId(), item.quantity()));
+        OrderAddressSnapshot snapshot = toAddressSnapshot(address);
+        OrderCreationResult creation = createUnpaidOrder(
+                userId,
+                orderItems,
+                calculation.payableAmount(),
+                null,
+                snapshot
+        );
         cartService.removePurchasedItems(userId, skuIds);
         return creation;
     }
 
+    /**
+     * 在幂等协调器事务内创建立即购买订单。
+     *
+     * 此路径不属于购物车可信结算改造：它保留专用商品事实投影，并继续通过既有库存边界原子锁定库存。
+     *
+     * @param userId 当前认证用户 ID
+     * @param request SKU、数量和可选推荐归因
+     * @return 已持久化订单及其首次响应快照
+     */
     private OrderCreationResult createOrderFromSku(Long userId, BuyNowRequest request) {
-        OrderCheckoutItem checkoutItem = orderMapper.findCheckoutItemBySkuId(request.skuId());
+        BuyNowCheckoutItem checkoutItem = orderMapper.findCheckoutItemBySkuId(request.skuId());
         if (checkoutItem == null) {
             throw new ResourceNotFoundException("sku not found: " + request.skuId());
         }
         checkoutItem.setQuantity(request.quantity());
-        return createUnpaidOrderFromCheckoutItems(userId, List.of(checkoutItem), request.recommendationId());
+        validateCheckoutItem(checkoutItem);
+        BigDecimal lineAmount = checkoutItem.getSalePrice().multiply(BigDecimal.valueOf(checkoutItem.getQuantity()));
+        inventoryApplicationService.lock(checkoutItem.getSkuId(), checkoutItem.getQuantity());
+        return createUnpaidOrder(
+                userId,
+                List.of(toOrderItem(checkoutItem, lineAmount)),
+                lineAmount,
+                request.recommendationId(),
+                null
+        );
     }
 
-    private OrderCreationResult createUnpaidOrderFromCheckoutItems(
+    /**
+     * 持久化已完成服务端计价和库存锁定的未支付订单。
+     *
+     * 调用方必须处于幂等协调器事务中；本方法按订单、明细、可选地址快照和行为事件的顺序写入，
+     * 不在内部开启新事务，从而让后续购物车清理和幂等结果链接共享同一次提交。
+     *
+     * @param userId 当前认证用户 ID
+     * @param orderItems 已按服务端事实生成的订单明细
+     * @param totalAmount 可信结算金额或立即购买的服务端重算金额
+     * @param recommendationId 立即购买的可选推荐归因；购物车路径传 null 并由事件服务回溯归因
+     * @param address 购物车订单地址快照；当前立即购买路径传 null
+     * @return 已持久化订单及其首次响应快照
+     */
+    private OrderCreationResult createUnpaidOrder(
             Long userId,
-            List<OrderCheckoutItem> checkoutItems,
-            String recommendationId
+            List<OrderItem> orderItems,
+            BigDecimal totalAmount,
+            String recommendationId,
+            OrderAddressSnapshot address
     ) {
         validateUserId(userId);
-        if (checkoutItems == null || checkoutItems.isEmpty()) {
+        if (orderItems == null || orderItems.isEmpty()) {
             throw new BadRequestException("checkout items must not be empty");
-        }
-
-        List<OrderItem> orderItems = new ArrayList<>();
-        BigDecimal totalAmount = BigDecimal.ZERO;
-        for (OrderCheckoutItem checkoutItem : checkoutItems) {
-            validateCheckoutItem(checkoutItem);
-            BigDecimal lineAmount = checkoutItem.getSalePrice().multiply(BigDecimal.valueOf(checkoutItem.getQuantity()));
-            totalAmount = totalAmount.add(lineAmount);
-            lockStock(checkoutItem);
-            orderItems.add(toOrderItem(checkoutItem, lineAmount));
         }
 
         SalesOrder order = new SalesOrder();
@@ -200,9 +255,12 @@ public class OrderService {
             item.setOrderId(order.getId());
         }
         orderMapper.insertItems(orderItems);
+        if (address != null) {
+            orderMapper.insertAddressSnapshot(order.getId(), address);
+        }
         recordOrderCreatedEvents(userId, order, orderItems, recommendationId);
 
-        return new OrderCreationResult(order.getId(), toResponse(order, orderItems));
+        return new OrderCreationResult(order.getId(), toResponse(order, orderItems, address));
     }
 
     private OrderResponse loadOrderForReplay(Long userId, Long orderId) {
@@ -328,17 +386,13 @@ public class OrderService {
         return List.copyOf(normalized);
     }
 
-    private void validateCheckoutItem(OrderCheckoutItem item) {
+    private void validateCheckoutItem(BuyNowCheckoutItem item) {
         if (item.getQuantity() == null || item.getQuantity() <= 0) {
-            throw new BadRequestException("cart quantity must be positive for sku: " + item.getSkuId());
+            throw new BadRequestException("buy-now quantity must be positive for sku: " + item.getSkuId());
         }
         if (!"on_sale".equals(item.getSkuStatus()) || !"on_sale".equals(item.getSpuStatus())) {
             throw new BadRequestException("sku is not available for checkout: " + item.getSkuId());
         }
-    }
-
-    private void lockStock(OrderCheckoutItem item) {
-        inventoryApplicationService.lock(item.getSkuId(), item.getQuantity());
     }
 
     private void releaseLockedStock(SalesOrder order) {
@@ -357,7 +411,7 @@ public class OrderService {
         order.setCloseReason(closeReason);
     }
 
-    private OrderItem toOrderItem(OrderCheckoutItem checkoutItem, BigDecimal lineAmount) {
+    private OrderItem toOrderItem(BuyNowCheckoutItem checkoutItem, BigDecimal lineAmount) {
         OrderItem item = new OrderItem();
         item.setSkuId(checkoutItem.getSkuId());
         item.setSpuId(checkoutItem.getSpuId());
@@ -372,6 +426,35 @@ public class OrderService {
         item.setLineAmount(lineAmount);
         item.setMainImageUrl(checkoutItem.getMainImageUrl());
         return item;
+    }
+
+    private OrderItem toOrderItem(CheckoutCalculatedItem checkoutItem) {
+        OrderItem item = new OrderItem();
+        item.setSkuId(checkoutItem.skuId());
+        item.setSpuId(checkoutItem.spuId());
+        item.setSkuCode(checkoutItem.skuCode());
+        item.setSpuCode(checkoutItem.spuCode());
+        item.setProductName(checkoutItem.name());
+        item.setCategoryName(checkoutItem.categoryName());
+        item.setColor(checkoutItem.color());
+        item.setSize(checkoutItem.size());
+        item.setSalePrice(checkoutItem.salePrice());
+        item.setQuantity(checkoutItem.quantity());
+        item.setLineAmount(checkoutItem.lineAmount());
+        item.setMainImageUrl(checkoutItem.mainImageUrl());
+        return item;
+    }
+
+    private OrderAddressSnapshot toAddressSnapshot(AddressResponse address) {
+        return new OrderAddressSnapshot(
+                address.id(),
+                address.recipientName(),
+                address.phone(),
+                address.province(),
+                address.city(),
+                address.district(),
+                address.detail()
+        );
     }
 
     private void recordOrderCreatedEvents(

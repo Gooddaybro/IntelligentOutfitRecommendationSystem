@@ -1,7 +1,7 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.order.mapper;
 
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderAddressSnapshot;
-import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderCheckoutItem;
+import com.recommendation.intelligentoutfitrecommendationsystem.order.model.BuyNowCheckoutItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.OrderItem;
 import com.recommendation.intelligentoutfitrecommendationsystem.order.model.SalesOrder;
 import org.apache.ibatis.annotations.Mapper;
@@ -14,7 +14,7 @@ import java.util.List;
  * 订单数据访问入口。
  *
  * 查询接口必须以 userId 参与条件，确保公开订单 API 只能读写当前登录用户自己的订单；
- * 下单快照生成所需的商品事实数据由结算查询统一提供给 Service 层。
+ * 购物车下单事实由 checkout 模块提供，本 Mapper 只保留立即购买所需的最小商品投影。
  */
 @Mapper
 public interface OrderMapper {
@@ -81,22 +81,10 @@ public interface OrderMapper {
     );
 
     /**
-     * 读取当前用户选中的购物车项以及下单时刻的商品事实数据。
-     *
-     * @param userId 当前认证用户 ID，用于保护购物车归属边界
-     * @param skuIds 前端选中结算的 SKU 集合，必须先在 Service 层去重和校验
-     * @return 用于重算金额和生成订单快照的内部结算视图
-     */
-    List<OrderCheckoutItem> findCheckoutItemsFromCart(
-            @Param("userId") Long userId,
-            @Param("skuIds") List<Long> skuIds
-    );
-
-    /**
      * 按 SKU 读取立即购买所需的商品事实快照。
      *
      * @param skuId 前端选择的 SKU，数量和用户边界不由 SQL 决定
      * @return 用于后端重算金额和生成订单明细的结算视图；SKU 不存在时返回 null
      */
-    OrderCheckoutItem findCheckoutItemBySkuId(@Param("skuId") Long skuId);
+    BuyNowCheckoutItem findCheckoutItemBySkuId(@Param("skuId") Long skuId);
 }

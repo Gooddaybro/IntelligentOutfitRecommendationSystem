@@ -138,6 +138,7 @@ class BehaviorControllerTests {
                                 """.formatted(recommendationId)))
                 .andExpect(status().isOk());
 
+        long addressId = createAddress(accessToken);
         String orderBody = mockMvc.perform(post("/api/orders")
                         .header("Authorization", "Bearer " + accessToken)
                         .header("Idempotency-Key", UUID.randomUUID().toString())
@@ -146,9 +147,9 @@ class BehaviorControllerTests {
                                 {
                                   "source": "CART",
                                   "skuIds": [2101],
-                                  "addressId": 1
+                                  "addressId": %d
                                 }
-                                """))
+                                """.formatted(addressId)))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         String orderNo = objectMapper.readTree(orderBody).path("data").path("orderNo").asText();
@@ -175,6 +176,27 @@ class BehaviorControllerTests {
                 String.class,
                 userId
         )).contains(recommendationId, recommendationId, recommendationId);
+    }
+
+    private long createAddress(String accessToken) throws Exception {
+        String body = mockMvc.perform(post("/api/addresses")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "recipientName": "行为测试用户",
+                                  "phone": "13800138000",
+                                  "province": "浙江省",
+                                  "city": "杭州市",
+                                  "district": "西湖区",
+                                  "detail": "文一路 1 号"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return objectMapper.readTree(body).path("data").get(0).path("id").asLong();
     }
 
     private String recommendationClickBody(String eventId) {
