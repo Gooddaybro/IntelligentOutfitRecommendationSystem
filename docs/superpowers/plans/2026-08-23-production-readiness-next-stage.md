@@ -460,11 +460,11 @@ sh ./mvnw -B -ntp \
 - Modify: `backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/order/OrderMapperTests.java`
 - Delete after migration: `backend/src/main/java/com/recommendation/intelligentoutfitrecommendationsystem/order/model/OrderCheckoutItem.java`
 
-- [ ] `CreateOrderRequest` 增加必填 `addressId`，仍不接受金额字段。
-- [ ] `order_address_snapshot` 与订单一对一，保存 `source_address_id` 和下单时完整地址文本。
-- [ ] `source_address_id` 仅供审计，不建立阻止用户删除地址的强外键。
-- [ ] 订单详情读取快照；订单列表不额外加载完整地址，避免列表查询膨胀。
-- [ ] 修改或删除地址簿地址后，历史订单详情保持不变。
+- [x] `CreateOrderRequest` 增加必填 `addressId`，仍不接受金额字段。
+- [x] `order_address_snapshot` 与订单一对一，保存 `source_address_id` 和下单时完整地址文本。
+- [x] `source_address_id` 仅供审计，不建立阻止用户删除地址的强外键。
+- [x] 订单详情读取快照；订单列表不额外加载完整地址，避免列表查询膨胀。
+- [x] 修改或删除地址簿地址后，历史订单详情保持不变。
 
 ### Task 4.2：正式下单事务使用 CheckoutCalculator
 
@@ -489,12 +489,12 @@ sh ./mvnw -B -ntp \
 → 提交事务
 ```
 
-- [ ] 正式下单不复用前端预览金额，而是调用 `calculateForOrder`。
-- [ ] `OrderService` 不再直接读取 `OrderMapper.findCheckoutItemsFromCart` 或自行计算总额；删除旧 Mapper 查询和 `OrderCheckoutItem`，只消费 checkout 模块的不可变结果。
-- [ ] 订单总额和订单项价格全部取自 `CheckoutCalculation`。
-- [ ] 地址、订单、订单项、地址快照、库存变化、购物车清理和幂等业务结果位于同一事务。
-- [ ] 在“库存已锁定但快照写入失败”场景注入故障，断言所有变化回滚。
-- [ ] 保留现有 `InventoryApplicationService` 的锁定/确认/释放边界，不新增一套库存实现。
+- [x] 正式下单不复用前端预览金额，而是调用 `calculateForOrder`。
+- [x] `OrderService` 不再直接读取 `OrderMapper.findCheckoutItemsFromCart` 或自行计算总额；删除旧 Mapper 查询和 `OrderCheckoutItem`，只消费 checkout 模块的不可变结果。
+- [x] 订单总额和订单项价格全部取自 `CheckoutCalculation`。
+- [x] 地址、订单、订单项、地址快照、库存变化、购物车清理和幂等业务结果位于同一事务。
+- [x] 在“库存已锁定但快照写入失败”场景注入故障，断言所有变化回滚。
+- [x] 保留现有 `InventoryApplicationService` 的锁定/确认/释放边界，不新增一套库存实现。
 
 ### Task 4.3：扩展幂等指纹并接入前端 Idempotency-Key
 
@@ -509,13 +509,13 @@ sh ./mvnw -B -ntp \
 - Modify: `frontend/src/pages/CheckoutPage.tsx`
 - Modify: `frontend/src/pages/CheckoutPage.test.tsx`
 
-- [ ] 购物车订单指纹从 `normalizedSkuIds` 扩展为 `normalizedSkuIds + addressId`。
-- [ ] 相同用户、相同键、相同商品和地址返回原订单。
-- [ ] 相同用户和键但商品或地址变化返回幂等冲突，不错误复用旧订单。
-- [ ] 并发相同请求只生成一个订单、一个地址快照和一次有效库存变化。
-- [ ] 前端每次用户主动提交生成 UUID `Idempotency-Key`。
-- [ ] 同一次网络重试复用原键；用户修改地址或商品选择后生成新键。
-- [ ] 提交按钮防重复点击，但按钮防抖不能替代服务端幂等。
+- [x] 购物车订单指纹从 `normalizedSkuIds` 扩展为 `normalizedSkuIds + addressId`。
+- [x] 相同用户、相同键、相同商品和地址返回原订单。
+- [x] 相同用户和键但商品或地址变化返回幂等冲突，不错误复用旧订单。
+- [x] 并发相同请求只生成一个订单、一个地址快照和一次有效库存变化。
+- [x] 前端每次用户主动提交生成 UUID `Idempotency-Key`。
+- [x] 同一次网络重试复用原键；用户修改地址或商品选择后生成新键。
+- [x] 提交按钮防重复点击，但按钮防抖不能替代服务端幂等。
 
 ### 阶段 4 验收
 
