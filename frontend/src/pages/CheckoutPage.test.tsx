@@ -38,6 +38,29 @@ describe("CheckoutPage", () => {
     expect(screen.getByRole("button", { name: "提交订单" })).toBeEnabled();
   });
 
+  it("直接展示服务端返回的商品行金额", async () => {
+    vi.spyOn(api, "addresses").mockResolvedValue(addresses);
+    vi.spyOn(api, "checkoutPreview").mockResolvedValue({
+      ...preview,
+      items: [{
+        skuId: 11,
+        spuId: 1,
+        skuCode: "SKU-11",
+        spuCode: "SPU-1",
+        name: "服务端计价商品",
+        categoryName: "上装",
+        salePrice: 10,
+        quantity: 2,
+        lineAmount: 19.99
+      }]
+    });
+
+    render(<MemoryRouter initialEntries={["/app/checkout?skuIds=11"]}><CheckoutPage onOrderCreated={vi.fn()} /></MemoryRouter>);
+
+    expect(await screen.findByText("¥19.99")).toBeVisible();
+    expect(screen.queryByText("¥20.00")).not.toBeInTheDocument();
+  });
+
   it("网络失败后人工重试复用同一提交意图的幂等键", async () => {
     mockCheckout();
     vi.spyOn(crypto, "randomUUID")

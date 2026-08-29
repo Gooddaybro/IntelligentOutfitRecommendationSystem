@@ -8,8 +8,7 @@
         一次查询读取当前用户选择的购物车数量、商品状态、当前售价与可售库存。
         前端只提交 skuIds；数量、价格、金额和商品快照都不能从请求体进入本查询。
     -->
-    <select id="findCartFacts"
-            resultType="com.recommendation.intelligentoutfitrecommendationsystem.checkout.model.CheckoutFactRow">
+    <sql id="cartFactsQuery">
         SELECT
             ci.sku_id,
             sku.spu_id,
@@ -38,6 +37,22 @@
             #{skuId}
         </foreach>
         ORDER BY ci.id ASC
+    </sql>
+
+    <select id="findCartFacts"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.checkout.model.CheckoutFactRow">
+        <include refid="cartFactsQuery"/>
+    </select>
+
+    <!--
+        正式下单通过同一条当前读取同时取得事实并锁行，
+        避免在 MySQL 可重复读下回到事务早期建立的一致性快照。
+        锁范围只包含购物车、SKU、SPU 和库存交易事实，不锁定共享展示维表。
+    -->
+    <select id="findCartFactsForUpdate"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.checkout.model.CheckoutFactRow">
+        <include refid="cartFactsQuery"/>
+        FOR UPDATE OF ci, sku, spu, inv
     </select>
 
 </mapper>

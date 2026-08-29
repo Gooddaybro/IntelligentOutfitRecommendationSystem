@@ -195,8 +195,23 @@ export type Address = {
   isDefault?: boolean;
 };
 
+export type CheckoutPreviewItem = {
+  skuId: number;
+  spuId: number;
+  skuCode: string;
+  spuCode: string;
+  name: string;
+  categoryName: string;
+  color?: string;
+  size?: string;
+  salePrice: number;
+  quantity: number;
+  lineAmount: number;
+  mainImageUrl?: string;
+};
+
 export type CheckoutPreview = {
-  items: CartItem[];
+  items: CheckoutPreviewItem[];
   merchandiseAmount: number;
   shippingAmount: number;
   discountAmount: number;

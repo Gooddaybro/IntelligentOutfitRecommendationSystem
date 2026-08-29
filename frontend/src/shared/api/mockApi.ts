@@ -187,9 +187,11 @@ export const mockApi = {
   addFavorite: async (spuId: number) => { favoriteSpuIds.add(spuId); return Array.from(new Map(catalog.filter((item) => favoriteSpuIds.has(item.spuId)).map((item) => [item.spuId, item])).values()); },
   removeFavorite: async (spuId: number) => { favoriteSpuIds.delete(spuId); return Array.from(new Map(catalog.filter((item) => favoriteSpuIds.has(item.spuId)).map((item) => [item.spuId, item])).values()); },
   checkoutPreview: async (skuIds: number[], _addressId?: number): Promise<CheckoutPreview> => {
-    const items = cartItems.filter((item) => skuIds.includes(item.skuId));
+    const items = cartItems
+      .filter((item) => skuIds.includes(item.skuId))
+      .map((item) => ({ ...item, lineAmount: item.salePrice * item.quantity }));
     const invalidReasons = items.flatMap((item) => (item.availableStock ?? 0) < item.quantity ? [`${item.name} 库存不足`] : []);
-    const merchandiseAmount = items.reduce((sum, item) => sum + item.salePrice * item.quantity, 0);
+    const merchandiseAmount = items.reduce((sum, item) => sum + item.lineAmount, 0);
     return { items, merchandiseAmount, shippingAmount: 0, discountAmount: 0, payableAmount: merchandiseAmount, invalidReasons };
   },
   createOrder: async (skuIds: number[], addressId: number, _idempotencyKey: string) => {
@@ -199,7 +201,7 @@ export const mockApi = {
     cartItems = cartItems.filter((item) => !skuIds.includes(item.skuId));
     return order;
   },
-  buyNow: async (skuId: number, quantity: number) => {
+  buyNow: async (skuId: number, quantity: number, _idempotencyKey: string) => {
     const sku = catalog.find((item) => item.skuId === skuId);
     if (!sku) throw new Error("SKU 不存在");
     const item = toCartItem(sku, quantity);

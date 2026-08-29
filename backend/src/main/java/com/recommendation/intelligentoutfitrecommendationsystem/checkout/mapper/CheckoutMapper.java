@@ -25,4 +25,19 @@ public interface CheckoutMapper {
             @Param("userId") Long userId,
             @Param("skuIds") List<Long> skuIds
     );
+
+    /**
+     * 用当前读取返回并锁定正式下单所需的购物车事实。
+     *
+     * 单条 `FOR UPDATE` 查询避免 MySQL 可重复读事务在先前普通读取建立快照后，
+     * 锁行却又通过旧快照计价。
+     *
+     * @param userId 当前认证用户 ID
+     * @param skuIds 已校验、去重后的购物车 SKU 集合
+     * @return 当前已锁定且实际存在的事实行，缺失选择由 Calculator 统一转换为错误
+     */
+    List<CheckoutFactRow> findCartFactsForUpdate(
+            @Param("userId") Long userId,
+            @Param("skuIds") List<Long> skuIds
+    );
 }

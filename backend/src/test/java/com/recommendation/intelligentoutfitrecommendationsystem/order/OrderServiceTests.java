@@ -135,9 +135,9 @@ class OrderServiceTests {
         checkoutOrder.verify(orderMapper).insertOrder(orderCaptor.capture());
         checkoutOrder.verify(orderMapper).insertItems(itemCaptor.capture());
         checkoutOrder.verify(orderMapper).insertAddressSnapshot(88L, addressSnapshot());
-        checkoutOrder.verify(behaviorEventService, times(2)).recordBusinessEvent(any());
+        checkoutOrder.verify(behaviorEventService, times(2)).recordBusinessEventStrict(any());
         checkoutOrder.verify(cartService).removePurchasedItems(10L, List.of(2102L, 2202L));
-        verify(behaviorEventService).recordBusinessEvent(argThat(command ->
+        verify(behaviorEventService).recordBusinessEventStrict(argThat(command ->
                 "ORDER_CREATED".equals(command.eventType())
                         && Long.valueOf(10L).equals(command.userId())
                         && command.orderNo().equals(orderCaptor.getValue().getOrderNo())
@@ -145,7 +145,7 @@ class OrderServiceTests {
                         && Long.valueOf(2102L).equals(command.skuId())
                         && Integer.valueOf(1).equals(command.quantity())
         ));
-        verify(behaviorEventService).recordBusinessEvent(argThat(command ->
+        verify(behaviorEventService).recordBusinessEventStrict(argThat(command ->
                 "ORDER_CREATED".equals(command.eventType())
                         && Long.valueOf(10L).equals(command.userId())
                         && command.orderNo().equals(orderCaptor.getValue().getOrderNo())
@@ -153,6 +153,7 @@ class OrderServiceTests {
                         && Long.valueOf(2202L).equals(command.skuId())
                         && Integer.valueOf(2).equals(command.quantity())
         ));
+        verify(behaviorEventService, never()).recordBusinessEvent(any());
 
         assertThat(orderCaptor.getValue().getTotalAmount()).isEqualByComparingTo("697.00");
         assertThat(orderCaptor.getValue().getStatus()).isEqualTo("UNPAID");
@@ -222,7 +223,7 @@ class OrderServiceTests {
                 any(),
                 any()
         );
-        verify(behaviorEventService).recordBusinessEvent(argThat(command ->
+        verify(behaviorEventService).recordBusinessEventStrict(argThat(command ->
                 "ORDER_CREATED".equals(command.eventType())
                         && "rec_buy_now_test".equals(command.recommendationId())
         ));

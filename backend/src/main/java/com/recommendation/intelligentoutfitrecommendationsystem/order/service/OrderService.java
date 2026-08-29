@@ -464,7 +464,7 @@ public class OrderService {
             String recommendationId
     ) {
         for (OrderItem item : orderItems) {
-            behaviorEventService.recordBusinessEvent(new BehaviorEventCommand(
+            behaviorEventService.recordBusinessEventStrict(new BehaviorEventCommand(
                     "order:created:" + order.getOrderNo() + ":" + item.getSkuId(),
                     userId,
                     "ORDER_CREATED",

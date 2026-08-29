@@ -174,9 +174,10 @@ const httpApi = {
       headers: { "Idempotency-Key": idempotencyKey },
       body: JSON.stringify({ source: "CART", skuIds, addressId })
     }),
-  buyNow: (skuId: number, quantity: number, recommendationId?: string) =>
+  buyNow: (skuId: number, quantity: number, idempotencyKey: string, recommendationId?: string) =>
     requestJson<OrderResponse>("/api/orders/buy-now", {
       method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
       body: JSON.stringify({ skuId, quantity, recommendationId })
     }),
   orders: () => requestJson<OrderResponse[]>("/api/orders"),

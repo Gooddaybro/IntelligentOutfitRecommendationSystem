@@ -42,7 +42,7 @@ public class CheckoutCalculator {
      */
     @Transactional(readOnly = true)
     public CheckoutCalculation previewCart(Long userId, List<Long> skuIds, Long addressId) {
-        return calculate(userId, skuIds, addressId);
+        return calculate(userId, skuIds, addressId, false);
     }
 
     /**
@@ -50,9 +50,9 @@ public class CheckoutCalculator {
      *
      * @throws BadRequestException 商品失效或库存不足时抛出
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public CheckoutCalculation calculateForOrder(Long userId, List<Long> skuIds, Long addressId) {
-        CheckoutCalculation calculation = calculate(userId, skuIds, addressId);
+        CheckoutCalculation calculation = calculate(userId, skuIds, addressId, true);
         if (!calculation.invalidReasons().isEmpty()) {
             CheckoutInvalidReason reason = calculation.invalidReasons().getFirst();
             throw new BadRequestException(
@@ -63,12 +63,15 @@ public class CheckoutCalculator {
 
     /**
      * 先校验地址归属，再读取当前用户购物车与最新商品事实，并只用这些服务端事实计价。
-     * 该共享流程保留业务无效原因，由两个公开入口决定“解释”还是“阻断”。
+     * 正式下单用当前读取同时取事实并锁行，预览保持一致性无锁读取；共享流程保留业务无效原因，
+     * 由两个公开入口决定“解释”还是“阻断”。
      */
-    private CheckoutCalculation calculate(Long userId, List<Long> skuIds, Long addressId) {
+    private CheckoutCalculation calculate(Long userId, List<Long> skuIds, Long addressId, boolean lockCartItems) {
         List<Long> normalizedSkuIds = normalizeArguments(userId, skuIds, addressId);
         addressService.requireOwnedAddress(userId, addressId);
-        List<CheckoutFactRow> facts = checkoutMapper.findCartFacts(userId, normalizedSkuIds);
+        List<CheckoutFactRow> facts = lockCartItems
+                ? checkoutMapper.findCartFactsForUpdate(userId, normalizedSkuIds)
+                : checkoutMapper.findCartFacts(userId, normalizedSkuIds);
         if (facts.size() != normalizedSkuIds.size()) {
             throw new ResourceNotFoundException("cart item not found");
         }

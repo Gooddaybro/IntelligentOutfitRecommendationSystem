@@ -157,6 +157,29 @@ class BehaviorEventServiceTests {
     }
 
     @Test
+    void strictBusinessEventPropagatesPersistenceFailures() {
+        when(behaviorMapper.insert(any(BehaviorEvent.class))).thenThrow(new RuntimeException("database is down"));
+        BehaviorEventCommand command = new BehaviorEventCommand(
+                null,
+                10L,
+                "ORDER_CREATED",
+                null,
+                1002L,
+                2101L,
+                null,
+                null,
+                "ORD-1",
+                2,
+                Map.of()
+        );
+
+        assertThatThrownBy(() -> service.recordBusinessEventStrict(command))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("database is down");
+        verify(behaviorMapper).insert(any(BehaviorEvent.class));
+    }
+
+    @Test
     void frontendInteractionPersistsOnlyOwnedSelectedRecommendationItem() {
         when(behaviorMapper.insert(any(BehaviorEvent.class))).thenReturn(1);
         when(recommendationAttributionMapper.existsOwnedSelectedItem(
