@@ -39,6 +39,19 @@ class DemoConfigurationTests(unittest.TestCase):
 
         self.assertTrue(verifier.is_file())
 
+    def test_backend_maven_wrapper_uses_unix_line_endings_for_linux_image(self) -> None:
+        wrapper = (PROJECT_DIR / "backend" / "mvnw").read_bytes()
+        attributes = (PROJECT_DIR / ".gitattributes").read_text(encoding="utf-8")
+
+        self.assertNotIn(b"\r\n", wrapper)
+        self.assertIn("backend/mvnw text eol=lf", attributes)
+
+    def test_backend_image_is_built_once_for_web_and_worker_services(self) -> None:
+        compose = (PROJECT_DIR / "docker-compose.demo.yml").read_text(encoding="utf-8")
+
+        self.assertEqual(2, compose.count("image: intelligent-outfit-backend:demo"))
+        self.assertEqual(1, compose.count("context: ./backend"))
+
 
 if __name__ == "__main__":
     unittest.main()
