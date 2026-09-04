@@ -1,50 +1,182 @@
-name: Java CI
+name: Layered CI
 
 on:
   push:
-    branches: [ master, main ]  # 建议同时适配 master 和 main
+    branches: [master, main]
   pull_request:
-    branches: [ master, main ]
+    branches: [master, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: layered-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
+  changes:
     runs-on: ubuntu-latest
-    timeout-minutes: 15  #增加超时控制，防止 Maven 下载/测试卡死浪费额度
-
-    #  如果你的单元测试依赖真实的 MySQL 容器，请取消下面 services 的注释：
-    # services:
-    #   mysql:
-    #     image: mysql:8.0
-    #     env:
-    #       MYSQL_ROOT_PASSWORD: root
-    #       MYSQL_DATABASE: testdb
-    #     ports:
-    #       - 3306:3306
-    #     options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
-
+    timeout-minutes: 5
+    outputs:
+      container: ${{ steps.filter.outputs.container }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            container:
+              - "backend/**"
+              - "frontend/**"
+              - "contracts/**"
+              - ".services/**"
+              - "docker-compose*.yml"
+              - ".env*.example"
+              - "scripts/**"
 
+  shared-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out integration repository
+        uses: actions/checkout@v4
+      - id: python-revision
+        name: Read compatible Python revision
+        shell: bash
+        run: echo "sha=$(tr -d '[:space:]' < .services/python-revision)" >> "$GITHUB_OUTPUT"
+      - name: Check out compatible Python service
+        uses: actions/checkout@v4
+        with:
+          repository: Gooddaybro/python-LangChainRAG
+          ref: ${{ steps.python-revision.outputs.sha }}
+          path: _services/python-ai
       - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: '21'
-          cache: 'maven'
-          # 明确指定 pom.xml 的路径，避免多模块/子目录下 setup-java 找不到 cache 规则
-          cache-dependency-path: 'backend/pom.xml'
-
-      - name: Make Maven wrapper executable
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            _services/python-ai/requirements.txt
+            _services/python-ai/requirements-dev.txt
+      - name: Install Python dependencies
+        working-directory: _services/python-ai
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+      - name: Verify Python contracts
+        working-directory: _services/python-ai
+        env:
+          PYTHON_DOTENV_DISABLED: "1"
+          OUTFIT_CONTRACT_ROOT: ${{ github.workspace }}/contracts
+        run: python -m pytest -q tests/test_shared_contract.py tests/test_rag_rebuild_contract.py
+      - name: Verify Java contracts
         working-directory: backend
-        run: chmod +x mvnw
+        run: |
+          chmod +x mvnw
+          ./mvnw -B -ntp -Dtest=SharedJavaPythonContractTests test
 
-      - name: Run verification
+  backend-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+      - name: Maven verify
         working-directory: backend
         env:
           RUN_MYSQL_TESTS: "true"
-        # 优化 Maven 运行参数：
-        # -B (Batch mode): 禁用交互式日志，格式更干净
-        # -ntp (No Transfer Progress): 屏蔽依赖下载时的巨量进度条刷屏（提升 CI 日志可读性和执行速度）
-        # clean verify: 保证编译与测试环境纯净
-        run: ./mvnw -B -ntp clean verify
+        run: |
+          chmod +x mvnw
+          ./mvnw -B -ntp clean verify
+
+  python-quality-and-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out integration repository
+        uses: actions/checkout@v4
+      - id: python-revision
+        name: Read compatible Python revision
+        shell: bash
+        run: echo "sha=$(tr -d '[:space:]' < .services/python-revision)" >> "$GITHUB_OUTPUT"
+      - name: Check out compatible Python service
+        uses: actions/checkout@v4
+        with:
+          repository: Gooddaybro/python-LangChainRAG
+          ref: ${{ steps.python-revision.outputs.sha }}
+          path: _services/python-ai
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            _services/python-ai/requirements.txt
+            _services/python-ai/requirements-dev.txt
+      - name: Install dependencies
+        working-directory: _services/python-ai
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+      - name: Python quality gate
+        working-directory: _services/python-ai
+        env:
+          PYTHON_DOTENV_DISABLED: "1"
+          OUTFIT_CONTRACT_ROOT: ${{ github.workspace }}/contracts
+        run: |
+          python -m compileall -q clothing_assistant tests
+          ruff check clothing_assistant tests
+          interrogate -v -i --fail-under=30 clothing_assistant
+          python -m pytest -q
+
+  frontend-test-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Unit tests
+        working-directory: frontend
+        run: npm test -- --run
+      - name: Production build
+        working-directory: frontend
+        run: npm run build
+
+  container-config-and-build:
+    needs: changes
+    if: needs.changes.outputs.container == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out integration repository
+        uses: actions/checkout@v4
+      - id: python-revision
+        name: Read compatible Python revision
+        shell: bash
+        run: echo "sha=$(tr -d '[:space:]' < .services/python-revision)" >> "$GITHUB_OUTPUT"
+      - name: Check out compatible Python service
+        uses: actions/checkout@v4
+        with:
+          repository: Gooddaybro/python-LangChainRAG
+          ref: ${{ steps.python-revision.outputs.sha }}
+          path: _services/python-ai
+      - name: Validate Compose and build application images
+        env:
+          PYTHON_AI_CONTEXT: ${{ github.workspace }}/_services/python-ai
+        run: |
+          docker compose --env-file .env.demo.example -f docker-compose.yml -f docker-compose.demo.yml config --quiet
+          docker compose --env-file .env.demo.example -f docker-compose.yml -f docker-compose.demo.yml build python-ai backend-web frontend

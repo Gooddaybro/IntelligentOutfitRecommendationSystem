@@ -1,0 +1,77 @@
+name: Cross-service Golden Path
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+    paths:
+      - ".services/python-revision"
+      - "contracts/**"
+      - "backend/**"
+      - "frontend/**"
+      - "scripts/run-golden-path.sh"
+      - "scripts/sanitize_logs.py"
+      - "docker-compose*.yml"
+      - ".env*.example"
+  schedule:
+    - cron: "20 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cross-service-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  golden-path:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out integration repository
+        uses: actions/checkout@v4
+      - id: python-revision
+        name: Read compatible Python revision
+        shell: bash
+        run: |
+          revision=$(tr -d '[:space:]' < .services/python-revision)
+          test "${#revision}" -eq 40
+          echo "sha=$revision" >> "$GITHUB_OUTPUT"
+      - name: Check out compatible Python service
+        uses: actions/checkout@v4
+        with:
+          repository: Gooddaybro/python-LangChainRAG
+          ref: ${{ steps.python-revision.outputs.sha }}
+          path: _services/python-ai
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install Playwright
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Run three clean full-stack golden paths
+        env:
+          ENV_FILE: ${{ github.workspace }}/.env.demo.example
+          PYTHON_AI_CONTEXT: ${{ github.workspace }}/_services/python-ai
+          GOLDEN_PATH_WAIT_SECONDS: "900"
+        run: |
+          for run in 1 2 3; do
+            echo "=== clean golden path $run/3 ==="
+            sh scripts/run-golden-path.sh
+          done
+      - name: Upload sanitized failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-service-failure-${{ github.run_id }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            artifacts/golden-path/
+            frontend/test-results/integration/

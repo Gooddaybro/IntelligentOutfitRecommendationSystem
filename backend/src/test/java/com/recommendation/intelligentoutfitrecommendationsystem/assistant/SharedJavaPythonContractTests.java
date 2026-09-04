@@ -114,8 +114,18 @@ class SharedJavaPythonContractTests {
     }
 
     private Path resolveSharedContractPath() {
+        String configuredRoot = System.getenv("OUTFIT_CONTRACT_ROOT");
+        if (configuredRoot != null && !configuredRoot.isBlank()) {
+            return Path.of(configuredRoot).resolve("java-python-chat/v1.fields.json").normalize();
+        }
+
         Path cwd = Path.of("").toAbsolutePath();
         for (Path current = cwd; current != null; current = current.getParent()) {
+            Path versioned = current.resolve("contracts/java-python-chat/v1.fields.json");
+            if (Files.exists(versioned)) {
+                return versioned;
+            }
+
             Path direct = current.resolve("outfit-project-contract/contracts/java-python-chat/v1.fields.json");
             if (Files.exists(direct)) {
                 return direct;
