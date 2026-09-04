@@ -7,6 +7,7 @@ Intelligent Outfit Recommendation System/
 ├── backend/          # Java Spring Boot backend
 ├── frontend/         # React + TypeScript + Vite frontend
 ├── scripts/          # Local demo entrypoints
+├── contracts/        # Versioned Java/Python and MQ contract snapshot
 ├── .env.demo.example # Non-secret Docker demo defaults
 ├── .env.daocloud.example # Docker demo defaults with DaoCloud image mirrors
 ├── docs/             # Development documents and contracts
@@ -90,6 +91,35 @@ Stop the demo and delete demo volumes:
 ```bash
 sh scripts/stop-demo.sh -v
 ```
+
+## Real Full-Stack Golden Path
+
+The integration gate starts the complete Compose stack from empty volumes and
+does not intercept browser HTTP. External model and embedding providers are
+replaced only at the Python provider-adapter boundary.
+
+Windows with DaoCloud mirrors:
+
+```powershell
+.\scripts\run-golden-path.ps1 -EnvFile .\.env.daocloud.example
+```
+
+Linux and GitHub Actions:
+
+```bash
+ENV_FILE=.env.demo.example sh scripts/run-golden-path.sh
+```
+
+Implementation, CI layers, pinned Python revision updates, and troubleshooting
+are documented in
+[`docs/development/full-stack-golden-path-and-layered-ci.md`](docs/development/full-stack-golden-path-and-layered-ci.md).
+
+## Layered CI
+
+Pull requests expose separate contract, Java, Python, frontend, and container
+jobs. The heavier cross-service workflow runs on the main branch, on a daily
+schedule, manually, and when compatibility-sensitive PR files change. The
+compatible Python commit is pinned in `.services/python-revision`.
 
 ## Backend
 

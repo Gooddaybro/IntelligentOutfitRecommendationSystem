@@ -665,12 +665,12 @@ npm run test:e2e
 → 验证订单商品和地址快照
 ```
 
-- [ ] 新增 `npm run test:e2e:integration`，只执行 `e2e/integration`。
-- [ ] integration 项目以已启动的 Compose 前端地址为 `baseURL`，不启动 Vite Mock 环境。
-- [ ] 黄金链路文件中禁止 `page.route`、HAR 回放和浏览器侧 API 伪造。
-- [ ] 现有 `npm run test:e2e` 保留为快速 Mock UI 回归。
-- [ ] 每次运行生成唯一用户名和幂等键，避免并行/重跑数据冲突。
-- [ ] 不断言自然语言逐字相等；断言 Python 返回的商品引用来自 Java 候选集、结构合法且可继续交易。
+- [x] 新增 `npm run test:e2e:integration`，只执行 `e2e/integration`。
+- [x] integration 项目以已启动的 Compose 前端地址为 `baseURL`，不启动 Vite Mock 环境。
+- [x] 黄金链路文件中禁止 `page.route`、HAR 回放和浏览器侧 API 伪造。
+- [x] 现有 `npm run test:e2e` 保留为快速 Mock UI 回归。
+- [x] 每次运行生成唯一用户名和幂等键，避免并行/重跑数据冲突。
+- [x] 不断言自然语言逐字相等；断言 Python 返回的商品引用来自 Java 候选集、结构合法且可继续交易。
 
 ### Task 6.2：在 Provider Adapter 注入确定性替身
 
@@ -686,21 +686,21 @@ npm run test:e2e
 - Modify: `docker-compose.demo.yml`
 - Modify: `.env.demo.example`
 
-- [ ] 为集成环境增加明确的 deterministic provider 配置，作用点位于 Kimi/Jina Adapter 内部。
-- [ ] 真实启动 FastAPI、LangGraph、Java HTTP client 和 SSE；只替换最外部模型/Embedding 供应商响应。
-- [ ] 替身根据固定输入返回结构化、可追踪结果，不绕过 Java 候选校验。
-- [ ] 普通生产 profile 禁止误启用 deterministic provider；仅 `test`/`integration` profile 可用。
-- [ ] Compose 使用已有镜像和服务，不重新创建容器化方案。
+- [x] 为集成环境增加明确的 deterministic provider 配置，作用点位于 Kimi/Jina Adapter 内部。
+- [x] 真实启动 FastAPI、LangGraph、Java HTTP client 和 SSE；只替换最外部模型/Embedding 供应商响应。
+- [x] 替身根据固定输入返回结构化、可追踪结果，不绕过 Java 候选校验。
+- [x] 普通生产 profile 禁止误启用 deterministic provider；仅 `test`/`integration` profile 可用。
+- [x] Compose 使用已有镜像和服务，不重新创建容器化方案。
 
 ### Task 6.3：增加关键断言和失败证据
 
-- [ ] 注册用户、地址、购物车、订单真实写入 MySQL。
-- [ ] 另一个用户不能使用该地址预览或下单。
-- [ ] 预览金额、下单金额和订单项金额来自服务端事实。
-- [ ] 相同幂等键重复提交只存在一个订单；改变地址后复用同键返回冲突。
-- [ ] 订单详情地址来自快照；修改地址簿后订单详情不变。
-- [ ] Mock 支付重复请求/回调只产生一次有效状态迁移。
-- [ ] 失败时保存 Playwright trace、脱敏 Java/Python/Nginx 日志和 `docker compose ps`。
+- [x] 注册用户、地址、购物车、订单真实写入 MySQL。
+- [x] 另一个用户不能使用该地址预览或下单。
+- [x] 预览金额、下单金额和订单项金额来自服务端事实。
+- [x] 相同幂等键重复提交只存在一个订单；改变地址后复用同键返回冲突。
+- [x] 订单详情地址来自快照；修改地址簿后订单详情不变。
+- [x] Mock 支付重复请求/回调只产生一次有效状态迁移。
+- [x] 失败时保存 Playwright trace、脱敏 Java/Python/Nginx 日志和 `docker compose ps`。
 
 ### 阶段 6 验收
 
@@ -749,13 +749,13 @@ frontend-test-and-build
 container-config-and-build
 ```
 
-- [ ] `shared-contract` 同时运行 Python 和 Java 契约测试。
-- [ ] `backend-verify` 运行 Maven `verify`，包括 Checkstyle。
-- [ ] Python job 运行 pytest、Ruff、compileall 和现有文档覆盖检查。
-- [ ] frontend job 运行 Vitest 和 production build；Mock Playwright 可按耗时作为独立 job。
-- [ ] 容器 job 只验证已有 Dockerfile 构建和 Compose 配置，不推送镜像。
-- [ ] 使用官方 Maven/npm/pip 缓存、job timeout 和同分支并发取消。
-- [ ] 纯文档改动使用路径过滤跳过昂贵镜像构建，但共享契约文档/Schema 改动不得跳过契约 job。
+- [x] `shared-contract` 同时运行 Python 和 Java 契约测试。
+- [x] `backend-verify` 运行 Maven `verify`，包括 Checkstyle。
+- [x] Python job 运行 pytest、Ruff、compileall 和现有文档覆盖检查。
+- [x] frontend job 运行 Vitest 和 production build；Mock Playwright 可按耗时作为独立 job。
+- [x] 容器 job 只验证已有 Dockerfile 构建和 Compose 配置，不推送镜像。
+- [x] 使用官方 Maven/npm/pip 缓存、job timeout 和同分支并发取消。
+- [x] 纯文档改动使用路径过滤跳过昂贵镜像构建，但共享契约文档/Schema 改动不得跳过契约 job。
 
 ### Task 7.2：主分支、定时与手动跨服务工作流
 
@@ -765,14 +765,16 @@ container-config-and-build
 - Create: `.services/python-revision`
 - Modify: `scripts/run-golden-path.sh`
 
-- [ ] 触发条件为主分支 push、每日定时和 `workflow_dispatch`。
-- [ ] 使用 `.services/python-revision` 中的 commit SHA 检出已验证兼容的 Python 版本，不跟随随机主分支。
-- [ ] 升级 Python revision 的 PR 必须同时通过契约和三次黄金链路。
-- [ ] 从空卷启动 Compose，执行真实黄金链路，结束时始终清理容器和卷。
-- [ ] CI 失败上传脱敏日志和测试报告，禁止上传 `.env`、JWT、内部令牌、密码或模型 Key。
-- [ ] 共享契约目录必须进入可版本化仓库；若继续作为独立目录，使用固定 revision/submodule/package，不依赖开发者本地未提交文件。
+- [x] 触发条件为主分支 push、每日定时和 `workflow_dispatch`。
+- [x] 使用 `.services/python-revision` 中的 commit SHA 检出已验证兼容的 Python 版本，不跟随随机主分支。
+- [x] 升级 Python revision 的 PR 必须同时通过契约和三次黄金链路。
+- [x] 从空卷启动 Compose，执行真实黄金链路，结束时始终清理容器和卷。
+- [x] CI 失败上传脱敏日志和测试报告，禁止上传 `.env`、JWT、内部令牌、密码或模型 Key。
+- [x] 共享契约目录必须进入可版本化仓库；若继续作为独立目录，使用固定 revision/submodule/package，不依赖开发者本地未提交文件。
 
 ### 阶段 7 验收
+
+> 2026-09-04 本地实现与静态门禁已完成；黄金链路从空卷连续 3 次通过。GitHub Actions 的 PR/定时运行需要先将 Python 固定 SHA 与主仓库分支推送到远端，因此下面涉及远端 PR 展示和 artifact 下载的验收项保留为待远端验证。
 
 - [ ] 一个只改 Java 的 PR 能独立看到 Java 和契约结果。
 - [ ] 一个改变 Python DTO 的 PR 会被共享契约门禁捕获。
@@ -1013,14 +1015,14 @@ container-config-and-build
 - [ ] 收藏接口统一。
 - [ ] 未实现确认收货入口移除。
 - [ ] 地址、预览、下单切换真实后端。
-- [ ] 真实黄金链路连续通过三次。
+- [x] 真实黄金链路连续通过三次。
 
 ### Gate 4：固化为发布能力
 
-- [ ] PR 分层 CI。
-- [ ] Python revision 固定。
-- [ ] 主分支/定时跨服务工作流。
-- [ ] 脱敏失败证据。
+- [x] PR 分层 CI。
+- [x] Python revision 固定。
+- [x] 主分支/定时跨服务工作流。
+- [x] 脱敏失败证据。
 
 ### Gate 5：上线门禁
 

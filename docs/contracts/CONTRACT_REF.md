@@ -1,14 +1,15 @@
 # Python AI API Contract Reference
 
-契约文档见：
+CI 使用的版本化契约见：
 
 ```text
-D:/git/AI Clothing Shopping Assistant System/docs/contracts/python-ai-api-contract.md
+contracts/java-python-chat/v1.fields.json
+contracts/rag-rebuild/schemas/
 ```
 
-当前 Java 侧确认契约版本：v1
-确认日期：2026-06-01
-适配状态：Java 侧 `/chat` 请求 DTO 和响应 DTO 已适配 snake_case 契约
+当前 Java 侧确认契约版本：v1（DemandIntent 使用 demand-intent-v3）
+确认日期：2026-09-04
+适配状态：Java DTO、Python Pydantic Model、同步响应和 SSE 最终事件由同一份字段契约约束
 
 Java 侧适配设计文档见：
 
@@ -16,4 +17,4 @@ Java 侧适配设计文档见：
 docs/contracts/java-python-chat-contract-adaptation.md
 ```
 
-本文件只记录 Java 仓库当前确认的 Python AI API 契约版本，不复制契约正文。契约正文变更时，先修改 Python 仓库的单一真相源，再更新本文件的版本、确认日期和适配状态。
+兼容的 Python 提交固定在 `.services/python-revision`。修改字段契约或升级该 revision 时，必须同时通过 `shared-contract` 和三次真实跨服务黄金链路。测试可通过 `OUTFIT_CONTRACT_ROOT` 指向本目录，禁止依赖开发者机器上的未提交绝对路径。
