@@ -27,6 +27,7 @@ fi
 export PYTHON_AI_CONTEXT
 export AI_RUNTIME_ENV=integration
 export AI_DETERMINISTIC_PROVIDER=true
+export DEBUG_RESPONSE_ENABLED=true
 export MYSQL_HOST_PORT="${MYSQL_HOST_PORT:-0}"
 export REDIS_HOST_PORT="${REDIS_HOST_PORT:-0}"
 export RABBITMQ_AMQP_HOST_PORT="${RABBITMQ_AMQP_HOST_PORT:-0}"
@@ -70,4 +71,15 @@ rm -rf "$ARTIFACT_DIR"
 compose down --volumes --remove-orphans
 compose config --quiet
 compose up -d --build --wait --wait-timeout "${GOLDEN_PATH_WAIT_SECONDS:-600}"
-npm --prefix "$PROJECT_DIR/frontend" run test:e2e:integration
+mkdir -p "$ARTIFACT_DIR"
+PLAYWRIGHT_RAW_LOG="$ARTIFACT_DIR/playwright.raw.log"
+set +e
+npm --prefix "$PROJECT_DIR/frontend" run test:e2e:integration > "$PLAYWRIGHT_RAW_LOG" 2>&1
+playwright_status=$?
+set -e
+cat "$PLAYWRIGHT_RAW_LOG"
+python "$PROJECT_DIR/scripts/sanitize_logs.py" \
+  < "$PLAYWRIGHT_RAW_LOG" \
+  > "$ARTIFACT_DIR/playwright.log"
+rm -f "$PLAYWRIGHT_RAW_LOG"
+exit "$playwright_status"

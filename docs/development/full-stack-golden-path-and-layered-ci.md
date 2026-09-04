@@ -48,6 +48,8 @@ ENV_FILE=.env.demo.example sh scripts/run-golden-path.sh
 → 校验 Compose
 → 构建并启动真实应用镜像
 → 等待全部健康检查
+→ 重建 RAG 索引并校验 `chunkCount > 0`
+→ 执行真实 RAG 检索并校验 `source_count > 0`
 → 执行 Playwright
 → 失败时收集并脱敏证据
 → 删除容器和数据卷
@@ -133,9 +135,9 @@ AI_DETERMINISTIC_PROVIDER=true
 
 - `docker compose ps`
 - 脱敏 Compose 日志
-- Playwright screenshot、video 和 trace
+- 脱敏 Playwright 控制台日志
 
-不会上传 `.env` 文件。日志脱敏器会处理 Authorization、JWT、密码、URL 凭据、邮箱和手机号。
+不会上传 `.env`、Playwright screenshot、video 或 trace。浏览器原始证据可能含 JWT、Authorization Header 和用户输入，因此只保留经过同一脱敏器处理的文本日志；脱敏器会处理 Authorization、JWT、密码、URL 凭据、邮箱和手机号。
 
 ## 6. Python revision 升级顺序
 
@@ -157,7 +159,7 @@ AI_DETERMINISTIC_PROVIDER=true
 - 三份 RAG rebuild JSON Schema
 - RAG rebuild v1 说明
 
-Java 测试优先读取仓库内 `contracts/`，也支持 `OUTFIT_CONTRACT_ROOT`。Python 测试同样支持该环境变量，因此单仓库 CI 和跨仓库 CI 可以读取同一份契约。
+Java 测试优先读取仓库内 `contracts/`，也支持 `OUTFIT_CONTRACT_ROOT`。Python 仓库保留同版本快照，使固定 Python SHA 的独立 CI 不依赖主仓库可变分支；跨服务 CI 则通过 `OUTFIT_CONTRACT_ROOT` 强制 Python 验证主仓库当前契约，因此组合兼容性仍由主仓库快照裁决。
 
 ## 8. 本次发现并修复的问题
 
@@ -168,6 +170,9 @@ Java 测试优先读取仓库内 `contracts/`，也支持 `OUTFIT_CONTRACT_ROOT`
 | 本机 3307 端口冲突 | 本机已有 MySQL 监听 | 集成运行器给内部服务使用随机宿主机端口 |
 | 结算按钮一直禁用 | 测试加入购物车后没有勾选商品 | Playwright 明确勾选并断言按钮可用 |
 | 契约测试依赖开发者本地目录 | 契约目录没有进入应用仓库版本关系 | 将快照纳入主仓库并支持 `OUTFIT_CONTRACT_ROOT` |
+| 空镜像内 RAG 静默降级为空结果 | `.dockerignore` 排除了本地索引，启动时也未重建 | 增加 `rag-index-init` 和 `rag-retrieval-check`，分别断言 `chunkCount > 0` 与 `source_count > 0` |
+| CI 原始浏览器证据可能泄露认证和用户数据 | trace、video、screenshot 未经过文本脱敏器 | 远端只上传脱敏 Compose/Playwright 文本日志和容器状态 |
+| Python 独立 CI 读取主仓库可变 `master` | 同一 Python SHA 的结果可能随主分支变化 | Python 仓库纳入契约快照，独立 CI 只读取当前提交 |
 
 ## 9. 本地验证记录
 

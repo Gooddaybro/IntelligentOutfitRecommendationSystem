@@ -27,6 +27,7 @@ if (-not $PythonContext -or -not (Test-Path -LiteralPath (Join-Path $PythonConte
 $env:PYTHON_AI_CONTEXT = (Resolve-Path -LiteralPath $PythonContext).Path
 $env:AI_RUNTIME_ENV = "integration"
 $env:AI_DETERMINISTIC_PROVIDER = "true"
+$env:DEBUG_RESPONSE_ENABLED = "true"
 $randomHostPorts = @(
     "MYSQL_HOST_PORT",
     "REDIS_HOST_PORT",
@@ -77,8 +78,18 @@ try {
 
     Push-Location (Join-Path $projectDir "frontend")
     try {
-        & npm run test:e2e:integration
-        if ($LASTEXITCODE -ne 0) { throw "Playwright integration test failed with exit code $LASTEXITCODE" }
+        New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
+        $rawPlaywrightLog = Join-Path $artifactDir "playwright.raw.log"
+        & npm run test:e2e:integration *> $rawPlaywrightLog
+        $playwrightExitCode = $LASTEXITCODE
+        Get-Content -LiteralPath $rawPlaywrightLog | Write-Host
+        Get-Content -LiteralPath $rawPlaywrightLog -Raw |
+            python (Join-Path $PSScriptRoot "sanitize_logs.py") |
+            Set-Content -Encoding utf8 (Join-Path $artifactDir "playwright.log")
+        Remove-Item -LiteralPath $rawPlaywrightLog -Force
+        if ($playwrightExitCode -ne 0) {
+            throw "Playwright integration test failed with exit code $playwrightExitCode"
+        }
     } finally {
         Pop-Location
     }

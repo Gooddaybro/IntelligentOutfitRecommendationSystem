@@ -11,6 +11,7 @@ services:
     environment:
       AI_RUNTIME_ENV: ${AI_RUNTIME_ENV:-development}
       AI_DETERMINISTIC_PROVIDER: ${AI_DETERMINISTIC_PROVIDER:-false}
+      DEBUG_RESPONSE_ENABLED: ${DEBUG_RESPONSE_ENABLED:-false}
       APP_INTERNAL_API_TOKEN: ${APP_INTERNAL_API_TOKEN:-demo-internal-token-change-me}
       LANGGRAPH_CHECKPOINTER_BACKEND: ${LANGGRAPH_CHECKPOINTER_BACKEND:-postgres}
       LANGGRAPH_CHECKPOINTER_DSN: postgresql://${LANGGRAPH_POSTGRES_USERNAME:-langgraph}:${LANGGRAPH_POSTGRES_PASSWORD:-change-me-locally}@langgraph-postgres:5432/${LANGGRAPH_POSTGRES_DATABASE:-langgraph}
@@ -103,6 +104,44 @@ services:
         condition: service_healthy
     restart: "no"
 
+  rag-index-init:
+    image: ${CURL_IMAGE:-curlimages/curl:8.11.1}
+    container_name: intelligent_outfit_rag_index_init
+    entrypoint: ["sh", "-c"]
+    command:
+      - >
+        response=$$(curl --fail --silent --show-error --retry 20 --retry-delay 3
+        -X POST
+        -H "Content-Type: application/json"
+        -H "X-Internal-Token: ${APP_INTERNAL_API_TOKEN:-demo-internal-token-change-me}"
+        -d '{"taskId":"demo-rag-bootstrap","source":"LOCAL_GLOBAL_KNOWLEDGE"}'
+        http://python-ai:8000/internal/rag/rebuild) &&
+        printf '%s\n' "$$response" &&
+        printf '%s' "$$response" | grep -Eq '"chunkCount"[[:space:]]*:[[:space:]]*[1-9][0-9]*'
+    depends_on:
+      python-ai:
+        condition: service_healthy
+    restart: "no"
+
+  rag-retrieval-check:
+    image: ${CURL_IMAGE:-curlimages/curl:8.11.1}
+    container_name: intelligent_outfit_rag_retrieval_check
+    entrypoint: ["sh", "-c"]
+    command:
+      - >
+        response=$$(curl --fail --silent --show-error
+        -X POST
+        -H "Content-Type: application/json"
+        -H "X-Internal-Token: ${APP_INTERNAL_API_TOKEN:-demo-internal-token-change-me}"
+        -d '{"request_id":"demo-rag-probe","session_id":"demo-rag-probe","query":"这件衣服适合夏天吗？","debug":true}'
+        http://python-ai:8000/chat) &&
+        printf '%s\n' "$$response" &&
+        printf '%s' "$$response" | grep -Eq '"source_count"[[:space:]]*:[[:space:]]*[1-9][0-9]*'
+    depends_on:
+      rag-index-init:
+        condition: service_completed_successfully
+    restart: "no"
+
   backend-worker:
     image: intelligent-outfit-backend:demo
     container_name: intelligent_outfit_backend_worker
@@ -152,4 +191,8 @@ services:
       backend-web:
         condition: service_healthy
       search-index-init:
+        condition: service_completed_successfully
+      rag-index-init:
+        condition: service_completed_successfully
+      rag-retrieval-check:
         condition: service_completed_successfully

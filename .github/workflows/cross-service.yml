@@ -72,6 +72,4 @@ jobs:
           name: cross-service-failure-${{ github.run_id }}
           if-no-files-found: ignore
           retention-days: 7
-          path: |
-            artifacts/golden-path/
-            frontend/test-results/integration/
+          path: artifacts/golden-path/

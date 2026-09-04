@@ -645,11 +645,11 @@ docker compose ps
 Java 日志
 Python 日志
 Nginx 日志
-黄金链路测试报告
+脱敏后的黄金链路控制台日志
 必要的数据库诊断结果
 ```
 
-所有证据必须脱敏，不包含 `.env`、JWT、内部令牌、密码或模型 Key。
+所有证据必须脱敏，不包含 `.env`、JWT、内部令牌、密码或模型 Key。Playwright 原始 trace、video 和 screenshot 不经文本脱敏，因此不上传到 CI artifact。
 
 ## 12. 测试策略
 

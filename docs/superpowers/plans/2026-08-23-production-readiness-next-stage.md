@@ -700,7 +700,8 @@ npm run test:e2e
 - [x] 相同幂等键重复提交只存在一个订单；改变地址后复用同键返回冲突。
 - [x] 订单详情地址来自快照；修改地址簿后订单详情不变。
 - [x] Mock 支付重复请求/回调只产生一次有效状态迁移。
-- [x] 失败时保存 Playwright trace、脱敏 Java/Python/Nginx 日志和 `docker compose ps`。
+- [x] 失败时保存脱敏 Playwright/Java/Python/Nginx 文本日志和 `docker compose ps`；不上传可能含 JWT、Header 或用户数据的原始 trace、video、screenshot。
+- [x] 空卷启动时重建 RAG 索引，并以 `chunkCount > 0` 和真实检索 `source_count > 0` 阻止向量链路静默降级。
 
 ### 阶段 6 验收
 
