@@ -8,6 +8,8 @@ frontend/coverage/
 frontend/test-results/
 frontend/playwright-report/
 frontend/*.tsbuildinfo
+__pycache__/
+*.py[cod]
 .superpowers/
 .worktrees/
 !**/src/main/**/target/

@@ -3,8 +3,21 @@ set -eu
 
 PROJECT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 ENV_FILE="${ENV_FILE:-$PROJECT_DIR/.env}"
-PYTHON_AI_CONTEXT="${PYTHON_AI_CONTEXT:-$PROJECT_DIR/../AI-Clothing-Shopping-Assistant-System}"
 DRY_RUN=false
+
+if [ -z "${PYTHON_AI_CONTEXT:-}" ]; then
+  for candidate in \
+    "$PROJECT_DIR/../AI Clothing Shopping Assistant System" \
+    "$PROJECT_DIR/../AI-Clothing-Shopping-Assistant-System"
+  do
+    if [ -f "$candidate/Dockerfile" ]; then
+      PYTHON_AI_CONTEXT=$candidate
+      break
+    fi
+  done
+fi
+
+PYTHON_AI_CONTEXT="${PYTHON_AI_CONTEXT:-$PROJECT_DIR/../AI Clothing Shopping Assistant System}"
 
 if [ "${1:-}" = "--dry-run" ]; then
   DRY_RUN=true
@@ -16,7 +29,7 @@ fi
 
 if [ ! -f "$PYTHON_AI_CONTEXT/Dockerfile" ]; then
   echo "Python AI Dockerfile not found: $PYTHON_AI_CONTEXT/Dockerfile" >&2
-  echo "Clone AI-Clothing-Shopping-Assistant-System beside this repository or set PYTHON_AI_CONTEXT." >&2
+  echo "Clone the Python repository beside this repository or set PYTHON_AI_CONTEXT." >&2
   exit 1
 fi
 

@@ -3,7 +3,7 @@ set -eu
 
 PROJECT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 ENV_FILE="${ENV_FILE:-$PROJECT_DIR/.env}"
-PYTHON_AI_CONTEXT="${PYTHON_AI_CONTEXT:-$PROJECT_DIR/../AI-Clothing-Shopping-Assistant-System}"
+PYTHON_AI_CONTEXT="${PYTHON_AI_CONTEXT:-$PROJECT_DIR/../AI Clothing Shopping Assistant System}"
 
 if [ ! -f "$ENV_FILE" ]; then
   ENV_FILE="$PROJECT_DIR/.env.demo.example"

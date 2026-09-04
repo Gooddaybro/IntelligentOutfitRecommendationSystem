@@ -1,7 +1,7 @@
 services:
   python-ai:
     build:
-      context: ${PYTHON_AI_CONTEXT:-../AI-Clothing-Shopping-Assistant-System}
+      context: "${PYTHON_AI_CONTEXT:-../AI Clothing Shopping Assistant System}"
       args:
         PYTHON_BASE_IMAGE: ${PYTHON_BASE_IMAGE:-python:3.12-slim}
         PIP_INDEX_URL: ${PIP_INDEX_URL:-}
