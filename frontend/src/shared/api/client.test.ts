@@ -48,6 +48,34 @@ describe("order api client", () => {
   });
 });
 
+describe("favorite api client", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it("uses the unified favorites routes and JSON request body", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve(JSON.stringify({ data: [] }))
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.favorites();
+    await api.addFavorite(1001);
+    await api.removeFavorite(1001);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/favorites", expect.anything());
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/favorites", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ spuId: 1001 })
+    }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/favorites/1001", expect.objectContaining({
+      method: "DELETE"
+    }));
+  });
+});
+
 describe("payment api client", () => {
   beforeEach(() => {
     localStorage.clear();

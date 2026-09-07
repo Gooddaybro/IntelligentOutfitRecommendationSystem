@@ -1,18 +1,25 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.favorite.dto;
 
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+
 /**
  * 收藏新增请求体。
  *
- * 当前收藏接口主要通过路径参数接收商品 ID，该 DTO 保留给后续请求体方式扩展。
+ * 商城收藏新增接口的请求体。
+ *
+ * SPU 由客户端选择，但用户身份只从 JWT 中取得，避免请求体越过当前用户边界。
  */
 public class FavoriteAddRequest {
-    private Long productId;
+    @NotNull
+    @Positive
+    private Long spuId;
 
-    public Long getProductId() {
-        return productId;
+    public Long getSpuId() {
+        return spuId;
     }
 
-    public void setProductId(Long productId) {
-        this.productId = productId;
+    public void setSpuId(Long spuId) {
+        this.spuId = spuId;
     }
 }

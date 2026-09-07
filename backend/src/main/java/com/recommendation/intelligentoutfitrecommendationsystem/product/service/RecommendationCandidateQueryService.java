@@ -27,6 +27,7 @@ import java.time.Duration;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -133,6 +134,30 @@ public class RecommendationCandidateQueryService {
                 lookup.snapshots(), normalizedQuery.getBudgetMax(), lookup.preserveSnapshotOrder());
         recordRecallMetrics(lookup, candidates.size(), elapsed(startedNanos));
         return candidates;
+    }
+
+    /**
+     * 为商城内已确定的 SPU 补齐当前可展示和可购买的商品事实。
+     *
+     * 收藏模块只持久化用户与 SPU 的关系；这里复用候选商品的快照和实时价格、库存补齐规则，
+     * 避免收藏列表返回关系表字段而让前端无法展示商品。
+     *
+     * @param spuIds 按调用方业务顺序排列的 SPU 标识
+     * @return 每个仍可购买 SPU 的一个商品候选，保持传入 SPU 顺序
+     */
+    public List<RecommendationCandidate> findCandidatesBySpuIds(List<Long> spuIds) {
+        if (spuIds == null || spuIds.isEmpty()) {
+            return List.of();
+        }
+        List<RecommendationCandidateSnapshot> snapshots = orderSnapshotsBySpuIds(
+                productMapper.findRecommendationCandidateSnapshotsBySpuIds(
+                        new RecommendationCandidateQuery(), spuIds),
+                spuIds);
+        Map<Long, RecommendationCandidate> candidatesBySpuId = new LinkedHashMap<>();
+        for (RecommendationCandidate candidate : hydrateRecommendationCandidates(snapshots, null, true)) {
+            candidatesBySpuId.putIfAbsent(candidate.getSpuId(), candidate);
+        }
+        return List.copyOf(candidatesBySpuId.values());
     }
 
     private boolean shouldUseEsRecall(RecommendationCandidateQuery query) {
