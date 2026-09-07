@@ -601,10 +601,12 @@ POST   /api/favorites          { "spuId": 1001 }
 DELETE /api/favorites/{spuId}
 ```
 
-- [ ] 后端基路径从 `/favorites` 统一为 `/api/favorites`。
-- [ ] 补列表接口，结果只包含当前用户收藏。
-- [ ] POST 统一使用 JSON body，DELETE 使用 path parameter；前后端测试采用同一形式。
-- [ ] 收藏不存在时的删除语义固定并测试，不让 Mock 和真实实现产生两种行为。
+- [x] 后端基路径从 `/favorites` 统一为 `/api/favorites`。
+- [x] 补列表接口，结果只包含当前用户收藏。
+- [x] POST 统一使用 JSON body，DELETE 使用 path parameter；前后端测试采用同一形式。
+- [x] 收藏不存在时的删除语义固定并测试，不让 Mock 和真实实现产生两种行为。
+
+**Task 5.1 收口说明：** 收藏接口返回关系优先的商品展示投影；下架或缺货商品仍可见、可删除，价格、库存和可用状态使用一致口径。可选 `recommendationId` 归因继续保留，未知 SPU 返回 404，Mock 会随当前商品状态和库存同步变化。后端针对性测试 22 项、前端 90 项及生产构建通过，独立复审结论为 Critical 0、Important 0、Assessment `Yes`。
 
 ### Task 5.2：确认收货能力做明确取舍
 
