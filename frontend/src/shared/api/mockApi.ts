@@ -115,8 +115,21 @@ let adminAuditLogRows = createAdminAuditLogs();
 
 function favoriteItems(): FavoriteItem[] {
   return Array.from(favoriteSpuIds).reverse().flatMap((spuId) => {
-    const product = catalog.find((item) => item.spuId === spuId);
-    return product ? [product] : [];
+    const products = catalog.filter((item) => item.spuId === spuId);
+    if (!products.length) return [];
+
+    const purchasableSkus = products.filter((item) => (item.availableStock ?? 0) > 0);
+    const displaySkus = purchasableSkus.length ? purchasableSkus : products;
+    const product = products[0];
+    return [{
+      spuId: product.spuId,
+      name: product.name,
+      categoryName: product.categoryName,
+      mainImageUrl: product.mainImageUrl,
+      salePrice: Math.min(...displaySkus.map((item) => item.salePrice)),
+      availabilityStatus: purchasableSkus.length ? "available" : "unavailable",
+      totalAvailableStock: purchasableSkus.reduce((sum, item) => sum + Math.max(item.availableStock ?? 0, 0), 0)
+    }];
   });
 }
 

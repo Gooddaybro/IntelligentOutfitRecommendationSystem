@@ -111,9 +111,9 @@ export type FavoriteItem = {
   name: string;
   categoryName: string;
   mainImageUrl?: string;
-  salePrice: number;
-  availabilityStatus?: "available" | "unavailable";
-  totalAvailableStock?: number;
+  salePrice: number | null;
+  availabilityStatus: "available" | "unavailable";
+  totalAvailableStock: number;
 };
 
 export type RecommendedItem = {

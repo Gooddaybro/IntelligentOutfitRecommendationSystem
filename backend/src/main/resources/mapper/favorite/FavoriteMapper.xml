@@ -54,6 +54,11 @@
         收藏页面展示用户已保存的 SPU，而非推荐候选池。
         因此不按上架或库存过滤；availability_status 仅向前端说明当前是否可购买，
         仍要返回下架和缺货项以便用户识别、保留或删除收藏。
+
+        可购买时，sale_price 是上架 SPU 中库存大于零的上架 SKU 最低售价；
+        不可购买时回退到全部 SKU 的最低目录价，仅作展示，不表示可下单。
+        没有 SKU 的历史收藏没有可展示价格，sale_price 返回 NULL；库存仅统计可购买 SPU
+        下上架 SKU 的非负可用库存，避免下架 SPU 出现与状态矛盾的库存数字。
     -->
     <select id="selectFavoriteProductsByUserId"
             resultType="com.recommendation.intelligentoutfitrecommendationsystem.favorite.model.FavoriteProduct">
@@ -62,17 +67,27 @@
             p.name,
             c.name AS category_name,
             p.main_image_url,
-            MIN(s.sale_price) AS sale_price,
+            COALESCE(
+                MIN(CASE
+                    WHEN p.status = 'on_sale'
+                        AND s.status = 'on_sale'
+                        AND COALESCE(i.available_stock, 0) > 0 THEN s.sale_price
+                END),
+                MIN(s.sale_price)
+            ) AS sale_price,
             CASE
                 WHEN p.status = 'on_sale'
                     AND COALESCE(SUM(CASE
-                        WHEN s.status = 'on_sale' THEN COALESCE(i.available_stock, 0)
+                        WHEN s.status = 'on_sale' AND COALESCE(i.available_stock, 0) > 0
+                            THEN i.available_stock
                         ELSE 0
                     END), 0) > 0 THEN 'available'
                 ELSE 'unavailable'
             END AS availability_status,
             COALESCE(SUM(CASE
-                WHEN s.status = 'on_sale' THEN COALESCE(i.available_stock, 0)
+                WHEN p.status = 'on_sale'
+                    AND s.status = 'on_sale'
+                    AND COALESCE(i.available_stock, 0) > 0 THEN i.available_stock
                 ELSE 0
             END), 0) AS total_available_stock
         FROM user_favorite uf

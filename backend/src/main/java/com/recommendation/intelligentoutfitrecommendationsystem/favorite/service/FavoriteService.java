@@ -52,7 +52,7 @@ public class FavoriteService {
      *
      * @param userId JWT 中解析出的当前用户标识
      * @param spuId 要收藏的商品 SPU 标识
-     * @param recommendationId 可选的已验证推荐归因标识
+     * @param recommendationId 交由下游归因服务验证归属的可选推荐标识
      * @return 当前用户更新后的完整收藏列表
      * @throws ResourceNotFoundException 当 SPU 不存在时抛出
      */

@@ -29,6 +29,15 @@ describe("前端演示数据接口", () => {
     expect((await mockApi.favorites()).map((item) => item.spuId)).toEqual([1001, 1003, 1002]);
   });
 
+  it("收藏投影显式包含当前可购买性和库存", async () => {
+    const [favorite] = await mockApi.favorites();
+
+    expect(favorite).toEqual(expect.objectContaining({
+      availabilityStatus: "available",
+      totalAvailableStock: expect.any(Number)
+    }));
+  });
+
   it("根据地址和购物袋生成结算预览并更新订单支付状态", async () => {
     const [sku] = await mockApi.recommendationCandidates({});
     await mockApi.addCartItem(sku.skuId, 2);
