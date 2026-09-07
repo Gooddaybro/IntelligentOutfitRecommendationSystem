@@ -3,7 +3,7 @@ package com.recommendation.intelligentoutfitrecommendationsystem.favorite.api;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.api.ApiResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.favorite.dto.FavoriteAddRequest;
 import com.recommendation.intelligentoutfitrecommendationsystem.favorite.service.FavoriteService;
-import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate;
+import com.recommendation.intelligentoutfitrecommendationsystem.favorite.model.FavoriteProduct;
 import com.recommendation.intelligentoutfitrecommendationsystem.security.CurrentUser;
 import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
@@ -34,22 +34,23 @@ public class FavoriteController {
     }
 
     @GetMapping
-    public ApiResponse<List<RecommendationCandidate>> listFavorites(Authentication authentication) {
+    public ApiResponse<List<FavoriteProduct>> listFavorites(Authentication authentication) {
         CurrentUser currentUser = CurrentUser.from(authentication);
         return ApiResponse.ok(favoriteService.listFavorites(currentUser.userId()));
     }
 
     @PostMapping
-    public ApiResponse<List<RecommendationCandidate>> addFavorite(
+    public ApiResponse<List<FavoriteProduct>> addFavorite(
             Authentication authentication,
             @Valid @RequestBody FavoriteAddRequest request
     ) {
         CurrentUser currentUser = CurrentUser.from(authentication);
-        return ApiResponse.ok(favoriteService.addFavorite(currentUser.userId(), request.getSpuId()));
+        return ApiResponse.ok(favoriteService.addFavorite(
+                currentUser.userId(), request.getSpuId(), request.getRecommendationId()));
     }
 
     @DeleteMapping("/{spuId}")
-    public ApiResponse<List<RecommendationCandidate>> deleteFavorite(
+    public ApiResponse<List<FavoriteProduct>> deleteFavorite(
             Authentication authentication,
             @PathVariable Long spuId
     ) {

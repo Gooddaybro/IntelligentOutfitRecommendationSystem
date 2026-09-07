@@ -3,10 +3,10 @@ package com.recommendation.intelligentoutfitrecommendationsystem.favorite.servic
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorEventCommand;
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorEventService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
 import com.recommendation.intelligentoutfitrecommendationsystem.favorite.mapper.FavoriteMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.favorite.model.FavoriteProduct;
 import com.recommendation.intelligentoutfitrecommendationsystem.favorite.model.UserFavorite;
-import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate;
-import com.recommendation.intelligentoutfitrecommendationsystem.product.service.RecommendationCandidateQueryService;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -23,38 +23,49 @@ public class FavoriteService {
 
     private final BehaviorEventService behaviorEventService;
 
-    private final RecommendationCandidateQueryService recommendationCandidateQueryService;
-
     public FavoriteService(
             FavoriteMapper favoriteMapper,
-            BehaviorEventService behaviorEventService,
-            RecommendationCandidateQueryService recommendationCandidateQueryService
+            BehaviorEventService behaviorEventService
     ) {
         this.favoriteMapper = favoriteMapper;
         this.behaviorEventService = behaviorEventService;
-        this.recommendationCandidateQueryService = recommendationCandidateQueryService;
     }
 
     /**
-     * 读取当前用户收藏，并将关系记录转换为商城页面可直接展示的商品候选。
+     * 读取当前用户的完整收藏展示列表。
      *
-     * 用户过滤必须先在收藏关系查询中完成，商品查询只负责补齐已获授权 SPU 的当前商品事实。
+     * 收藏关系与当前可购买性分离：下架或缺货商品仍会返回，保证用户始终可见并删除自己的收藏。
      *
      * @param userId JWT 中解析出的当前用户标识
-     * @return 当前用户仍可购买的收藏商品
+     * @return 当前用户按收藏时间倒序的商品展示投影
      */
-    public List<RecommendationCandidate> listFavorites(Long userId) {
+    public List<FavoriteProduct> listFavorites(Long userId) {
         validateUserId(userId);
-        return displayableFavorites(userId);
+        return favoriteMapper.selectFavoriteProductsByUserId(userId);
     }
 
-    public List<RecommendationCandidate> addFavorite(Long userId, Long spuId) {
+    /**
+     * 新增当前用户对 SPU 的收藏，并返回更新后的完整收藏列表。
+     *
+     * SPU 存在性在写入前校验，避免依赖外键异常向客户端泄漏为 500；重复收藏不重复写行为事件，
+     * 但仍以成功列表响应维持幂等体验。
+     *
+     * @param userId JWT 中解析出的当前用户标识
+     * @param spuId 要收藏的商品 SPU 标识
+     * @param recommendationId 可选的已验证推荐归因标识
+     * @return 当前用户更新后的完整收藏列表
+     * @throws ResourceNotFoundException 当 SPU 不存在时抛出
+     */
+    public List<FavoriteProduct> addFavorite(Long userId, Long spuId, String recommendationId) {
         validateUserId(userId);
         validateSpuId(spuId);
+        if (favoriteMapper.existsSpuById(spuId) == 0) {
+            throw new ResourceNotFoundException("product not found: " + spuId);
+        }
 
         UserFavorite existing = favoriteMapper.selectByUserIdAndSpuId(userId, spuId);
         if (existing != null) {
-            return displayableFavorites(userId);
+            return listFavorites(userId);
         }
         UserFavorite userFavorite = new UserFavorite();
         userFavorite.setUserId(userId);
@@ -73,24 +84,26 @@ public class FavoriteService {
                 null,
                 null,
                 null,
-                null
+                recommendationId
         ));
-        return displayableFavorites(userId);
+        return listFavorites(userId);
     }
 
-    public List<RecommendationCandidate> deleteFavorite(Long userId, Long spuId) {
+    /**
+     * 删除当前用户指定 SPU 的收藏，并返回更新后的完整收藏列表。
+     *
+     * 删除条件包含 userId，因此不会影响其他用户；没有对应关系时不报错，保持 DELETE 幂等。
+     *
+     * @param userId JWT 中解析出的当前用户标识
+     * @param spuId 要删除的商品 SPU 标识
+     * @return 当前用户删除后的完整收藏列表
+     */
+    public List<FavoriteProduct> deleteFavorite(Long userId, Long spuId) {
         validateUserId(userId);
         validateSpuId(spuId);
 
         favoriteMapper.deleteByUserIdAndSpuId(userId, spuId);
-        return displayableFavorites(userId);
-    }
-
-    private List<RecommendationCandidate> displayableFavorites(Long userId) {
-        List<Long> spuIds = favoriteMapper.selectByUserId(userId).stream()
-                .map(UserFavorite::getSpuId)
-                .toList();
-        return recommendationCandidateQueryService.findCandidatesBySpuIds(spuIds);
+        return listFavorites(userId);
     }
 
     private void validateUserId(Long userId) {

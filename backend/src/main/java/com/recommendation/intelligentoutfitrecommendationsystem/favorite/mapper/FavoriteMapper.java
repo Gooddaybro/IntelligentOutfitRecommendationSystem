@@ -1,6 +1,7 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.favorite.mapper;
 
 import com.recommendation.intelligentoutfitrecommendationsystem.favorite.model.UserFavorite;
+import com.recommendation.intelligentoutfitrecommendationsystem.favorite.model.FavoriteProduct;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -17,6 +18,13 @@ public interface FavoriteMapper {
     UserFavorite selectByUserIdAndSpuId(@Param("userId") Long userId, @Param("spuId") Long spuId);
 
     List<UserFavorite> selectByUserId(@Param("userId") Long userId);
+
+    /**
+     * 读取当前用户的完整收藏展示投影。
+     *
+     * 查询不得过滤下架或缺货商品，否则用户无法看到并删除仍存在的收藏关系。
+     */
+    List<FavoriteProduct> selectFavoriteProductsByUserId(@Param("userId") Long userId);
 
     int insert(UserFavorite userFavorite);
 

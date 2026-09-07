@@ -10,6 +10,7 @@ import type {
   CartItem,
   CheckoutPreview,
   CurrentUserResponse,
+  FavoriteItem,
   OrderResponse,
   PaymentResponse,
   ProductDetail,
@@ -164,9 +165,9 @@ const httpApi = {
   addresses: () => requestJson<Address[]>("/api/addresses"),
   saveAddress: (address: Omit<Address, "id"> & { id?: number }) => requestJson<Address[]>(address.id ? `/api/addresses/${address.id}` : "/api/addresses", { method: address.id ? "PUT" : "POST", body: JSON.stringify(address) }),
   removeAddress: (id: number) => requestJson<Address[]>(`/api/addresses/${id}`, { method: "DELETE" }),
-  favorites: () => requestJson<RecommendationCandidate[]>("/api/favorites"),
-  addFavorite: (spuId: number) => requestJson<RecommendationCandidate[]>("/api/favorites", { method: "POST", body: JSON.stringify({ spuId }) }),
-  removeFavorite: (spuId: number) => requestJson<RecommendationCandidate[]>(`/api/favorites/${spuId}`, { method: "DELETE" }),
+  favorites: () => requestJson<FavoriteItem[]>("/api/favorites"),
+  addFavorite: (spuId: number, recommendationId?: string) => requestJson<FavoriteItem[]>("/api/favorites", { method: "POST", body: JSON.stringify({ spuId, recommendationId }) }),
+  removeFavorite: (spuId: number) => requestJson<FavoriteItem[]>(`/api/favorites/${spuId}`, { method: "DELETE" }),
   checkoutPreview: (skuIds: number[], addressId?: number) => requestJson<CheckoutPreview>("/api/checkout/preview", { method: "POST", body: JSON.stringify({ skuIds, addressId }) }),
   createOrder: (skuIds: number[], addressId: number, idempotencyKey: string) =>
     requestJson<OrderResponse>("/api/orders", {

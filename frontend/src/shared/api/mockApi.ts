@@ -4,6 +4,7 @@ import type {
   AssistantChatResponse,
   CartItem,
   CheckoutPreview,
+  FavoriteItem,
   OrderResponse,
   ProductDetail,
   RecommendationCandidate,
@@ -112,6 +113,13 @@ let adminOrderRows = createAdminOrders();
 let adminUserRows = createAdminUsers();
 let adminAuditLogRows = createAdminAuditLogs();
 
+function favoriteItems(): FavoriteItem[] {
+  return Array.from(favoriteSpuIds).reverse().flatMap((spuId) => {
+    const product = catalog.find((item) => item.spuId === spuId);
+    return product ? [product] : [];
+  });
+}
+
 function productDetail(spuId: number): ProductDetail {
   const sku = catalog.find((item) => item.spuId === spuId);
   if (!sku) throw new Error("商品不存在");
@@ -183,9 +191,16 @@ export const mockApi = {
     return [...addressBook];
   },
   removeAddress: async (id: number) => (addressBook = addressBook.filter((item) => item.id !== id)),
-  favorites: async () => Array.from(new Map(catalog.filter((item) => favoriteSpuIds.has(item.spuId)).map((item) => [item.spuId, item])).values()),
-  addFavorite: async (spuId: number) => { favoriteSpuIds.add(spuId); return Array.from(new Map(catalog.filter((item) => favoriteSpuIds.has(item.spuId)).map((item) => [item.spuId, item])).values()); },
-  removeFavorite: async (spuId: number) => { favoriteSpuIds.delete(spuId); return Array.from(new Map(catalog.filter((item) => favoriteSpuIds.has(item.spuId)).map((item) => [item.spuId, item])).values()); },
+  favorites: async (): Promise<FavoriteItem[]> => favoriteItems(),
+  addFavorite: async (spuId: number, _recommendationId?: string): Promise<FavoriteItem[]> => {
+    if (!catalog.some((item) => item.spuId === spuId)) throw new Error("商品不存在");
+    favoriteSpuIds.add(spuId);
+    return favoriteItems();
+  },
+  removeFavorite: async (spuId: number): Promise<FavoriteItem[]> => {
+    favoriteSpuIds.delete(spuId);
+    return favoriteItems();
+  },
   checkoutPreview: async (skuIds: number[], _addressId?: number): Promise<CheckoutPreview> => {
     const items = cartItems
       .filter((item) => skuIds.includes(item.skuId))

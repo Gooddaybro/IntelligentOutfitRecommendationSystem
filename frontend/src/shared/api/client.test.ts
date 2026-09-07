@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "./client";
 
-describe("order api client", () => {
-  beforeEach(() => {
-    localStorage.clear();
-    vi.restoreAllMocks();
-  });
+beforeEach(() => {
+  localStorage.clear();
+  vi.restoreAllMocks();
+});
 
+describe("order api client", () => {
   it("sends the required address and Idempotency-Key when creating an order", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -49,11 +49,6 @@ describe("order api client", () => {
 });
 
 describe("favorite api client", () => {
-  beforeEach(() => {
-    localStorage.clear();
-    vi.restoreAllMocks();
-  });
-
   it("uses the unified favorites routes and JSON request body", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -62,13 +57,13 @@ describe("favorite api client", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await api.favorites();
-    await api.addFavorite(1001);
+    await api.addFavorite(1001, "rec-1");
     await api.removeFavorite(1001);
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/favorites", expect.anything());
     expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/favorites", expect.objectContaining({
       method: "POST",
-      body: JSON.stringify({ spuId: 1001 })
+      body: JSON.stringify({ spuId: 1001, recommendationId: "rec-1" })
     }));
     expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/favorites/1001", expect.objectContaining({
       method: "DELETE"
@@ -77,11 +72,6 @@ describe("favorite api client", () => {
 });
 
 describe("payment api client", () => {
-  beforeEach(() => {
-    localStorage.clear();
-    vi.restoreAllMocks();
-  });
-
   it("creates payment through the unified endpoint without frontend amount", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -149,11 +139,6 @@ describe("payment api client", () => {
 });
 
 describe("current user profile api client", () => {
-  beforeEach(() => {
-    localStorage.clear();
-    vi.restoreAllMocks();
-  });
-
   it("updates shopping preferences through the /api/me boundary", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

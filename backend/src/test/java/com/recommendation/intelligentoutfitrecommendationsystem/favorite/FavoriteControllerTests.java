@@ -69,6 +69,38 @@ class FavoriteControllerTests {
     }
 
     @Test
+    void keepsUnavailableFavoritesInRecentOrderWithOneRowPerSpu() throws Exception {
+        AuthenticatedUser user = registerAndLogin(nextUsername());
+        insertFavorite(user.userId(), 1001L);
+        insertFavorite(user.userId(), 1136L);
+        insertFavorite(user.userId(), 1137L);
+
+        mockMvc.perform(get("/api/favorites")
+                        .header("Authorization", "Bearer " + user.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(3)))
+                .andExpect(jsonPath("$.data[0].spuId").value(1137))
+                .andExpect(jsonPath("$.data[0].availabilityStatus").value("unavailable"))
+                .andExpect(jsonPath("$.data[0].salePrice").isNumber())
+                .andExpect(jsonPath("$.data[1].spuId").value(1136))
+                .andExpect(jsonPath("$.data[1].availabilityStatus").value("unavailable"))
+                .andExpect(jsonPath("$.data[2].spuId").value(1001));
+    }
+
+    @Test
+    void rejectsUnknownPositiveSpuIdInsteadOfWritingAnInvalidFavorite() throws Exception {
+        AuthenticatedUser user = registerAndLogin(nextUsername());
+
+        mockMvc.perform(post("/api/favorites")
+                        .header("Authorization", "Bearer " + user.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"spuId\":999999}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("not_found"))
+                .andExpect(jsonPath("$.message").value("product not found: 999999"));
+    }
+
+    @Test
     void deletingMissingFavoriteIsIdempotentAndReturnsCurrentDisplayableList() throws Exception {
         AuthenticatedUser user = registerAndLogin(nextUsername());
         insertFavorite(user.userId(), 1001L);
@@ -79,6 +111,22 @@ class FavoriteControllerTests {
                 .andExpect(jsonPath("$.data", hasSize(1)))
                 .andExpect(jsonPath("$.data[0].spuId").value(1001))
                 .andExpect(jsonPath("$.data[0].name").isNotEmpty());
+    }
+
+    @Test
+    void deletesAnUnavailableFavoriteAfterItHasBeenReturnedToTheUser() throws Exception {
+        AuthenticatedUser user = registerAndLogin(nextUsername());
+        insertFavorite(user.userId(), 1137L);
+
+        mockMvc.perform(get("/api/favorites")
+                        .header("Authorization", "Bearer " + user.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].spuId").value(1137));
+
+        mockMvc.perform(delete("/api/favorites/{spuId}", 1137L)
+                        .header("Authorization", "Bearer " + user.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isEmpty());
     }
 
     private void insertFavorite(Long userId, Long spuId) {

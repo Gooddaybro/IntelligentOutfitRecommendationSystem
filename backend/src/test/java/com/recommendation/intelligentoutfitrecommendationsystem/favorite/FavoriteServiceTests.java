@@ -2,11 +2,11 @@ package com.recommendation.intelligentoutfitrecommendationsystem.favorite;
 
 import com.recommendation.intelligentoutfitrecommendationsystem.behavior.service.BehaviorEventService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.error.BadRequestException;
+import com.recommendation.intelligentoutfitrecommendationsystem.common.error.ResourceNotFoundException;
 import com.recommendation.intelligentoutfitrecommendationsystem.favorite.mapper.FavoriteMapper;
+import com.recommendation.intelligentoutfitrecommendationsystem.favorite.model.FavoriteProduct;
 import com.recommendation.intelligentoutfitrecommendationsystem.favorite.model.UserFavorite;
 import com.recommendation.intelligentoutfitrecommendationsystem.favorite.service.FavoriteService;
-import com.recommendation.intelligentoutfitrecommendationsystem.product.model.RecommendationCandidate;
-import com.recommendation.intelligentoutfitrecommendationsystem.product.service.RecommendationCandidateQueryService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -17,6 +17,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -31,9 +32,6 @@ class FavoriteServiceTests {
     @Mock
     private BehaviorEventService behaviorEventService;
 
-    @Mock
-    private RecommendationCandidateQueryService recommendationCandidateQueryService;
-
     @InjectMocks
     private FavoriteService service;
 
@@ -42,15 +40,14 @@ class FavoriteServiceTests {
         UserFavorite favorite = new UserFavorite();
         favorite.setUserId(10L);
         favorite.setSpuId(1001L);
-        RecommendationCandidate candidate = candidate(1001L);
+        FavoriteProduct favoriteProduct = favoriteProduct(1001L);
+        when(favoriteMapper.existsSpuById(1001L)).thenReturn(1);
         when(favoriteMapper.selectByUserIdAndSpuId(10L, 1001L)).thenReturn(null);
-        when(favoriteMapper.selectByUserId(10L)).thenReturn(List.of(favorite));
-        when(recommendationCandidateQueryService.findCandidatesBySpuIds(List.of(1001L)))
-                .thenReturn(List.of(candidate));
+        when(favoriteMapper.selectFavoriteProductsByUserId(10L)).thenReturn(List.of(favoriteProduct));
 
-        List<RecommendationCandidate> favorites = service.addFavorite(10L, 1001L);
+        List<FavoriteProduct> favorites = service.addFavorite(10L, 1001L, null);
 
-        assertThat(favorites).containsExactly(candidate);
+        assertThat(favorites).containsExactly(favoriteProduct);
         verify(behaviorEventService).recordBusinessEvent(argThat(command ->
                 "FAVORITE_ADD".equals(command.eventType())
                         && Long.valueOf(10L).equals(command.userId())
@@ -63,16 +60,40 @@ class FavoriteServiceTests {
         UserFavorite existing = new UserFavorite();
         existing.setUserId(10L);
         existing.setSpuId(1001L);
+        when(favoriteMapper.existsSpuById(1001L)).thenReturn(1);
         when(favoriteMapper.selectByUserIdAndSpuId(10L, 1001L)).thenReturn(existing);
-        when(favoriteMapper.selectByUserId(10L)).thenReturn(List.of(existing));
-        when(recommendationCandidateQueryService.findCandidatesBySpuIds(List.of(1001L)))
-                .thenReturn(List.of(candidate(1001L)));
+        when(favoriteMapper.selectFavoriteProductsByUserId(10L)).thenReturn(List.of(favoriteProduct(1001L)));
 
-        service.addFavorite(10L, 1001L);
+        service.addFavorite(10L, 1001L, null);
 
         verify(behaviorEventService, never()).recordBusinessEvent(argThat(command ->
                 "FAVORITE_ADD".equals(command.eventType())
         ));
+    }
+
+    @Test
+    void addFavoritePropagatesRecommendationAttribution() {
+        when(favoriteMapper.existsSpuById(1001L)).thenReturn(1);
+        when(favoriteMapper.selectByUserIdAndSpuId(10L, 1001L)).thenReturn(null);
+        when(favoriteMapper.selectFavoriteProductsByUserId(10L)).thenReturn(List.of());
+
+        service.addFavorite(10L, 1001L, "rec_favorite_test");
+
+        verify(behaviorEventService).recordBusinessEvent(argThat(command ->
+                "rec_favorite_test".equals(command.recommendationId())
+                        && "FAVORITE_ADD".equals(command.eventType())
+        ));
+    }
+
+    @Test
+    void addFavoriteRejectsUnknownSpuBeforeInsert() {
+        when(favoriteMapper.existsSpuById(999999L)).thenReturn(0);
+
+        assertThatThrownBy(() -> service.addFavorite(10L, 999999L, null))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("product not found: 999999");
+
+        verify(favoriteMapper, never()).insert(any());
     }
 
     @Test
@@ -95,24 +116,19 @@ class FavoriteServiceTests {
 
     @Test
     void deleteFavoriteIsIdempotentAndReturnsCurrentFavorites() {
-        UserFavorite remaining = new UserFavorite();
-        remaining.setUserId(10L);
-        remaining.setSpuId(1002L);
-        RecommendationCandidate candidate = candidate(1002L);
-        when(favoriteMapper.selectByUserId(10L)).thenReturn(List.of(remaining));
-        when(recommendationCandidateQueryService.findCandidatesBySpuIds(List.of(1002L)))
-                .thenReturn(List.of(candidate));
+        FavoriteProduct favoriteProduct = favoriteProduct(1002L);
+        when(favoriteMapper.selectFavoriteProductsByUserId(10L)).thenReturn(List.of(favoriteProduct));
 
-        List<RecommendationCandidate> favorites = service.deleteFavorite(10L, 1001L);
+        List<FavoriteProduct> favorites = service.deleteFavorite(10L, 1001L);
 
         verify(favoriteMapper).deleteByUserIdAndSpuId(10L, 1001L);
-        assertThat(favorites).containsExactly(candidate);
+        assertThat(favorites).containsExactly(favoriteProduct);
     }
 
-    private RecommendationCandidate candidate(Long spuId) {
-        RecommendationCandidate candidate = new RecommendationCandidate();
-        candidate.setSpuId(spuId);
-        candidate.setName("Favorite product");
-        return candidate;
+    private FavoriteProduct favoriteProduct(Long spuId) {
+        FavoriteProduct favoriteProduct = new FavoriteProduct();
+        favoriteProduct.setSpuId(spuId);
+        favoriteProduct.setName("Favorite product");
+        return favoriteProduct;
     }
 }

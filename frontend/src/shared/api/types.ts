@@ -106,6 +106,16 @@ export type RecommendationCandidate = {
   outfitRole?: OutfitRole;
 };
 
+export type FavoriteItem = {
+  spuId: number;
+  name: string;
+  categoryName: string;
+  mainImageUrl?: string;
+  salePrice: number;
+  availabilityStatus?: "available" | "unavailable";
+  totalAvailableStock?: number;
+};
+
 export type RecommendedItem = {
   spuId: number;
   skuId?: number;

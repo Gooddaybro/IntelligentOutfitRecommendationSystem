@@ -50,6 +50,41 @@
         ORDER BY created_at DESC, id DESC
     </select>
 
+    <!--
+        收藏页面展示用户已保存的 SPU，而非推荐候选池。
+        因此不按上架或库存过滤；availability_status 仅向前端说明当前是否可购买，
+        仍要返回下架和缺货项以便用户识别、保留或删除收藏。
+    -->
+    <select id="selectFavoriteProductsByUserId"
+            resultType="com.recommendation.intelligentoutfitrecommendationsystem.favorite.model.FavoriteProduct">
+        SELECT
+            uf.spu_id,
+            p.name,
+            c.name AS category_name,
+            p.main_image_url,
+            MIN(s.sale_price) AS sale_price,
+            CASE
+                WHEN p.status = 'on_sale'
+                    AND COALESCE(SUM(CASE
+                        WHEN s.status = 'on_sale' THEN COALESCE(i.available_stock, 0)
+                        ELSE 0
+                    END), 0) > 0 THEN 'available'
+                ELSE 'unavailable'
+            END AS availability_status,
+            COALESCE(SUM(CASE
+                WHEN s.status = 'on_sale' THEN COALESCE(i.available_stock, 0)
+                ELSE 0
+            END), 0) AS total_available_stock
+        FROM user_favorite uf
+        JOIN product_spu p ON p.id = uf.spu_id
+        JOIN category c ON c.id = p.category_id
+        LEFT JOIN product_sku s ON s.spu_id = p.id
+        LEFT JOIN inventory i ON i.sku_id = s.id
+        WHERE uf.user_id = #{userId}
+        GROUP BY uf.id, uf.spu_id, uf.created_at, p.id, p.status, p.name, c.name, p.main_image_url
+        ORDER BY uf.created_at DESC, uf.id DESC
+    </select>
+
     <delete id="deleteByUserIdAndSpuId">
         DELETE FROM user_favorite
         WHERE user_id = #{userId}

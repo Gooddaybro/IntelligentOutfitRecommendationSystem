@@ -18,6 +18,17 @@ describe("前端演示数据接口", () => {
     expect(await mockApi.addCartItem(sku.skuId, 1)).toEqual([expect.objectContaining({ skuId: sku.skuId, quantity: 1 })]);
   });
 
+  it("拒绝收藏不存在的商品", async () => {
+    await expect(mockApi.addFavorite(999999)).rejects.toThrow("商品不存在");
+  });
+
+  it("按最新收藏顺序返回去重商品", async () => {
+    await mockApi.addFavorite(1003);
+    await mockApi.addFavorite(1001);
+
+    expect((await mockApi.favorites()).map((item) => item.spuId)).toEqual([1001, 1003, 1002]);
+  });
+
   it("根据地址和购物袋生成结算预览并更新订单支付状态", async () => {
     const [sku] = await mockApi.recommendationCandidates({});
     await mockApi.addCartItem(sku.skuId, 2);
