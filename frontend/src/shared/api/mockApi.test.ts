@@ -38,6 +38,32 @@ describe("前端演示数据接口", () => {
     }));
   });
 
+  it("收藏投影跟随管理端的上下架和库存事实", async () => {
+    const [initialFavorite] = await mockApi.favorites();
+    const sku = (await mockApi.adminInventory()).find((item) => item.spuId === initialFavorite.spuId)!;
+
+    await mockApi.adminSetProductStatus(initialFavorite.spuId, "OFF_SHELF");
+    expect(await mockApi.favorites()).toEqual([expect.objectContaining({
+      spuId: initialFavorite.spuId,
+      salePrice: initialFavorite.salePrice,
+      availabilityStatus: "unavailable",
+      totalAvailableStock: 0
+    })]);
+
+    await mockApi.adminSetProductStatus(initialFavorite.spuId, "ON_SALE");
+    await mockApi.adminAdjustInventory(sku.skuId, 0, "售罄");
+    expect(await mockApi.favorites()).toEqual([expect.objectContaining({
+      availabilityStatus: "unavailable",
+      totalAvailableStock: 0
+    })]);
+
+    await mockApi.adminAdjustInventory(sku.skuId, sku.availableStock, "补货");
+    expect(await mockApi.favorites()).toEqual([expect.objectContaining({
+      availabilityStatus: "available",
+      totalAvailableStock: sku.availableStock
+    })]);
+  });
+
   it("根据地址和购物袋生成结算预览并更新订单支付状态", async () => {
     const [sku] = await mockApi.recommendationCandidates({});
     await mockApi.addCartItem(sku.skuId, 2);

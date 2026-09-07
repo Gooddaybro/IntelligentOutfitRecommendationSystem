@@ -113,23 +113,32 @@ let adminOrderRows = createAdminOrders();
 let adminUserRows = createAdminUsers();
 let adminAuditLogRows = createAdminAuditLogs();
 
+function resolveFavoriteItem(spuId: number): FavoriteItem | undefined {
+  const products = catalog.filter((item) => item.spuId === spuId);
+  const product = products[0];
+  if (!product) return undefined;
+
+  const isOnSale = adminProducts.find((item) => item.spuId === spuId)?.status === "ON_SALE";
+  const purchasableSkus = isOnSale
+    ? adminInventory.filter((item) => item.spuId === spuId && item.status === "ACTIVE" && item.availableStock > 0)
+    : [];
+  return {
+    spuId: product.spuId,
+    name: product.name,
+    categoryName: product.categoryName,
+    mainImageUrl: product.mainImageUrl,
+    salePrice: purchasableSkus.length
+      ? Math.min(...purchasableSkus.map((item) => item.salePrice))
+      : Math.min(...products.map((item) => item.salePrice)),
+    availabilityStatus: purchasableSkus.length ? "available" : "unavailable",
+    totalAvailableStock: purchasableSkus.reduce((sum, item) => sum + item.availableStock, 0)
+  };
+}
+
 function favoriteItems(): FavoriteItem[] {
   return Array.from(favoriteSpuIds).reverse().flatMap((spuId) => {
-    const products = catalog.filter((item) => item.spuId === spuId);
-    if (!products.length) return [];
-
-    const purchasableSkus = products.filter((item) => (item.availableStock ?? 0) > 0);
-    const displaySkus = purchasableSkus.length ? purchasableSkus : products;
-    const product = products[0];
-    return [{
-      spuId: product.spuId,
-      name: product.name,
-      categoryName: product.categoryName,
-      mainImageUrl: product.mainImageUrl,
-      salePrice: Math.min(...displaySkus.map((item) => item.salePrice)),
-      availabilityStatus: purchasableSkus.length ? "available" : "unavailable",
-      totalAvailableStock: purchasableSkus.reduce((sum, item) => sum + Math.max(item.availableStock ?? 0, 0), 0)
-    }];
+    const item = resolveFavoriteItem(spuId);
+    return item ? [item] : [];
   });
 }
 
