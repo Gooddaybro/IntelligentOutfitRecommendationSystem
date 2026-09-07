@@ -12,7 +12,7 @@ export function OrderDetailPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => { api.order(orderNo).then(setOrder).catch((value) => setError(value instanceof Error ? value.message : "订单加载失败")); }, [orderNo]);
-  async function act(action: "cancel" | "confirm") { setBusy(true); try { setOrder(action === "cancel" ? await api.cancelOrder(orderNo) : await api.confirmReceipt(orderNo)); } finally { setBusy(false); } }
+  async function act() { setBusy(true); try { setOrder(await api.cancelOrder(orderNo)); } finally { setBusy(false); } }
   if (error) return <div className="empty-note"><p>{error}</p><Link to="/app/orders">返回订单列表</Link></div>;
   if (!order) return <div className="empty-note"><p>正在加载订单详情…</p></div>;
   const pending = ["PENDING_PAYMENT", "UNPAID"].includes(order.status);
@@ -23,6 +23,6 @@ export function OrderDetailPage() {
       <section className="checkout-card"><h2><Package size={20}/>商品明细</h2>{order.items.map((item) => <article className="checkout-item" key={item.skuId}><span><strong>{item.productName}</strong><small>{item.color || "默认颜色"} · {item.size || "默认尺码"} × {item.quantity}</small></span><strong>¥{item.lineAmount.toFixed(2)}</strong></article>)}</section>
       {order.address && <section className="checkout-card"><h2><MapPin size={20}/>收货信息</h2><p>{order.address.recipientName}　{order.address.phone}</p><p>{order.address.province}{order.address.city}{order.address.district}{order.address.detail}</p></section>}
       <section className="checkout-card"><h2><Truck size={20}/>物流信息</h2>{order.shipment ? <><p>{order.shipment.carrier}　{order.shipment.trackingNo}</p><p>{order.shipment.latestEvent}</p></> : <p>{order.status === "PAID" ? "商家正在准备商品" : "暂无物流信息"}</p>}</section>
-    </div><aside className="order-actions"><p>订单金额</p><strong>¥{order.totalAmount.toFixed(2)}</strong>{pending && <Link className="primary-button" to={`/app/payments/${order.orderNo}`}>继续支付</Link>}{pending && <button disabled={busy} onClick={() => void act("cancel")}>取消订单</button>}{order.status === "SHIPPED" && <button className="primary-button" disabled={busy} onClick={() => void act("confirm")}>确认收货</button>}<button disabled={!['PAID','SHIPPED','COMPLETED'].includes(order.status)}><RotateCcw size={16}/>申请售后</button><Link to="/app/orders">返回订单列表</Link></aside></div>
+    </div><aside className="order-actions"><p>订单金额</p><strong>¥{order.totalAmount.toFixed(2)}</strong>{pending && <Link className="primary-button" to={`/app/payments/${order.orderNo}`}>继续支付</Link>}{pending && <button disabled={busy} onClick={() => void act()}>取消订单</button>}<button disabled={!['PAID','SHIPPED','COMPLETED'].includes(order.status)}><RotateCcw size={16}/>申请售后</button><Link to="/app/orders">返回订单列表</Link></aside></div>
   </main>;
 }

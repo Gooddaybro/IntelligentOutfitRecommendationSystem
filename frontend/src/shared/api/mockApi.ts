@@ -256,10 +256,6 @@ export const mockApi = {
     orders = orders.map((item) => item.orderNo === orderNo ? { ...item, status: "CANCELLED", closedAt: new Date().toISOString(), closeReason: "用户取消" } : item);
     return orders.find((item) => item.orderNo === orderNo)!;
   },
-  confirmReceipt: async (orderNo: string) => {
-    orders = orders.map((item) => item.orderNo === orderNo ? { ...item, status: "COMPLETED" } : item);
-    return orders.find((item) => item.orderNo === orderNo)!;
-  },
   pay: async (orderNo: string, channel = "MOCK") => ({ paymentNo: `PAY-${orderNo}`, orderNo, amount: orders.find((item) => item.orderNo === orderNo)?.totalAmount || 0, channel, status: "PENDING" }),
   payment: async (paymentNo: string) => ({ paymentNo, orderNo: paymentNo.replace("PAY-", ""), amount: 0, channel: "MOCK", status: "SUCCESS", paidAt: new Date().toISOString() }),
   payMock: async (orderNo: string) => {

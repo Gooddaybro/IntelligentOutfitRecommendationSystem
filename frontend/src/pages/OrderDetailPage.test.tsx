@@ -17,4 +17,15 @@ describe("OrderDetailPage", () => {
     await waitFor(() => expect(cancel).toHaveBeenCalledWith("DEMO-1"));
     expect(screen.getByText("已取消")).toBeVisible();
   });
+
+  it("运输中订单显示物流信息但不暴露确认收货入口", async () => {
+    vi.spyOn(api, "order").mockResolvedValue({ orderNo: "DEMO-2", status: "SHIPPED", totalAmount: 699, createdAt: "2026-07-16T10:00:00Z", items: [], shipment: { carrier: "顺丰速运", trackingNo: "SF123456789", latestEvent: "已到达杭州转运中心" } });
+
+    render(<MemoryRouter initialEntries={["/app/orders/DEMO-2"]}><Routes><Route path="/app/orders/:orderNo" element={<OrderDetailPage />} /></Routes></MemoryRouter>);
+
+    expect(await screen.findByRole("heading", { name: /订单 DEMO-2/ })).toBeVisible();
+    expect(screen.getByText(/顺丰速运.*SF123456789/)).toBeVisible();
+    expect(screen.getByText("已到达杭州转运中心")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "确认收货" })).not.toBeInTheDocument();
+  });
 });
