@@ -202,7 +202,7 @@ export type Address = {
   city: string;
   district: string;
   detail: string;
-  isDefault?: boolean;
+  isDefault: boolean;
 };
 
 export type AddressInput = Omit<Address, "id" | "isDefault">;

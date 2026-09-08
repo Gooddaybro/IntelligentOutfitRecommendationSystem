@@ -7,7 +7,7 @@ import { CheckoutPage } from "./CheckoutPage";
 
 const addresses: Address[] = [
   { id: 1, recipientName: "林木", phone: "13800000000", province: "浙江省", city: "杭州市", district: "西湖区", detail: "文一路 88 号", isDefault: true },
-  { id: 2, recipientName: "青木", phone: "13900000000", province: "浙江省", city: "杭州市", district: "余杭区", detail: "余杭塘路 99 号" }
+  { id: 2, recipientName: "青木", phone: "13900000000", province: "浙江省", city: "杭州市", district: "余杭区", detail: "余杭塘路 99 号", isDefault: false }
 ];
 
 const preview = {

@@ -13,13 +13,16 @@ export function AddressBookPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [operationBusy, setOperationBusy] = useState(true);
 
   useEffect(() => {
     void api.addresses()
       .then(setItems)
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "地址加载失败"))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        setLoading(false);
+        setOperationBusy(false);
+      });
   }, []);
 
   function openCreate() {
@@ -38,8 +41,9 @@ export function AddressBookPage() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (operationBusy) return;
     setError("");
-    setSubmitting(true);
+    setOperationBusy(true);
     try {
       setItems(editingId === null ? await api.createAddress(form) : await api.updateAddress(editingId, form));
       setForm(blank);
@@ -47,32 +51,36 @@ export function AddressBookPage() {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "保存地址失败");
     } finally {
-      setSubmitting(false);
+      setOperationBusy(false);
     }
   }
 
   async function mutate(operation: () => Promise<Address[]>) {
+    if (operationBusy) return;
     setError("");
+    setOperationBusy(true);
     try {
       setItems(await operation());
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "地址操作失败");
+    } finally {
+      setOperationBusy(false);
     }
   }
 
   return <div className="profile-panel">
-    <header><span><MapPin /></span><div><h2>收货地址</h2><p>确认订单时可以直接选择。</p></div><button onClick={openCreate}><Plus size={16} />新增地址</button></header>
+    <header><span><MapPin /></span><div><h2>收货地址</h2><p>确认订单时可以直接选择。</p></div><button disabled={operationBusy} onClick={openCreate}><Plus size={16} />新增地址</button></header>
     {loading && <p role="status">地址加载中...</p>}
     {error && <p role="alert">{error}</p>}
     {formOpen && <form className="address-form" onSubmit={(event) => void submit(event)}>
       {Object.entries(form).map(([key, value]) => <label key={key}>{labels[key as keyof AddressInput]}<input required value={value} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} /></label>)}
-      <button className="primary-button" disabled={submitting}>保存地址</button>
+      <button className="primary-button" disabled={operationBusy}>保存地址</button>
     </form>}
     <div className="address-list">{items.map((item) => <article key={item.id}>
       <MapPin /><div><strong>{item.recipientName}　{item.phone}{item.isDefault && <em>默认</em>}</strong><p>{item.province}{item.city}{item.district}{item.detail}</p></div>
-      {!item.isDefault && <button aria-label={`设为默认地址${item.recipientName}`} onClick={() => void mutate(() => api.setDefaultAddress(item.id))}>设为默认</button>}
-      <button aria-label={`编辑${item.recipientName}的地址`} onClick={() => openEdit(item)}>编辑</button>
-      <button aria-label={`删除${item.recipientName}的地址`} onClick={() => void mutate(() => api.deleteAddress(item.id))}><Trash2 size={16} /></button>
+      {!item.isDefault && <button disabled={operationBusy} aria-label={`设为默认地址${item.recipientName}`} onClick={() => void mutate(() => api.setDefaultAddress(item.id))}>设为默认</button>}
+      <button disabled={operationBusy} aria-label={`编辑${item.recipientName}的地址`} onClick={() => openEdit(item)}>编辑</button>
+      <button disabled={operationBusy} aria-label={`删除${item.recipientName}的地址`} onClick={() => void mutate(() => api.deleteAddress(item.id))}><Trash2 size={16} /></button>
     </article>)}</div>
   </div>;
 }

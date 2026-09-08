@@ -209,24 +209,29 @@ export const mockApi = {
   removeCartItem: async (skuId: number) => (cartItems = cartItems.filter((item) => item.skuId !== skuId)),
   addresses: async () => [...addressBook],
   createAddress: async (address: AddressInput) => {
-    addressBook = [...addressBook, { ...address, id: Date.now(), isDefault: addressBook.length === 0 }];
+    const created = { ...address, id: Math.max(0, ...addressBook.map((item) => item.id)) + 1, isDefault: addressBook.length === 0 };
+    addressBook = addressBook.length ? [addressBook[0], created, ...addressBook.slice(1)] : [created];
     return [...addressBook];
   },
   updateAddress: async (addressId: number, address: AddressInput) => {
     const existing = addressBook.find((item) => item.id === addressId);
     if (!existing) throw new Error("地址不存在");
-    addressBook = addressBook.map((item) => item.id === addressId ? { ...address, id: addressId, isDefault: existing.isDefault } : item);
+    const updated = { ...address, id: addressId, isDefault: existing.isDefault };
+    const remaining = addressBook.filter((item) => item.id !== addressId);
+    addressBook = existing.isDefault ? [updated, ...remaining] : [remaining[0], updated, ...remaining.slice(1)];
     return [...addressBook];
   },
   deleteAddress: async (addressId: number) => {
     const deleted = addressBook.find((item) => item.id === addressId);
+    if (!deleted) throw new Error("地址不存在");
     addressBook = addressBook.filter((item) => item.id !== addressId);
-    if (deleted?.isDefault && addressBook[0]) addressBook[0] = { ...addressBook[0], isDefault: true };
+    if (deleted.isDefault && addressBook[0]) addressBook = addressBook.map((item, index) => ({ ...item, isDefault: index === 0 }));
     return [...addressBook];
   },
   setDefaultAddress: async (addressId: number) => {
-    if (!addressBook.some((item) => item.id === addressId)) throw new Error("地址不存在");
-    addressBook = addressBook.map((item) => ({ ...item, isDefault: item.id === addressId }));
+    const selected = addressBook.find((item) => item.id === addressId);
+    if (!selected) throw new Error("地址不存在");
+    addressBook = [{ ...selected, isDefault: true }, ...addressBook.filter((item) => item.id !== addressId).map((item) => ({ ...item, isDefault: false }))];
     return [...addressBook];
   },
   favorites: async (): Promise<FavoriteItem[]> => favoriteItems(),

@@ -123,6 +123,27 @@ describe("前端演示数据接口", () => {
     expect(addresses).toEqual([expect.objectContaining({ id: initial.id, isDefault: true })]);
   });
 
+  it("按默认优先及最近创建或更新顺序维护地址列表", async () => {
+    const [first] = await mockApi.addresses();
+    const [, second] = await mockApi.createAddress({ recipientName: "小林", phone: "13900000000", province: "上海市", city: "上海市", district: "徐汇区", detail: "漕溪北路 1 号" });
+    const afterThirdCreate = await mockApi.createAddress({ recipientName: "小周", phone: "13700000000", province: "北京市", city: "北京市", district: "朝阳区", detail: "建国路 2 号" });
+    const third = afterThirdCreate.find((item) => item.recipientName === "小周")!;
+    expect(afterThirdCreate.map((item) => item.id)).toEqual([first.id, third.id, second.id]);
+
+    const updated = await mockApi.updateAddress(second.id, { recipientName: "小林", phone: "13900000000", province: "上海市", city: "上海市", district: "徐汇区", detail: "漕溪北路 9 号" });
+    expect(updated.map((item) => item.id)).toEqual([first.id, second.id, third.id]);
+
+    const defaulted = await mockApi.setDefaultAddress(third.id);
+    expect(defaulted.map((item) => [item.id, item.isDefault])).toEqual([[third.id, true], [first.id, false], [second.id, false]]);
+
+    const afterDelete = await mockApi.deleteAddress(third.id);
+    expect(afterDelete.map((item) => [item.id, item.isDefault])).toEqual([[first.id, true], [second.id, false]]);
+  });
+
+  it("删除不存在的地址时与后端一致地报错", async () => {
+    await expect(mockApi.deleteAddress(999)).rejects.toThrow("地址不存在");
+  });
+
   it("管理端概览、商品状态和库存调整共享同一份演示事实", async () => {
     const overview = await mockApi.adminOverview();
     const products = await mockApi.adminProducts();
