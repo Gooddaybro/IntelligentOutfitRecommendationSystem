@@ -235,7 +235,7 @@ export const mockApi = {
   setDefaultAddress: async (addressId: number) => {
     const selected = addressBook.find((item) => item.id === addressId);
     if (!selected) throw new Error("地址不存在");
-    addressBook = addressBook.map((item) => ({ ...item, isDefault: item.id === addressId }));
+    addressBook = [{ ...selected, isDefault: true }, ...addressBook.filter((item) => item.id !== addressId).map((item) => ({ ...item, isDefault: false }))];
     return addressesInDisplayOrder();
   },
   favorites: async (): Promise<FavoriteItem[]> => favoriteItems(),
