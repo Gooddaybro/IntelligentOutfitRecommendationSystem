@@ -205,6 +205,8 @@ export type Address = {
   isDefault?: boolean;
 };
 
+export type AddressInput = Omit<Address, "id" | "isDefault">;
+
 export type CheckoutPreviewItem = {
   skuId: number;
   spuId: number;

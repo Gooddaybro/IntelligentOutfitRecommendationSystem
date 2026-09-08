@@ -76,6 +76,53 @@ describe("前端演示数据接口", () => {
     expect((await mockApi.order(order.orderNo)).status).toBe("PAID");
   });
 
+  it("创建首个地址时自动设为默认地址", async () => {
+    const [initial] = await mockApi.addresses();
+    await mockApi.deleteAddress(initial.id);
+
+    const addresses = await mockApi.createAddress({
+      recipientName: "新用户",
+      phone: "13900000000",
+      province: "上海市",
+      city: "上海市",
+      district: "徐汇区",
+      detail: "漕溪北路 1 号"
+    });
+
+    expect(addresses).toEqual([expect.objectContaining({ recipientName: "新用户", isDefault: true })]);
+  });
+
+  it("设为默认地址时保持唯一默认地址", async () => {
+    const [, second] = await mockApi.createAddress({
+      recipientName: "小林",
+      phone: "13900000000",
+      province: "上海市",
+      city: "上海市",
+      district: "徐汇区",
+      detail: "漕溪北路 1 号"
+    });
+
+    const addresses = await mockApi.setDefaultAddress(second.id);
+
+    expect(addresses.filter((item) => item.isDefault)).toEqual([expect.objectContaining({ id: second.id })]);
+  });
+
+  it("删除默认地址时提升剩余地址", async () => {
+    const [initial, second] = await mockApi.createAddress({
+      recipientName: "小林",
+      phone: "13900000000",
+      province: "上海市",
+      city: "上海市",
+      district: "徐汇区",
+      detail: "漕溪北路 1 号"
+    });
+    await mockApi.setDefaultAddress(second.id);
+
+    const addresses = await mockApi.deleteAddress(second.id);
+
+    expect(addresses).toEqual([expect.objectContaining({ id: initial.id, isDefault: true })]);
+  });
+
   it("管理端概览、商品状态和库存调整共享同一份演示事实", async () => {
     const overview = await mockApi.adminOverview();
     const products = await mockApi.adminProducts();

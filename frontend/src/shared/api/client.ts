@@ -1,5 +1,6 @@
 import type {
   Address,
+  AddressInput,
   ApiResponse,
   AssistantChatRequest,
   AssistantChatResponse,
@@ -40,6 +41,11 @@ import type {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 const TOKEN_STORAGE_KEY = "ior.accessToken";
 const REFRESH_TOKEN_STORAGE_KEY = "ior.refreshToken";
+
+function addressBody(address: AddressInput) {
+  const { recipientName, phone, province, city, district, detail } = address;
+  return { recipientName, phone, province, city, district, detail };
+}
 
 export function getAccessToken(): string | null {
   return localStorage.getItem(TOKEN_STORAGE_KEY);
@@ -162,9 +168,17 @@ const httpApi = {
     requestJson<CartItem[]>(`/api/cart/items/${skuId}`, {
       method: "DELETE"
     }),
-  addresses: () => requestJson<Address[]>("/api/addresses"),
-  saveAddress: (address: Omit<Address, "id"> & { id?: number }) => requestJson<Address[]>(address.id ? `/api/addresses/${address.id}` : "/api/addresses", { method: address.id ? "PUT" : "POST", body: JSON.stringify(address) }),
-  removeAddress: (id: number) => requestJson<Address[]>(`/api/addresses/${id}`, { method: "DELETE" }),
+  addresses: () => requestJson<Address[]>("/api/addresses", { method: "GET" }),
+  createAddress: (address: AddressInput) => requestJson<Address[]>("/api/addresses", {
+    method: "POST",
+    body: JSON.stringify(addressBody(address))
+  }),
+  updateAddress: (addressId: number, address: AddressInput) => requestJson<Address[]>(`/api/addresses/${addressId}`, {
+    method: "PUT",
+    body: JSON.stringify(addressBody(address))
+  }),
+  deleteAddress: (addressId: number) => requestJson<Address[]>(`/api/addresses/${addressId}`, { method: "DELETE" }),
+  setDefaultAddress: (addressId: number) => requestJson<Address[]>(`/api/addresses/${addressId}/default`, { method: "PUT" }),
   favorites: () => requestJson<FavoriteItem[]>("/api/favorites"),
   addFavorite: (spuId: number, recommendationId?: string) => requestJson<FavoriteItem[]>("/api/favorites", { method: "POST", body: JSON.stringify({ spuId, recommendationId }) }),
   removeFavorite: (spuId: number) => requestJson<FavoriteItem[]>(`/api/favorites/${spuId}`, { method: "DELETE" }),

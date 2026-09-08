@@ -1,5 +1,6 @@
 import type {
   Address,
+  AddressInput,
   AssistantChatRequest,
   AssistantChatResponse,
   CartItem,
@@ -207,12 +208,27 @@ export const mockApi = {
   updateCartItem: async (skuId: number, quantity: number) => (cartItems = cartItems.map((item) => item.skuId === skuId ? { ...item, quantity } : item)),
   removeCartItem: async (skuId: number) => (cartItems = cartItems.filter((item) => item.skuId !== skuId)),
   addresses: async () => [...addressBook],
-  saveAddress: async (address: Omit<Address, "id"> & { id?: number }) => {
-    const saved = { ...address, id: address.id || Date.now() } as Address;
-    addressBook = address.id ? addressBook.map((item) => item.id === address.id ? saved : item) : [...addressBook, saved];
+  createAddress: async (address: AddressInput) => {
+    addressBook = [...addressBook, { ...address, id: Date.now(), isDefault: addressBook.length === 0 }];
     return [...addressBook];
   },
-  removeAddress: async (id: number) => (addressBook = addressBook.filter((item) => item.id !== id)),
+  updateAddress: async (addressId: number, address: AddressInput) => {
+    const existing = addressBook.find((item) => item.id === addressId);
+    if (!existing) throw new Error("地址不存在");
+    addressBook = addressBook.map((item) => item.id === addressId ? { ...address, id: addressId, isDefault: existing.isDefault } : item);
+    return [...addressBook];
+  },
+  deleteAddress: async (addressId: number) => {
+    const deleted = addressBook.find((item) => item.id === addressId);
+    addressBook = addressBook.filter((item) => item.id !== addressId);
+    if (deleted?.isDefault && addressBook[0]) addressBook[0] = { ...addressBook[0], isDefault: true };
+    return [...addressBook];
+  },
+  setDefaultAddress: async (addressId: number) => {
+    if (!addressBook.some((item) => item.id === addressId)) throw new Error("地址不存在");
+    addressBook = addressBook.map((item) => ({ ...item, isDefault: item.id === addressId }));
+    return [...addressBook];
+  },
   favorites: async (): Promise<FavoriteItem[]> => favoriteItems(),
   addFavorite: async (spuId: number, _recommendationId?: string): Promise<FavoriteItem[]> => {
     if (!catalog.some((item) => item.spuId === spuId)) throw new Error("商品不存在");

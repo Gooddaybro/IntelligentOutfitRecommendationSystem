@@ -71,6 +71,52 @@ describe("favorite api client", () => {
   });
 });
 
+describe("address api client", () => {
+  const address = {
+    id: 9,
+    userId: 1001,
+    recipientName: "林木",
+    phone: "13800000000",
+    province: "浙江省",
+    city: "杭州市",
+    district: "西湖区",
+    detail: "文一路 88 号",
+    isDefault: true
+  };
+
+  it("lists addresses through the unified route", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, text: () => Promise.resolve(JSON.stringify({ data: [] })) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.addresses();
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/addresses", expect.objectContaining({ method: "GET" }));
+  });
+
+  it("uses the five address routes and sends only address fields for create and update", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, text: () => Promise.resolve(JSON.stringify({ data: [] })) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.createAddress(address);
+    await api.updateAddress(address.id, address);
+    await api.deleteAddress(address.id);
+    await api.setDefaultAddress(address.id);
+
+    const body = JSON.stringify({
+      recipientName: "林木",
+      phone: "13800000000",
+      province: "浙江省",
+      city: "杭州市",
+      district: "西湖区",
+      detail: "文一路 88 号"
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/addresses", expect.objectContaining({ method: "POST", body }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/addresses/9", expect.objectContaining({ method: "PUT", body }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/addresses/9", expect.objectContaining({ method: "DELETE" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, "/api/addresses/9/default", expect.objectContaining({ method: "PUT" }));
+  });
+});
+
 describe("payment api client", () => {
   it("creates payment through the unified endpoint without frontend amount", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
