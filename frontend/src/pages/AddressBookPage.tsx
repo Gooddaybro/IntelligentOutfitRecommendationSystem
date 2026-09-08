@@ -73,7 +73,7 @@ export function AddressBookPage() {
     {loading && <p role="status">地址加载中...</p>}
     {error && <p role="alert">{error}</p>}
     {formOpen && <form className="address-form" onSubmit={(event) => void submit(event)}>
-      {Object.entries(form).map(([key, value]) => <label key={key}>{labels[key as keyof AddressInput]}<input required value={value} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} /></label>)}
+      {Object.entries(form).map(([key, value]) => <label key={key}>{labels[key as keyof AddressInput]}<input disabled={operationBusy} required value={value} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} /></label>)}
       <button className="primary-button" disabled={operationBusy}>保存地址</button>
     </form>}
     <div className="address-list">{items.map((item) => <article key={item.id}>

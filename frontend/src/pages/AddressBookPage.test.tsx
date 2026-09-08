@@ -166,6 +166,12 @@ describe("AddressBookPage", () => {
     const edit = screen.getByRole("button", { name: "编辑林木的地址" });
     const remove = screen.getByRole("button", { name: "删除林木的地址" });
     expect(screen.getByRole("button", { name: "保存地址" })).toBeDisabled();
+    expect(screen.getByLabelText("收货人")).toBeDisabled();
+    expect(screen.getByLabelText("手机号")).toBeDisabled();
+    expect(screen.getByLabelText("省份")).toBeDisabled();
+    expect(screen.getByLabelText("城市")).toBeDisabled();
+    expect(screen.getByLabelText("区县")).toBeDisabled();
+    expect(screen.getByLabelText("详细地址")).toBeDisabled();
     expect(add).toBeDisabled();
     expect(edit).toBeDisabled();
     expect(remove).toBeDisabled();

@@ -134,10 +134,10 @@ describe("前端演示数据接口", () => {
     expect(updated.map((item) => item.id)).toEqual([first.id, second.id, third.id]);
 
     const defaulted = await mockApi.setDefaultAddress(third.id);
-    expect(defaulted.map((item) => [item.id, item.isDefault])).toEqual([[third.id, true], [first.id, false], [second.id, false]]);
+    expect(defaulted.map((item) => [item.id, item.isDefault])).toEqual([[third.id, true], [second.id, false], [first.id, false]]);
 
     const afterDelete = await mockApi.deleteAddress(third.id);
-    expect(afterDelete.map((item) => [item.id, item.isDefault])).toEqual([[first.id, true], [second.id, false]]);
+    expect(afterDelete.map((item) => [item.id, item.isDefault])).toEqual([[second.id, true], [first.id, false]]);
   });
 
   it("删除不存在的地址时与后端一致地报错", async () => {

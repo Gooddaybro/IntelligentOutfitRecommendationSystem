@@ -114,6 +114,11 @@ let adminOrderRows = createAdminOrders();
 let adminUserRows = createAdminUsers();
 let adminAuditLogRows = createAdminAuditLogs();
 
+function addressesInDisplayOrder(): Address[] {
+  const defaultAddress = addressBook.find((item) => item.isDefault);
+  return defaultAddress ? [defaultAddress, ...addressBook.filter((item) => item.id !== defaultAddress.id)] : [...addressBook];
+}
+
 function resolveFavoriteItem(spuId: number): FavoriteItem | undefined {
   const products = catalog.filter((item) => item.spuId === spuId);
   const product = products[0];
@@ -207,32 +212,31 @@ export const mockApi = {
   },
   updateCartItem: async (skuId: number, quantity: number) => (cartItems = cartItems.map((item) => item.skuId === skuId ? { ...item, quantity } : item)),
   removeCartItem: async (skuId: number) => (cartItems = cartItems.filter((item) => item.skuId !== skuId)),
-  addresses: async () => [...addressBook],
+  addresses: async () => addressesInDisplayOrder(),
   createAddress: async (address: AddressInput) => {
     const created = { ...address, id: Math.max(0, ...addressBook.map((item) => item.id)) + 1, isDefault: addressBook.length === 0 };
-    addressBook = addressBook.length ? [addressBook[0], created, ...addressBook.slice(1)] : [created];
-    return [...addressBook];
+    addressBook = [created, ...addressBook];
+    return addressesInDisplayOrder();
   },
   updateAddress: async (addressId: number, address: AddressInput) => {
     const existing = addressBook.find((item) => item.id === addressId);
     if (!existing) throw new Error("地址不存在");
     const updated = { ...address, id: addressId, isDefault: existing.isDefault };
-    const remaining = addressBook.filter((item) => item.id !== addressId);
-    addressBook = existing.isDefault ? [updated, ...remaining] : [remaining[0], updated, ...remaining.slice(1)];
-    return [...addressBook];
+    addressBook = [updated, ...addressBook.filter((item) => item.id !== addressId)];
+    return addressesInDisplayOrder();
   },
   deleteAddress: async (addressId: number) => {
     const deleted = addressBook.find((item) => item.id === addressId);
     if (!deleted) throw new Error("地址不存在");
     addressBook = addressBook.filter((item) => item.id !== addressId);
     if (deleted.isDefault && addressBook[0]) addressBook = addressBook.map((item, index) => ({ ...item, isDefault: index === 0 }));
-    return [...addressBook];
+    return addressesInDisplayOrder();
   },
   setDefaultAddress: async (addressId: number) => {
     const selected = addressBook.find((item) => item.id === addressId);
     if (!selected) throw new Error("地址不存在");
-    addressBook = [{ ...selected, isDefault: true }, ...addressBook.filter((item) => item.id !== addressId).map((item) => ({ ...item, isDefault: false }))];
-    return [...addressBook];
+    addressBook = addressBook.map((item) => ({ ...item, isDefault: item.id === addressId }));
+    return addressesInDisplayOrder();
   },
   favorites: async (): Promise<FavoriteItem[]> => favoriteItems(),
   addFavorite: async (spuId: number, _recommendationId?: string): Promise<FavoriteItem[]> => {
