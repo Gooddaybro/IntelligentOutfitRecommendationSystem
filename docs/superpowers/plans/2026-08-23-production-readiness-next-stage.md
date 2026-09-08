@@ -618,8 +618,10 @@ DELETE /api/favorites/{spuId}
 - Verify: `backend/src/main/java/com/recommendation/intelligentoutfitrecommendationsystem/order/api/OrderController.java`
 
 - [ ] 若当前阶段需要完整订单生命周期，则实现 `POST /api/orders/{orderNo}/confirm-receipt`，校验当前用户、订单已发货和幂等状态迁移。
-- [ ] 若当前阶段没有发货状态和运营入口，则从前端移除确认收货按钮和 client 方法，不保留会返回 404 的假入口。
-- [ ] 本计划默认采用第二种最小方案：先移除前端假入口；真实物流/收货在有发货状态机时单独实现。
+- [x] 若当前阶段没有发货状态和运营入口，则从前端移除确认收货按钮和 client 方法，不保留会返回 404 的假入口。
+- [x] 本计划默认采用第二种最小方案：先移除前端假入口；真实物流/收货在有发货状态机时单独实现。
+
+**Task 5.2 收口说明：** 已移除订单详情页确认收货按钮、HTTP client 方法和 Mock 假实现；运输中订单仍展示物流信息，管理员发货与取消订单能力不受影响。静态进度条只表达订单阶段，不再触发不存在的接口。前端 91 项测试及生产构建通过，独立复审结论为 Critical 0、Important 0、Assessment `Yes`。
 
 ### Task 5.3：地址、结算、下单切换到真实后端
 
