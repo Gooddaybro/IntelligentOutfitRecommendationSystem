@@ -1,0 +1,150 @@
+{
+  "contract": "java-python-chat",
+  "version": "1.0.0",
+  "updated_on": "2026-08-23",
+  "boundary": {
+    "java_owns": [
+      "users",
+      "sessions",
+      "products",
+      "skus",
+      "prices",
+      "inventory",
+      "orders",
+      "payments",
+      "frontend APIs"
+    ],
+    "python_owns": [
+      "intent recognition",
+      "recommendation orchestration",
+      "ranking explanations",
+      "RAG answers",
+      "natural language generation"
+    ]
+  },
+  "field_sets": {
+    "python_chat_request": [
+      "request_id",
+      "session_id",
+      "thread_id",
+      "query",
+      "chat_history",
+      "user_context",
+      "candidates",
+      "demand_intent",
+      "debug"
+    ],
+    "chat_history_item": [
+      "user_query",
+      "assistant_answer"
+    ],
+    "user_context": [
+      "user_id",
+      "height_cm",
+      "weight_kg",
+      "gender",
+      "preferred_fit",
+      "preferred_styles",
+      "preferred_colors",
+      "disliked_colors",
+      "preferred_categories",
+      "budget_min",
+      "budget_max",
+      "recent_interest_spu_ids",
+      "recent_cart_spu_ids",
+      "recent_purchased_spu_ids",
+      "behavior_preferred_categories",
+      "behavior_preferred_styles"
+    ],
+    "product_candidate": [
+      "spu_id",
+      "sku_id",
+      "name",
+      "spu_code",
+      "sku_code",
+      "category",
+      "brand",
+      "color",
+      "size",
+      "sale_price",
+      "stock_status",
+      "available_stock",
+      "material",
+      "fit_type",
+      "season",
+      "style_tags",
+      "attribute_tags",
+      "main_image_url"
+    ],
+    "intent_constraint": [
+      "id",
+      "field",
+      "operator",
+      "values",
+      "strength",
+      "origin",
+      "originTurnId",
+      "derivedFromConstraintId",
+      "scope",
+      "weight"
+    ],
+    "subject_measurements": [
+      "heightCm",
+      "weightKg",
+      "originalText",
+      "normalizedFrom",
+      "subject",
+      "scope",
+      "source"
+    ],
+    "demand_intent": [
+      "version",
+      "requestType",
+      "requestedCapabilities",
+      "hardFilters",
+      "softPreferences",
+      "subjectMeasurements"
+    ],
+    "python_chat_response": [
+      "request_id",
+      "answer",
+      "intent",
+      "product_refs",
+      "rejected_reasons",
+      "suggested_actions",
+      "debug"
+    ],
+    "java_consumed_chat_response": [
+      "request_id",
+      "answer",
+      "intent",
+      "product_refs",
+      "rejected_reasons"
+    ],
+    "product_ref": [
+      "spu_id",
+      "sku_id",
+      "reason",
+      "rank_score",
+      "matched_dimensions",
+      "outfit_role"
+    ],
+    "matched_dimension": [
+      "dimension",
+      "requested_value",
+      "candidate_value",
+      "evidence_source"
+    ],
+    "suggested_action": [
+      "type",
+      "spu_id",
+      "sku_id"
+    ]
+  },
+  "rules": {
+    "product_refs_must_trace_to_candidates": true,
+    "python_must_not_invent_commerce_facts": true,
+    "java_must_recheck_price_and_inventory_before_transaction": true,
+    "mq_required_for_stage_2": false
+  }
+}

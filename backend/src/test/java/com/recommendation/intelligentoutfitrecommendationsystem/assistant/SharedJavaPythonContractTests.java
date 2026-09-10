@@ -110,7 +110,13 @@ class SharedJavaPythonContractTests {
                 .as("shared Java-Python contract exists at %s", contractPath)
                 .isTrue();
 
-        return objectMapper.readTree(contractPath.toFile());
+        JsonNode shared = objectMapper.readTree(contractPath.toFile());
+        // 独立 checkout 使用随仓库版本化的快照；本地联调同时检查共享源，防止副本静默漂移。
+        try (var bundled = getClass().getResourceAsStream("/contracts/java-python-chat/v1.fields.json")) {
+            assertThat(bundled).as("versioned contract snapshot exists").isNotNull();
+            assertThat(objectMapper.readTree(bundled)).isEqualTo(shared);
+        }
+        return shared;
     }
 
     private Path resolveSharedContractPath() {
@@ -127,7 +133,8 @@ class SharedJavaPythonContractTests {
             }
         }
 
-        return cwd.resolve("../../outfit-project-contract/contracts/java-python-chat/v1.fields.json").normalize();
+        Path module = Files.isDirectory(cwd.resolve("backend")) ? cwd.resolve("backend") : cwd;
+        return module.resolve("src/test/resources/contracts/java-python-chat/v1.fields.json");
     }
 
     private Set<String> jsonPropertyNames(Class<? extends Record> recordClass) {

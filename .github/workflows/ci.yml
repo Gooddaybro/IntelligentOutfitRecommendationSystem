@@ -2,49 +2,51 @@ name: Java CI
 
 on:
   push:
-    branches: [ master, main ]  # 建议同时适配 master 和 main
+    branches: [master, main, water]
   pull_request:
-    branches: [ master, main ]
+    branches: [master, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: java-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15  #增加超时控制，防止 Maven 下载/测试卡死浪费额度
-
-    #  如果你的单元测试依赖真实的 MySQL 容器，请取消下面 services 的注释：
-    # services:
-    #   mysql:
-    #     image: mysql:8.0
-    #     env:
-    #       MYSQL_ROOT_PASSWORD: root
-    #       MYSQL_DATABASE: testdb
-    #     ports:
-    #       - 3306:3306
-    #     options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
-
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify change classification
+        run: python3 -m unittest discover -s scripts -p test_ci_changes.py
+
+      # Keep the existing check present even for documentation-only PRs.
+      - name: Classify changes
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python3 scripts/ci_changes.py
 
       - name: Set up Java 21
+        if: steps.changes.outputs.verify == 'true'
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '21'
-          cache: 'maven'
-          # 明确指定 pom.xml 的路径，避免多模块/子目录下 setup-java 找不到 cache 规则
-          cache-dependency-path: 'backend/pom.xml'
-
-      - name: Make Maven wrapper executable
-        working-directory: backend
-        run: chmod +x mvnw
+          cache: maven
+          cache-dependency-path: backend/pom.xml
 
       - name: Run verification
+        if: steps.changes.outputs.verify == 'true'
         working-directory: backend
         env:
-          RUN_MYSQL_TESTS: "true"
-        # 优化 Maven 运行参数：
-        # -B (Batch mode): 禁用交互式日志，格式更干净
-        # -ntp (No Transfer Progress): 屏蔽依赖下载时的巨量进度条刷屏（提升 CI 日志可读性和执行速度）
-        # clean verify: 保证编译与测试环境纯净
-        run: ./mvnw -B -ntp clean verify
+          RUN_MYSQL_TESTS: 'true'
+        run: sh ./mvnw -B -ntp clean verify

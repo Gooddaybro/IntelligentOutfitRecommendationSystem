@@ -637,7 +637,7 @@ DELETE /api/favorites/{spuId}
 
 - [ ] 地址页面真实调用五个地址接口，包含编辑、删除和设为默认。
 - [ ] 结算页面真实调用 `/api/checkout/preview`，展示加载、无地址、`invalidReasons` 和 API 错误。
-- [ ] 下单只发送 `source`、`skuIds`、`addressId`，并携带 `Idempotency-Key` 请求头。
+- [x] 下单只发送 `source`、`skuIds`、`addressId`，并携带 `Idempotency-Key` 请求头。2026-09-09 验收现有实现：client 与 CheckoutPage 共 15 项测试通过，OrderControllerTests 14 项通过；覆盖失败重试复用键、地址或 SKU 改变换键。本项未重复开发，不代表阶段 5 全部完成。
 - [ ] Mock 数据模式仅用于组件测试和快速演示，命名和文档明确包含 `mock`，不再叫“集成模式”。
 - [ ] 为 client 添加契约测试，断言 URL、method、body 和 header 与后端一致。
 

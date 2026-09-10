@@ -10,6 +10,7 @@ frontend/playwright-report/
 frontend/*.tsbuildinfo
 .superpowers/
 .worktrees/
+scripts/__pycache__/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
