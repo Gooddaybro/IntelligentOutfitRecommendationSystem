@@ -24,7 +24,7 @@ import java.util.Map;
  * 商品目录服务，负责商品搜索、详情装配和 SKU 查询。
  */
 @Service
-public class ProductCatalogService {
+public class ProductCatalogService implements ProductFactsQuery {
 
     private final ProductMapper productMapper;
     private final ProductSearchService productSearchService;
