@@ -94,6 +94,14 @@ class AssistantControllerTests {
     }
 
     @Test
+    void rejectsProChatWithoutAccessToken() throws Exception {
+        mockMvc.perform(post("/api/assistant/v2/chat")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"jacket\",\"agentMode\":\"pro\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void rejectsAssistantStreamChatWithoutAccessToken() throws Exception {
         mockMvc.perform(post("/api/assistant/chat/stream")
                         .contentType(MediaType.APPLICATION_JSON)
