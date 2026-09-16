@@ -13,7 +13,7 @@
 
 ## 验证记录
 
-- 前端全量单测：`30 test files, 85 tests passed`。
+- 前端全量单测：`30 test files, 86 tests passed`。
 - `npm run build`：通过，TypeScript 检查和 Vite 生产构建成功。
 - `git diff --check`：通过。
 
