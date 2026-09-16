@@ -273,4 +273,17 @@ describe("ChatPanel stale request protection", () => {
     expect(mode).toHaveValue("lite");
     expect(screen.getByTestId("chat-message-user")).toHaveTextContent("预算 300 的通勤外套");
   });
+
+  it("shows a Pro availability error without falling back to the Lite endpoint", async () => {
+    streamAssistantChatMock.mockRejectedValue(new Error("Pro 尚未启用"));
+    const chat = vi.spyOn(api, "chat");
+    render(<ChatPanel onRecommendations={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText("AI 模式"), { target: { value: "pro" } });
+    fireEvent.change(screen.getByTestId("ai-chat-input"), { target: { value: "测试 Pro 不可用" } });
+    fireEvent.click(screen.getByTestId("ai-chat-submit"));
+
+    await waitFor(() => expect(screen.getByText("Pro 尚未启用")).toBeInTheDocument());
+    expect(chat).not.toHaveBeenCalled();
+  });
 });
