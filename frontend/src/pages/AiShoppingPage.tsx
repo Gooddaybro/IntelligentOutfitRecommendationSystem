@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { ChatPanel } from "../features/assistant/ChatPanel";
 import type { ChatPanelState, RecommendationResultMeta } from "../features/assistant/ChatPanel";
 import { ProductCard } from "../features/catalog/ProductCard";
@@ -34,25 +34,41 @@ export function AiShoppingPage({
   onAction,
   onRefreshCart
 }: AiShoppingPageProps) {
+  const recommendationLoadGenerationRef = useRef(0);
+
   useEffect(() => {
+    const generation = recommendationLoadGenerationRef.current;
+    let cancelled = false;
+
     async function loadInitialRecommendations() {
       if (recommendationsLoaded) {
-        await onRefreshCart();
+        if (!cancelled) {
+          await onRefreshCart();
+        }
         return;
       }
 
       setIsRecommendationsLoading(true);
       try {
-        setRecommendations(await api.recommendationCandidates({}));
+        const candidates = await api.recommendationCandidates({});
+        if (cancelled || generation !== recommendationLoadGenerationRef.current) {
+          return;
+        }
+        setRecommendations(candidates);
         setRecommendationMeta(undefined);
         setRecommendationsLoaded(true);
         await onRefreshCart();
       } finally {
-        setIsRecommendationsLoading(false);
+        if (!cancelled && generation === recommendationLoadGenerationRef.current) {
+          setIsRecommendationsLoading(false);
+        }
       }
     }
 
     void loadInitialRecommendations();
+    return () => {
+      cancelled = true;
+    };
   }, [
     onRefreshCart,
     recommendationsLoaded,
@@ -127,12 +143,17 @@ export function AiShoppingPage({
       <section className="workbench-chat-column">
         <ChatPanel
           onRecommendations={(items, meta) => {
+            recommendationLoadGenerationRef.current += 1;
             setRecommendations(items);
             setRecommendationMeta(meta);
+            setRecommendationsLoaded(true);
+            setIsRecommendationsLoading(false);
           }}
           onRecommendationsReset={() => {
+            recommendationLoadGenerationRef.current += 1;
             setRecommendations([]);
             setRecommendationMeta(undefined);
+            setIsRecommendationsLoading(false);
           }}
           state={chatState}
         />

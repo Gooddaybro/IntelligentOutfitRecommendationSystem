@@ -323,12 +323,13 @@ export function ChatPanel({ onRecommendations, onRecommendationsReset, state }: 
         async (event) => {
           if (localRequestId !== requestSequenceRef.current) return;
           if (event.type === "thread") {
+            if (requestMode === "pro" && (event.agentMode !== "pro" || !event.runId)) return;
+            if (event.agentMode && event.agentMode !== requestMode) return;
             setThreadId(event.threadId);
             if (event.runId) {
               activeRunIdRef.current = event.runId;
               setActiveRunId(event.runId);
             }
-            if (event.agentMode && event.agentMode !== requestMode) return;
           }
           if (event.type === "progress") {
             if (requestMode !== "pro" || event.runId !== activeRunIdRef.current) {
@@ -355,8 +356,11 @@ export function ChatPanel({ onRecommendations, onRecommendationsReset, state }: 
             return;
           }
           if (event.type === "done") {
-            if ((event.agentMode && event.agentMode !== requestMode)
-                || (requestMode === "pro" && event.runId && event.runId !== activeRunIdRef.current)) {
+            if (requestMode === "pro") {
+              if (event.agentMode !== "pro" || !event.runId || event.runId !== activeRunIdRef.current) {
+                return;
+              }
+            } else if (event.agentMode && event.agentMode !== requestMode) {
               return;
             }
             if (event.threadId) {
@@ -400,7 +404,7 @@ export function ChatPanel({ onRecommendations, onRecommendationsReset, state }: 
             }
           }
           if (event.type === "error") {
-            if (event.runId && activeRunIdRef.current && event.runId !== activeRunIdRef.current) return;
+            if (requestMode === "pro" && event.runId && event.runId !== activeRunIdRef.current) return;
             setError(event.message);
           }
         },

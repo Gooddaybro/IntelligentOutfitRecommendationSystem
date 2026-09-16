@@ -156,4 +156,22 @@ describe("chatStreamPath", () => {
       })
     );
   });
+
+  it("surfaces the structured message when Pro is unavailable", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      body: {},
+      text: vi.fn().mockResolvedValue(JSON.stringify({
+        success: false,
+        errorCode: "pro_disabled",
+        message: "Pro 尚未启用"
+      }))
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      streamAssistantChat({ message: "测试 Pro", agentMode: "pro" }, vi.fn(), undefined, "pro")
+    ).rejects.toThrow("Pro 尚未启用");
+  });
 });

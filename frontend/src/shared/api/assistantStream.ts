@@ -340,7 +340,25 @@ export async function streamAssistantChat(
   });
 
   if (!response.ok || !response.body) {
-    throw new Error(`AI 流式请求失败：${response.status}`);
+    let message = `AI 流式请求失败：${response.status}`;
+    try {
+      const errorText = await response.text();
+      const payload = errorText ? JSON.parse(errorText) as {
+        message?: unknown;
+        data?: { message?: unknown };
+      } : undefined;
+      const structuredMessage = payload && typeof payload.message === "string"
+        ? payload.message
+        : payload?.data && typeof payload.data.message === "string"
+          ? payload.data.message
+          : undefined;
+      if (structuredMessage?.trim()) {
+        message = structuredMessage;
+      }
+    } catch {
+      // 保留 HTTP 状态文本，兼容空响应或非 JSON 错误体。
+    }
+    throw new Error(message);
   }
 
   const reader = response.body.getReader();

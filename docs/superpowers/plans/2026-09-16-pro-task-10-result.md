@@ -5,15 +5,15 @@
 ## 本次实现
 
 - `frontend/src/shared/api/types.ts` 增加 `AgentMode` 和 Pro done 商品事实字段，Lite 请求类型保持兼容。
-- `frontend/src/shared/api/assistantStream.ts` 增加 v2 SSE 路径选择、meta/runId、progress、Pro done 事实解析和安全错误解析；Lite 仍使用旧 SSE 地址。
+- `frontend/src/shared/api/assistantStream.ts` 增加 v2 SSE 路径选择、meta/runId、progress、Pro done 事实解析和结构化错误消息解析；Lite 仍使用旧 SSE 地址。
 - `frontend/src/features/assistant/ChatPanel.tsx` 增加可访问的 Lite/Pro 选择器。发送后锁定本轮模式，Pro 运行时按 `run_id` 和递增序号展示进度，切换模式不会清空历史。
 - Pro 的商品卡片只在 Java `done` 到达后创建，直接使用 `name`、`sale_price`、`main_image_url`、颜色、尺码和库存等 Java 已核验字段，不再通过旧候选快照二次筛选；无效或缺少关键事实的商品引用会被丢弃。
 - `frontend/src/features/assistant/assistantState.ts` 持久化当前模式、活动 run 和进度；新一轮请求清理旧商品和旧进度。Pro 请求失败只展示错误，不静默回退到 Lite。
-- `frontend/src/pages/AiShoppingPage.tsx` 在新一轮开始时清理旧卡片，继续复用现有 `ProductCard` 和商品详情路由。
+- `frontend/src/pages/AiShoppingPage.tsx` 在新一轮开始时清理旧卡片，并用加载代次保护初始候选请求，继续复用现有 `ProductCard` 和商品详情路由。
 
 ## 验证记录
 
-- 前端全量单测：`30 test files, 86 tests passed`。
+- 前端全量单测：`30 test files, 87 tests passed`。
 - `npm run build`：通过，TypeScript 检查和 Vite 生产构建成功。
 - `git diff --check`：通过。
 
