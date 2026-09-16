@@ -5,12 +5,16 @@ import {
   initialChatMessages
 } from "./ChatPanel";
 import type { ChatFilters, ChatMessage, ChatPanelState, RecommendationResultMeta } from "./ChatPanel";
-import type { RecommendationCandidate } from "../../shared/api/types";
+import type { AgentMode, RecommendationCandidate } from "../../shared/api/types";
+import type { AssistantProgressEvent } from "../../shared/api/assistantStream";
 
 export type AssistantShoppingState = {
   messages: ChatMessage[];
   draft: string;
   filters: ChatFilters;
+  agentMode: AgentMode;
+  activeRunId?: string;
+  progress: AssistantProgressEvent[];
   threadId?: string;
   isStreaming: boolean;
   error: string;
@@ -24,6 +28,9 @@ type AssistantShoppingAction =
   | { type: "setMessages"; value: SetStateAction<ChatMessage[]> }
   | { type: "setDraft"; value: SetStateAction<string> }
   | { type: "setFilters"; value: SetStateAction<ChatFilters> }
+  | { type: "setAgentMode"; value: SetStateAction<AgentMode> }
+  | { type: "setActiveRunId"; value: SetStateAction<string | undefined> }
+  | { type: "setProgress"; value: SetStateAction<AssistantProgressEvent[]> }
   | { type: "setThreadId"; value: SetStateAction<string | undefined> }
   | { type: "setIsStreaming"; value: SetStateAction<boolean> }
   | { type: "setError"; value: SetStateAction<string> }
@@ -37,6 +44,9 @@ export const initialAssistantShoppingState: AssistantShoppingState = {
   messages: initialChatMessages,
   draft: "",
   filters: initialChatFilters,
+  agentMode: "lite",
+  activeRunId: undefined,
+  progress: [],
   threadId: undefined,
   isStreaming: false,
   error: "",
@@ -61,6 +71,12 @@ export function assistantShoppingReducer(
       return { ...state, draft: resolveStateAction(action.value, state.draft) };
     case "setFilters":
       return { ...state, filters: resolveStateAction(action.value, state.filters) };
+    case "setAgentMode":
+      return { ...state, agentMode: resolveStateAction(action.value, state.agentMode) };
+    case "setActiveRunId":
+      return { ...state, activeRunId: resolveStateAction(action.value, state.activeRunId) };
+    case "setProgress":
+      return { ...state, progress: resolveStateAction(action.value, state.progress) };
     case "setThreadId":
       return { ...state, threadId: resolveStateAction(action.value, state.threadId) };
     case "setIsStreaming":
@@ -105,6 +121,12 @@ export function useAssistantShoppingState() {
       setDraft: dispatchSetter<string>(dispatch, "setDraft"),
       filters: state.filters,
       setFilters: dispatchSetter<ChatFilters>(dispatch, "setFilters"),
+      agentMode: state.agentMode,
+      setAgentMode: dispatchSetter<AgentMode>(dispatch, "setAgentMode"),
+      activeRunId: state.activeRunId,
+      setActiveRunId: dispatchSetter<string | undefined>(dispatch, "setActiveRunId"),
+      progress: state.progress,
+      setProgress: dispatchSetter<AssistantProgressEvent[]>(dispatch, "setProgress"),
       threadId: state.threadId,
       setThreadId: dispatchSetter<string | undefined>(dispatch, "setThreadId"),
       isStreaming: state.isStreaming,
@@ -113,7 +135,7 @@ export function useAssistantShoppingState() {
       setError: dispatchSetter<string>(dispatch, "setError"),
       abortRef: abortRef as MutableRefObject<AbortController | null>
     }),
-    [state.draft, state.error, state.filters, state.isStreaming, state.messages, state.threadId]
+    [state.activeRunId, state.agentMode, state.draft, state.error, state.filters, state.isStreaming, state.messages, state.progress, state.threadId]
   );
 
   return {

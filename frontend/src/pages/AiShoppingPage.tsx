@@ -130,6 +130,10 @@ export function AiShoppingPage({
             setRecommendations(items);
             setRecommendationMeta(meta);
           }}
+          onRecommendationsReset={() => {
+            setRecommendations([]);
+            setRecommendationMeta(undefined);
+          }}
           state={chatState}
         />
       </section>

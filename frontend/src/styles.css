@@ -398,6 +398,54 @@ p {
   font-weight: 700;
 }
 
+.assistant-mode-control {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.assistant-mode-control select {
+  min-height: 36px;
+  padding: 7px 30px 7px 10px;
+  width: auto;
+}
+
+.assistant-mode-hint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: -8px 0 16px;
+}
+
+.assistant-progress {
+  background: rgb(123 231 224 / 6%);
+  border: 1px solid rgb(123 231 224 / 20%);
+  border-radius: 14px;
+  color: var(--text);
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: -4px 0 16px;
+  padding: 12px 14px;
+}
+
+.assistant-progress li {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.assistant-progress li span:first-child {
+  color: var(--ai);
+  font-weight: 800;
+  min-width: 42px;
+}
+
 .eyebrow {
   color: var(--ai);
   font-size: 12px;

@@ -1,13 +1,17 @@
 import { getAccessToken } from "./client";
-import type { AssistantChatRequest, DemandIntent, MentionedItem, RecommendationStatus, RecommendedItem } from "./types";
+import type { AgentMode, AssistantChatRequest, DemandIntent, MentionedItem, RecommendationStatus, RecommendedItem } from "./types";
 
 export type AssistantStreamEvent =
-  | { type: "thread"; threadId: string }
+  | { type: "thread"; threadId: string; requestId?: string; runId?: string; agentMode?: AgentMode }
+  | { type: "progress"; runId: string; sequence: number; tool: string; stage: "started" | "completed"; message: string }
   | { type: "token"; text: string }
   | { type: "recommendation"; spuIds: number[]; recommendedItems?: RecommendedItem[] }
   | {
       type: "done";
       threadId?: string;
+      requestId?: string;
+      runId?: string;
+      agentMode?: AgentMode;
       answer?: string;
       spuIds: number[];
       recommendedItems?: RecommendedItem[];
@@ -15,8 +19,11 @@ export type AssistantStreamEvent =
       resolvedIntent?: DemandIntent;
       recommendationId?: string;
       recommendationStatus?: RecommendationStatus;
+      requirements?: unknown[];
     }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string; code?: string; runId?: string };
+
+export type AssistantProgressEvent = Extract<AssistantStreamEvent, { type: "progress" }>;
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
@@ -51,6 +58,18 @@ function normalizeRecommendedItems(payload: unknown): RecommendedItem[] {
       reason?: string;
       rankScore?: number | string;
       rank_score?: number | string;
+      name?: string;
+      salePrice?: number | string;
+      sale_price?: number | string;
+      mainImageUrl?: string;
+      main_image_url?: string;
+      color?: string;
+      size?: string;
+      availableStock?: number | string;
+      available_stock?: number | string;
+      sizeAdvice?: string;
+      size_advice?: string;
+      basis?: string;
       matchedDimensions?: RecommendedItem["matchedDimensions"];
       matched_dimensions?: Array<{ dimension: string; requested_value: string; candidate_value: string; evidence_source: string }>;
       outfitRole?: RecommendedItem["outfitRole"];
@@ -76,6 +95,19 @@ function normalizeRecommendedItems(payload: unknown): RecommendedItem[] {
     if (rankScore !== undefined && rankScore !== null) {
       normalizedItem.rankScore = Number(rankScore);
     }
+    const name = raw.name;
+    const salePrice = raw.salePrice ?? raw.sale_price;
+    const availableStock = raw.availableStock ?? raw.available_stock;
+    const mainImageUrl = raw.mainImageUrl ?? raw.main_image_url;
+    const sizeAdvice = raw.sizeAdvice ?? raw.size_advice;
+    if (name !== undefined) normalizedItem.name = name;
+    if (salePrice !== undefined && salePrice !== null) normalizedItem.salePrice = Number(salePrice);
+    if (mainImageUrl !== undefined) normalizedItem.mainImageUrl = mainImageUrl;
+    if (raw.color !== undefined) normalizedItem.color = raw.color;
+    if (raw.size !== undefined) normalizedItem.size = raw.size;
+    if (availableStock !== undefined && availableStock !== null) normalizedItem.availableStock = Number(availableStock);
+    if (sizeAdvice !== undefined) normalizedItem.sizeAdvice = sizeAdvice;
+    if (raw.basis !== undefined) normalizedItem.basis = raw.basis;
     normalizedItem.outfitRole = raw.outfitRole ?? raw.outfit_role;
     normalizedItem.matchedDimensions = raw.matchedDimensions ?? raw.matched_dimensions?.map((item) => ({
       dimension: item.dimension,
@@ -141,10 +173,6 @@ export function parseSseEventBlock(block: string): AssistantStreamEvent | null {
     return null;
   }
 
-  if (eventName === "error") {
-    return { type: "error", message: data || "AI 流式响应失败" };
-  }
-
   let payload: unknown = data;
   try {
     payload = data ? JSON.parse(data) : data;
@@ -152,12 +180,70 @@ export function parseSseEventBlock(block: string): AssistantStreamEvent | null {
     payload = data;
   }
 
+  if (eventName === "error") {
+    const errorPayload = payload && typeof payload === "object" ? payload as {
+      code?: string;
+      message?: string;
+      run_id?: string;
+      runId?: string;
+    } : undefined;
+    return {
+      type: "error",
+      message: errorPayload?.message ?? (typeof payload === "string" ? payload : "AI 流式响应失败"),
+      ...(errorPayload?.code ? { code: errorPayload.code } : {}),
+      ...((errorPayload?.runId ?? errorPayload?.run_id) ? { runId: errorPayload?.runId ?? errorPayload?.run_id } : {})
+    };
+  }
+
   if (eventName === "thread" || eventName === "meta") {
-    const threadId =
-      (payload as { threadId?: string; thread_id?: string }).threadId ??
-      (payload as { thread_id?: string }).thread_id ??
-      payload;
-    return { type: "thread", threadId: String(threadId) };
+    const meta = payload && typeof payload === "object" ? payload as {
+      threadId?: string;
+      thread_id?: string;
+      requestId?: string;
+      request_id?: string;
+      runId?: string;
+      run_id?: string;
+      agentMode?: AgentMode;
+      agent_mode?: AgentMode;
+    } : undefined;
+    const threadId = meta?.threadId ?? meta?.thread_id ?? payload;
+    const requestId = meta?.requestId ?? meta?.request_id;
+    const runId = meta?.runId ?? meta?.run_id;
+    const agentMode = meta?.agentMode ?? meta?.agent_mode;
+    const isVersionedMeta = agentMode === "pro" || Boolean(runId);
+    return {
+      type: "thread",
+      threadId: String(threadId),
+      ...(isVersionedMeta && requestId ? { requestId } : {}),
+      ...(isVersionedMeta && runId ? { runId } : {}),
+      ...(agentMode === "lite" || agentMode === "pro" ? { agentMode } : {})
+    };
+  }
+
+  if (eventName === "progress") {
+    const progress = payload && typeof payload === "object" ? payload as {
+      runId?: string;
+      run_id?: string;
+      sequence?: number | string;
+      tool?: string;
+      stage?: string;
+      message?: string;
+    } : undefined;
+    const runId = progress?.runId ?? progress?.run_id;
+    const sequence = progress?.sequence === undefined ? NaN : Number(progress.sequence);
+    if (!runId || !Number.isInteger(sequence) || sequence < 0
+        || !progress?.tool || (progress.stage !== "started" && progress.stage !== "completed")
+        || !progress.message) {
+      return null;
+    }
+    return {
+      type: "progress",
+      runId,
+      sequence,
+      tool: progress.tool,
+      stage: progress.stage,
+      message: progress.message
+    };
   }
 
   if (eventName === "recommendation") {
@@ -177,6 +263,12 @@ export function parseSseEventBlock(block: string): AssistantStreamEvent | null {
     const donePayload = payload as {
       threadId?: string;
       thread_id?: string;
+      requestId?: string;
+      request_id?: string;
+      runId?: string;
+      run_id?: string;
+      agentMode?: AgentMode;
+      agent_mode?: AgentMode;
       answer?: string;
       recommendedSpuIds?: number[];
       recommended_spu_ids?: number[];
@@ -186,6 +278,7 @@ export function parseSseEventBlock(block: string): AssistantStreamEvent | null {
       recommendation_id?: string;
       recommendationStatus?: unknown;
       recommendation_status?: unknown;
+      requirements?: unknown[];
     };
     const recommendedItems = normalizeRecommendedItems(donePayload);
     const mentionedItems = normalizeMentionedItems(donePayload);
@@ -193,6 +286,9 @@ export function parseSseEventBlock(block: string): AssistantStreamEvent | null {
     return {
       type: "done",
       threadId: donePayload.threadId ?? donePayload.thread_id,
+      requestId: donePayload.requestId ?? donePayload.request_id,
+      runId: donePayload.runId ?? donePayload.run_id,
+      agentMode: donePayload.agentMode ?? donePayload.agent_mode,
       answer: donePayload.answer,
       spuIds: Array.isArray(ids) ? ids.map(Number) : [],
       recommendedItems,
@@ -201,7 +297,8 @@ export function parseSseEventBlock(block: string): AssistantStreamEvent | null {
       recommendationId: donePayload.recommendationId ?? donePayload.recommendation_id,
       recommendationStatus: normalizeLegacyRecommendationStatus(
         donePayload.recommendationStatus ?? donePayload.recommendation_status
-      )
+      ),
+      requirements: donePayload.requirements
     };
   }
 
@@ -220,7 +317,8 @@ export function parseSseEventBlock(block: string): AssistantStreamEvent | null {
 export async function streamAssistantChat(
   request: AssistantChatRequest,
   onEvent: (event: AssistantStreamEvent) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  mode?: AgentMode
 ): Promise<void> {
   const headers = new Headers({ "Content-Type": "application/json" });
   const token = getAccessToken();
@@ -229,10 +327,15 @@ export async function streamAssistantChat(
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/assistant/chat/stream`, {
+  const effectiveMode = mode ?? request.agentMode ?? "lite";
+  const { agentMode: _requestMode, ...legacyRequest } = request;
+  const body = effectiveMode === "pro"
+    ? JSON.stringify({ ...legacyRequest, agentMode: "pro" })
+    : JSON.stringify(legacyRequest);
+  const response = await fetch(`${API_BASE_URL}${chatStreamPath(effectiveMode)}`, {
     method: "POST",
     headers,
-    body: JSON.stringify(request),
+    body,
     signal
   });
 
@@ -261,4 +364,8 @@ export async function streamAssistantChat(
   if (finalEvent) {
     onEvent(finalEvent);
   }
+}
+
+export function chatStreamPath(mode: AgentMode): string {
+  return mode === "pro" ? "/api/assistant/v2/chat/stream" : "/api/assistant/chat/stream";
 }

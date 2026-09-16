@@ -54,6 +54,7 @@ export type RecommendationStatus =
   | "BROWSE_FALLBACK"
   | "EMPTY"
   | "FAILED";
+export type AgentMode = "lite" | "pro";
 export type OutfitRole = "TOP" | "BOTTOM" | "OUTER" | "SHOES" | "ACCESSORY" | "OTHER";
 
 export type UserPreferencesRequest = {
@@ -111,6 +112,15 @@ export type RecommendedItem = {
   skuId?: number;
   reason?: string;
   rankScore?: number;
+  /** Pro done 中由 Java 重新读取的商品事实；Lite 旧事件不会携带这些字段。 */
+  name?: string;
+  salePrice?: number;
+  mainImageUrl?: string;
+  color?: string;
+  size?: string;
+  availableStock?: number;
+  sizeAdvice?: string;
+  basis?: string;
   matchedDimensions?: Array<{
     dimension: string;
     requestedValue: string;
@@ -245,6 +255,7 @@ export type PaymentResponse = {
 export type AssistantChatRequest = {
   threadId?: string;
   message: string;
+  agentMode?: AgentMode;
   category?: string;
   style?: string;
   season?: string;

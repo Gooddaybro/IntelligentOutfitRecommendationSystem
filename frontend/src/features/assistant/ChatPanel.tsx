@@ -2,7 +2,8 @@ import { Send, SlidersHorizontal, Square } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../shared/api/client";
 import { streamAssistantChat } from "../../shared/api/assistantStream";
-import type { AssistantChatRequest, DemandIntent, RecommendationCandidate, RecommendationStatus, RecommendedItem } from "../../shared/api/types";
+import type { AssistantProgressEvent } from "../../shared/api/assistantStream";
+import type { AgentMode, AssistantChatRequest, DemandIntent, RecommendationCandidate, RecommendationStatus, RecommendedItem } from "../../shared/api/types";
 import type { Dispatch, FormEvent, MutableRefObject, SetStateAction } from "react";
 
 export type ChatMessage = {
@@ -24,6 +25,12 @@ export type ChatPanelState = {
   setDraft: Dispatch<SetStateAction<string>>;
   filters: ChatFilters;
   setFilters: Dispatch<SetStateAction<ChatFilters>>;
+  agentMode?: AgentMode;
+  setAgentMode?: Dispatch<SetStateAction<AgentMode>>;
+  activeRunId?: string;
+  setActiveRunId?: Dispatch<SetStateAction<string | undefined>>;
+  progress?: AssistantProgressEvent[];
+  setProgress?: Dispatch<SetStateAction<AssistantProgressEvent[]>>;
   threadId?: string;
   setThreadId: Dispatch<SetStateAction<string | undefined>>;
   isStreaming: boolean;
@@ -38,6 +45,9 @@ export type RecommendationResultMeta = {
   recommendationId?: string;
   recommendationStatus: RecommendationStatus;
   resolvedIntent?: DemandIntent;
+  agentMode?: AgentMode;
+  runId?: string;
+  requirements?: unknown[];
 };
 
 export const initialChatMessages: ChatMessage[] = [
@@ -65,15 +75,59 @@ export function requestFiltersFromResolvedIntent(
   };
 }
 
+/** 将 Java done 中的已核验事实转换成共用商品卡片所需的展示模型。 */
+export function validatedRecommendedItemsToCandidates(items: RecommendedItem[] = []): RecommendationCandidate[] {
+  const seen = new Set<string>();
+  return items.flatMap((item) => {
+    const spuId = Number(item.spuId);
+    const skuId = item.skuId === undefined ? NaN : Number(item.skuId);
+    const salePrice = item.salePrice === undefined ? NaN : Number(item.salePrice);
+    const name = item.name?.trim();
+    if (!Number.isInteger(spuId) || spuId <= 0 || !Number.isInteger(skuId) || skuId <= 0
+        || !name || !Number.isFinite(salePrice)) {
+      return [];
+    }
+
+    const key = `${spuId}:${skuId}`;
+    if (seen.has(key)) {
+      return [];
+    }
+    seen.add(key);
+
+    return [{
+      spuId,
+      skuId,
+      spuCode: `PRO-${spuId}`,
+      name,
+      categoryName: "已核验商品",
+      mainImageUrl: item.mainImageUrl,
+      color: item.color,
+      size: item.size,
+      salePrice,
+      availableStock: item.availableStock,
+      stockStatus: item.availableStock === undefined
+        ? undefined
+        : item.availableStock > 0 ? "有货" : "暂时无货",
+      recommendationReason: item.reason,
+      rankScore: item.rankScore,
+      outfitRole: item.outfitRole
+    }];
+  });
+}
+
 type ChatPanelProps = {
   onRecommendations: (items: RecommendationCandidate[], meta?: RecommendationResultMeta) => void;
+  onRecommendationsReset?: () => void;
   state?: ChatPanelState;
 };
 
-export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
+export function ChatPanel({ onRecommendations, onRecommendationsReset, state }: ChatPanelProps) {
   const [internalMessages, setInternalMessages] = useState<ChatMessage[]>(initialChatMessages);
   const [internalDraft, setInternalDraft] = useState("");
   const [internalFilters, setInternalFilters] = useState<ChatFilters>(initialChatFilters);
+  const [internalAgentMode, setInternalAgentMode] = useState<AgentMode>("lite");
+  const [internalActiveRunId, setInternalActiveRunId] = useState<string | undefined>();
+  const [internalProgress, setInternalProgress] = useState<AssistantProgressEvent[]>([]);
   const [internalThreadId, setInternalThreadId] = useState<string | undefined>();
   const [internalIsStreaming, setInternalIsStreaming] = useState(false);
   const [internalError, setInternalError] = useState("");
@@ -88,6 +142,12 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
   const setDraft = state?.setDraft ?? setInternalDraft;
   const filters = state?.filters ?? internalFilters;
   const setFilters = state?.setFilters ?? setInternalFilters;
+  const agentMode = state?.agentMode ?? internalAgentMode;
+  const setAgentMode = state?.setAgentMode ?? setInternalAgentMode;
+  const activeRunId = state?.activeRunId ?? internalActiveRunId;
+  const setActiveRunId = state?.setActiveRunId ?? setInternalActiveRunId;
+  const progress = state?.progress ?? internalProgress;
+  const setProgress = state?.setProgress ?? setInternalProgress;
   const threadId = state?.threadId ?? internalThreadId;
   const setThreadId = state?.setThreadId ?? setInternalThreadId;
   const isStreaming = state?.isStreaming ?? internalIsStreaming;
@@ -95,6 +155,11 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
   const error = state?.error ?? internalError;
   const setError = state?.setError ?? setInternalError;
   const abortRef = state?.abortRef ?? internalAbortRef;
+  const activeRunIdRef = useRef<string | undefined>(activeRunId);
+
+  useEffect(() => {
+    activeRunIdRef.current = activeRunId;
+  }, [activeRunId]);
 
   useEffect(() => () => {
     requestSequenceRef.current += 1;
@@ -192,7 +257,10 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
     recommendationId?: string,
     recommendationStatus: RecommendationStatus = "BROWSE_FALLBACK",
     intentSnapshot?: DemandIntent,
-    localRequestId?: number
+    localRequestId?: number,
+    resultMode: AgentMode = "lite",
+    resultRunId?: string,
+    requirements?: unknown[]
   ) {
     try {
       const candidates = recommendationId
@@ -203,7 +271,10 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
         recommendedItems,
         recommendationId,
         recommendationStatus,
-        resolvedIntent: intentSnapshot
+        resolvedIntent: intentSnapshot,
+        agentMode: resultMode,
+        runId: resultRunId,
+        requirements
       });
     } catch {
       if (localRequestId !== undefined && localRequestId !== requestSequenceRef.current) return;
@@ -212,7 +283,10 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
         recommendedItems: [],
         recommendationId,
         recommendationStatus: "FAILED",
-        resolvedIntent: intentSnapshot
+        resolvedIntent: intentSnapshot,
+        agentMode: resultMode,
+        runId: resultRunId,
+        requirements
       });
     }
   }
@@ -226,20 +300,48 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
 
     setDraft("");
     setError("");
+    setResolvedIntent(undefined);
+    setMeasurementNotice("");
+    setProgress([]);
+    setActiveRunId(undefined);
+    activeRunIdRef.current = undefined;
+    onRecommendationsReset?.();
     setMessages((current) => [...current, { role: "user", content: message }, { role: "assistant", content: "" }]);
     setIsStreaming(true);
     const localAbortController = new AbortController();
     abortRef.current = localAbortController;
     const effectiveRequestFilters = requestFilters;
+    const requestMode = agentMode;
+    const request = requestMode === "pro"
+      ? { ...effectiveRequestFilters, threadId, message, agentMode: "pro" as const }
+      : { ...effectiveRequestFilters, threadId, message };
     const localRequestId = ++requestSequenceRef.current;
 
     try {
       await streamAssistantChat(
-        { ...effectiveRequestFilters, threadId, message },
+        request,
         async (event) => {
           if (localRequestId !== requestSequenceRef.current) return;
           if (event.type === "thread") {
             setThreadId(event.threadId);
+            if (event.runId) {
+              activeRunIdRef.current = event.runId;
+              setActiveRunId(event.runId);
+            }
+            if (event.agentMode && event.agentMode !== requestMode) return;
+          }
+          if (event.type === "progress") {
+            if (requestMode !== "pro" || event.runId !== activeRunIdRef.current) {
+              return;
+            }
+            setProgress((current) => {
+              const latest = current[current.length - 1];
+              if (latest && event.sequence <= latest.sequence) {
+                return current;
+              }
+              return [...current, event].slice(-12);
+            });
+            return;
           }
           if (event.type === "token") {
             setMessages((current) => {
@@ -253,8 +355,16 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
             return;
           }
           if (event.type === "done") {
+            if ((event.agentMode && event.agentMode !== requestMode)
+                || (requestMode === "pro" && event.runId && event.runId !== activeRunIdRef.current)) {
+              return;
+            }
             if (event.threadId) {
               setThreadId(event.threadId);
+            }
+            if (event.runId) {
+              activeRunIdRef.current = event.runId;
+              setActiveRunId(event.runId);
             }
             setResolvedIntent(event.resolvedIntent);
             if (event.answer) {
@@ -265,20 +375,37 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
                 return next;
               });
             }
-            await updateRecommendations(
-              event.spuIds,
-              event.recommendedItems,
-              event.recommendationId,
-              event.recommendationStatus ?? "BROWSE_FALLBACK",
-              event.resolvedIntent,
-              localRequestId
-            );
+            if (requestMode === "pro") {
+              onRecommendations(validatedRecommendedItemsToCandidates(event.recommendedItems), {
+                recommendedItems: event.recommendedItems,
+                recommendationId: event.recommendationId,
+                recommendationStatus: event.recommendationStatus ?? "FAILED",
+                resolvedIntent: event.resolvedIntent,
+                agentMode: "pro",
+                runId: event.runId,
+                requirements: event.requirements
+              });
+            } else {
+              await updateRecommendations(
+                event.spuIds,
+                event.recommendedItems,
+                event.recommendationId,
+                event.recommendationStatus ?? "BROWSE_FALLBACK",
+                event.resolvedIntent,
+                localRequestId,
+                requestMode,
+                event.runId,
+                event.requirements
+              );
+            }
           }
           if (event.type === "error") {
+            if (event.runId && activeRunIdRef.current && event.runId !== activeRunIdRef.current) return;
             setError(event.message);
           }
         },
-        localAbortController.signal
+        localAbortController.signal,
+        requestMode
       );
     } catch (streamError) {
       if (streamError instanceof Error && streamError.name === "AbortError") {
@@ -292,6 +419,9 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
       }
 
       setError(streamError instanceof Error ? streamError.message : "AI 响应失败");
+      if (requestMode === "pro") {
+        return;
+      }
       const fallback = await api.chat({ ...effectiveRequestFilters, threadId, message });
       setThreadId(fallback.threadId);
       setResolvedIntent(fallback.resolvedIntent);
@@ -342,7 +472,36 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
           <p className="eyebrow">CONVERSATION / AI</p>
           <h2>当前穿搭线索</h2>
         </div>
+        <label className="assistant-mode-control" htmlFor="assistant-agent-mode">
+          <span>AI 模式</span>
+          <select
+            id="assistant-agent-mode"
+            data-testid="agent-mode-selector"
+            value={agentMode}
+            onChange={(event) => {
+              if (isStreaming) {
+                event.currentTarget.value = agentMode;
+                return;
+              }
+              const nextMode = event.currentTarget.value;
+              if (nextMode === "lite" || nextMode === "pro") {
+                setAgentMode(nextMode);
+              } else {
+                event.currentTarget.value = agentMode;
+              }
+            }}
+            disabled={isStreaming}
+          >
+            <option value="lite">Lite · 快速推荐</option>
+            <option value="pro">Pro · 动态调度</option>
+          </select>
+        </label>
       </div>
+      <p className="assistant-mode-hint" data-testid="agent-mode-hint">
+        {agentMode === "pro"
+          ? "Pro 会按中间结果动态调用工具，完成 Java 商品事实校验后展示卡片。"
+          : "Lite 使用现有固定流程，适合快速获取基础推荐。"}
+      </p>
       {resolvedIntent?.subjectMeasurements?.subject === "SELF" &&
         resolvedIntent.subjectMeasurements.heightCm !== undefined &&
         resolvedIntent.subjectMeasurements.weightKg !== undefined && (
@@ -377,6 +536,16 @@ export function ChatPanel({ onRecommendations, state }: ChatPanelProps) {
           </>
         )}
       </div>
+      {agentMode === "pro" && progress.length > 0 && (
+        <ol className="assistant-progress" data-testid="assistant-progress" aria-live="polite">
+          {progress.map((item) => (
+            <li key={`${item.runId}-${item.sequence}`} data-testid="assistant-progress-item">
+              <span>{item.stage === "completed" ? "已完成" : "进行中"}</span>
+              <span>{item.message}</span>
+            </li>
+          ))}
+        </ol>
+      )}
       <div className="filter-row">
         <label>
           <SlidersHorizontal size={16} />

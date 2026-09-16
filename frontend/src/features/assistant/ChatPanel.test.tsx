@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../shared/api/client";
@@ -185,5 +185,92 @@ describe("ChatPanel stale request protection", () => {
 
     expect(sharedAbortRef.current).toBe(newController);
     expect(setIsStreaming).not.toHaveBeenCalledWith(false);
+  });
+
+  it("locks the selected Pro mode for the run and renders validated facts only after done", async () => {
+    const stream = deferred<void>();
+    let emit!: (event: AssistantStreamEvent) => Promise<void> | void;
+    streamAssistantChatMock.mockImplementation(async (_request: unknown, onEvent: (event: AssistantStreamEvent) => Promise<void> | void) => {
+      emit = onEvent;
+      await stream.promise;
+    });
+    const onRecommendations = vi.fn();
+    const recommendationSnapshot = vi.spyOn(api, "recommendationSnapshot");
+    render(<ChatPanel onRecommendations={onRecommendations} />);
+
+    const mode = screen.getByLabelText("AI 模式");
+    expect(mode).toHaveValue("lite");
+    fireEvent.change(mode, { target: { value: "pro" } });
+    fireEvent.change(screen.getByTestId("ai-chat-input"), { target: { value: "预算 300 的通勤外套" } });
+    fireEvent.click(screen.getByTestId("ai-chat-submit"));
+
+    await waitFor(() => expect(streamAssistantChatMock).toHaveBeenCalledTimes(1));
+    expect(streamAssistantChatMock.mock.calls[0][0]).toMatchObject({
+      message: "预算 300 的通勤外套",
+      agentMode: "pro"
+    });
+    expect(streamAssistantChatMock.mock.calls[0][3]).toBe("pro");
+    expect(mode).toBeDisabled();
+    fireEvent.change(mode, { target: { value: "lite" } });
+    expect(mode).toHaveValue("pro");
+
+    await act(async () => {
+      await emit({ type: "thread", threadId: "thread-pro", runId: "run-pro", agentMode: "pro" });
+      await emit({
+        type: "progress",
+        runId: "run-pro",
+        sequence: 1,
+        tool: "search_products",
+        stage: "started",
+        message: "正在搜索商品"
+      });
+    });
+    expect(screen.getByTestId("assistant-progress")).toHaveTextContent("正在搜索商品");
+    expect(onRecommendations).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await emit({
+        type: "done",
+        threadId: "thread-pro",
+        runId: "run-pro",
+        agentMode: "pro",
+        answer: "已核验这件通勤外套",
+        spuIds: [1004],
+        recommendedItems: [{
+          spuId: 1004,
+          skuId: 2004,
+          name: "真实外套",
+          salePrice: 299.9,
+          mainImageUrl: "/coat.jpg",
+          color: "黑色",
+          size: "L",
+          availableStock: 4,
+          reason: "预算和场景匹配"
+        }],
+        recommendationStatus: "STRONG_MATCH",
+        recommendationId: "rec-pro"
+      });
+    });
+
+    await waitFor(() => expect(onRecommendations).toHaveBeenCalledTimes(1));
+    expect(onRecommendations).toHaveBeenCalledWith(
+      [expect.objectContaining({
+        spuId: 1004,
+        skuId: 2004,
+        name: "真实外套",
+        salePrice: 299.9,
+        mainImageUrl: "/coat.jpg",
+        availableStock: 4
+      })],
+      expect.objectContaining({ agentMode: "pro", recommendationId: "rec-pro" })
+    );
+    expect(recommendationSnapshot).not.toHaveBeenCalled();
+    expect(screen.getAllByTestId("chat-message-assistant").at(-1)).toHaveTextContent("已核验这件通勤外套");
+
+    stream.resolve();
+    await waitFor(() => expect(mode).not.toBeDisabled());
+    fireEvent.change(mode, { target: { value: "lite" } });
+    expect(mode).toHaveValue("lite");
+    expect(screen.getByTestId("chat-message-user")).toHaveTextContent("预算 300 的通勤外套");
   });
 });

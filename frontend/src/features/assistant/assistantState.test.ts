@@ -26,4 +26,31 @@ describe("assistant shopping state", () => {
     expect(withRecommendations.recommendationMeta?.recommendedItems?.[0].reason).toBe("预算匹配");
     expect(assistantShoppingReducer(withRecommendations, { type: "reset" })).toEqual(initialAssistantShoppingState);
   });
+
+  it("keeps mode and progress isolated per active run", () => {
+    const running = assistantShoppingReducer(initialAssistantShoppingState, {
+      type: "setAgentMode",
+      value: "pro"
+    });
+    const withRun = assistantShoppingReducer(running, {
+      type: "setActiveRunId",
+      value: "run-1"
+    });
+    const withProgress = assistantShoppingReducer(withRun, {
+      type: "setProgress",
+      value: [{
+        type: "progress",
+        runId: "run-1",
+        sequence: 1,
+        tool: "search_products",
+        stage: "started",
+        message: "正在搜索商品"
+      }]
+    });
+
+    expect(withProgress.agentMode).toBe("pro");
+    expect(withProgress.activeRunId).toBe("run-1");
+    expect(withProgress.progress).toHaveLength(1);
+    expect(assistantShoppingReducer(withProgress, { type: "reset" })).toEqual(initialAssistantShoppingState);
+  });
 });
