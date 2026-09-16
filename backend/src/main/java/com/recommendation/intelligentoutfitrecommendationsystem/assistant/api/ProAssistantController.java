@@ -1,11 +1,13 @@
 package com.recommendation.intelligentoutfitrecommendationsystem.assistant.api;
 
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ProChatRequest;
+import com.recommendation.intelligentoutfitrecommendationsystem.assistant.dto.ProDoneEvent;
 import com.recommendation.intelligentoutfitrecommendationsystem.assistant.service.ProAssistantService;
 import com.recommendation.intelligentoutfitrecommendationsystem.common.api.ApiResponse;
 import com.recommendation.intelligentoutfitrecommendationsystem.security.CurrentUser;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -13,10 +15,11 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * 独立的 Pro 同步入口，只接受用户意图；身份取自认证主体。
- * Task 3 仅打通内部传输，在最终结果校验实现前明确返回不可用，避免泄露未校验回答。
+ * 同步和流式入口都由 Pro 服务负责最终事实校验、持久化和终结。
  */
 @RestController
 @RequestMapping("/api/assistant/v2")
@@ -27,13 +30,28 @@ public class ProAssistantController {
         this.service = service;
     }
 
-    /** 后续结果校验阶段接入此处；目前内部响应既不透传前端，也不保存为助手消息。 */
+    /** 同步结果与 SSE done 使用同一份 Java 校验后的商品事实。 */
     @PostMapping("/chat")
-    public ResponseEntity<ApiResponse<Void>> chat(Authentication authentication,
+    public ResponseEntity<ApiResponse<ProDoneEvent>> chat(Authentication authentication,
                                                  @Valid @RequestBody ProChatRequest request) {
-        service.exchangeForValidation(CurrentUser.from(authentication).userId(), request);
+        Long userId = CurrentUser.from(authentication).userId();
+        ProDoneEvent result = service.chat(userId, request);
+        if (result != null) {
+            return ResponseEntity.ok(ApiResponse.ok(result));
+        }
+        // Compatibility path for callers compiled against the Task 3 validation-only mock boundary.
+        service.exchangeForValidation(userId, request);
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(ApiResponse.error("pro_result_not_ready", "Pro 结果校验尚未启用"));
+    }
+
+    /**
+     * Pro v2 public SSE endpoint; progress is forwarded early and answer tokens wait for Java validation.
+     */
+    @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamChat(Authentication authentication,
+                                 @Valid @RequestBody ProChatRequest request) {
+        return service.streamChat(CurrentUser.from(authentication).userId(), request);
     }
 
     /** 功能开关关闭时使用明确错误码，不回退到 Lite。 */
