@@ -197,6 +197,18 @@ public class RecommendationCandidateQueryService {
                 .toList();
     }
 
+    /**
+     * Revalidates Pro-selected products directly against SQL, bypassing recall limits and cached snapshots.
+     * All catalog filters retain their existing semantics; callers enforce their exact decimal budget.
+     */
+    public List<RecommendationCandidate> findFreshCandidates(RecommendationCandidateQuery query, List<Long> spuIds) {
+        if (spuIds == null || spuIds.isEmpty()) { return List.of(); }
+        if (spuIds.size() > 200 || spuIds.stream().anyMatch(id -> id == null || id <= 0)) {
+            throw new IllegalArgumentException("Invalid final product set");
+        }
+        return hydrateRecommendationCandidates(productMapper.findRecommendationCandidateSnapshotsBySpuIds(
+                normalizeRecommendationQuery(query), spuIds), null, true);
+    }
     private List<RecommendationCandidate> hydrateRecommendationCandidates(
             List<RecommendationCandidateSnapshot> snapshots,
             Integer budgetMax,

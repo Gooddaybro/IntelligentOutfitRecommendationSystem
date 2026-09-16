@@ -207,4 +207,20 @@ class RecommendationCandidateQueryServiceTests {
                 stock,
                 stock);
     }
-}
+    @Test
+    void finalRevalidationBypassesRecallAndCacheAndReadsChangedPriceAndStock() {
+        var filters = new RecommendationCandidateQuery("外套", "commute", "autumn", "cotton", "regular", null, "male", null);
+        when(productMapper.findRecommendationCandidateSnapshotsBySpuIds(any(), eq(List.of(1002L))))
+                .thenReturn(List.of(snapshot(1002L, 2101L)));
+        when(productMapper.findRecommendationCandidateLiveFacts(List.of(2101L)))
+                .thenReturn(List.of(fact(2101L, 3, "300.01")), List.of(fact(2101L, 0, "299.90")));
+        assertThat(service.findFreshCandidates(filters, List.of(1002L)).getFirst().getSalePrice())
+                .isEqualByComparingTo("300.01");
+        assertThat(service.findFreshCandidates(filters, List.of(1002L))).isEmpty();
+        org.mockito.Mockito.verifyNoInteractions(redisCacheService, recallGateway);
+        var captor = ArgumentCaptor.forClass(RecommendationCandidateQuery.class);
+        verify(productMapper, org.mockito.Mockito.times(2)).findRecommendationCandidateSnapshotsBySpuIds(captor.capture(), eq(List.of(1002L)));
+        assertThat(captor.getValue().getStyle()).isEqualTo("commute");
+        assertThat(captor.getValue().getGender()).isEqualTo("male");
+        assertThat(captor.getValue().getFit()).isEqualTo("regular");
+    }}

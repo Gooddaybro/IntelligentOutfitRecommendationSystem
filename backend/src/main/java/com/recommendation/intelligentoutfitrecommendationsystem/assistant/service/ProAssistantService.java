@@ -12,8 +12,8 @@ import java.util.UUID;
 
 /**
  * Independent Pro preparation and transport lifecycle, without Lite intent routing.
- * Task 3 produces an internal unvalidated result, never a persisted assistant answer.
- * Final validation and safe public result assembly belong to the later result stage.
+ * Validates final references while the run ledger is active; persistence is a later stage.
+ * Controllers keep delivery closed until the persistence lifecycle is implemented.
  */
 @Service
 public class ProAssistantService {
@@ -22,22 +22,25 @@ public class ProAssistantService {
     private final ProContextService context;
     private final ProRunRegistry registry;
     private final ProPythonAssistantClient client;
+    private final ProRecommendationValidator validator;
     private final boolean enabled;
 
     public ProAssistantService(ConversationApplicationService conversations, AssistantRateLimitService limiter,
                                ProContextService context, ProRunRegistry registry, ProPythonAssistantClient client,
+                               ProRecommendationValidator validator,
                                @Value("${app.ai.pro-enabled:false}") boolean enabled) {
         this.conversations = conversations;
         this.limiter = limiter;
         this.context = context;
         this.registry = registry;
         this.client = client;
+        this.validator = validator;
         this.enabled = enabled;
     }
 
     /**
      * Saves an authorized user turn, exchanges v2 data, then revokes its tool credentials.
-     * Callers must not expose or persist this return value without final business validation.
+     * Returns safe public-shaped data; caller delivery still requires the final persistence stage.
      */
     public JsonNode exchangeForValidation(Long userId, ProChatRequest request) {
         if (!enabled) {
@@ -56,7 +59,8 @@ public class ProAssistantService {
         conversations.appendMessage(userId, threadId, "user", request.message(), requestId);
         ProRunRegistry.RunCredentials run = registry.create(userId, threadId, requestId);
         try {
-            return client.chat(context.build(userId, threadId, request, requestId, run));
+            JsonNode done = client.chat(context.build(userId, threadId, request, requestId, run));
+            return validator.validate(userId, threadId, requestId, run, request, done);
         } finally {
             registry.revoke(run.runId(), run.token());
         }
