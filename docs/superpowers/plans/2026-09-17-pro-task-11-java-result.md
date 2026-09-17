@@ -4,7 +4,7 @@ Java 主仓库接入 Python Pro v2 的已推送 revision，并增加本地/测�
 
 ## 已交付
 
-- `.services/python-revision` 更新为 Python 仓库已推送的 `42c75e1`，主仓库 CI 可以按固定 SHA 取到 Task11 评测代码。
+- `.services/python-revision` 更新为 Python 仓库已推送的 `1eef95c1a29479156ef8c47a6afb0914dc25568d`，主仓库 CI 可以按固定 SHA 取到 Task11 评测代码。
 - `docker-compose.demo.yml` 为 Python 配置内部 Java 回调地址和同一内部 token，为 Java 配置 `APP_AI_PRO_ENABLED` 与读取超时；默认仍为关闭。
 - `.env.demo.example` 增加 Pro 开关、调用上限和超时示例，只有本地/测试 `.env` 明确设置 `APP_AI_PRO_ENABLED=true` 才启用。
 - `frontend/e2e/pro-assistant.spec.ts` 用假 v2 SSE 覆盖 Lite → Pro 切换、进度事件、A 无货后 B 商品卡片、推荐理由和详情跳转。
