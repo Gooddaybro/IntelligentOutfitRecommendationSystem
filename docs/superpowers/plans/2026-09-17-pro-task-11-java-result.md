@@ -14,12 +14,12 @@ Java 主仓库接入 Python Pro v2 的已推送 revision，并增加本地/测�
 
 | 命令 | 结果 |
 | --- | --- |
-| `npm run test -- --run` | 30 files / 87 tests passed |
+| `npm run test -- --run` | 31 files / 93 tests passed |
 | `npm run build` | passed |
 | `npm run test:e2e -- e2e/pro-assistant.spec.ts` | 1 passed |
 | `npm run test:e2e:integration -- e2e/integration/pro-assistant.spec.ts` | 1 skipped（需要 `RUN_PRO_INTEGRATION=true`） |
 | `docker compose -f docker-compose.yml -f docker-compose.demo.yml config --quiet` | passed |
 | `./mvnw.cmd "-Dtest=ProAssistantStreamTests,ProAssistantServiceTests,ProAssistantControllerTests,ProPythonAssistantClientTests,ProRecommendationValidatorTests" test` | 22 tests，0 failures，0 errors，0 skipped |
-| `./mvnw.cmd verify` | 579 tests，577 passed，11 skipped，2 errors |
+| `./mvnw.cmd verify` | 585 tests，583 passed，14 skipped，2 errors |
 
 Maven 全量的两个错误是 `AiTaskRetryDlqIntegrationTests` 和 `RabbitAiTaskTopologyTests` 启动 Testcontainers 时找不到 Docker 环境；本机 Docker Desktop Linux engine named pipe 不存在。其余测试没有失败。真实 Docker demo 及正向/取消联调需在 Docker daemon、MySQL、Redis、RabbitMQ、Elasticsearch、Postgres、Java、Python 和模型服务齐备的测试机执行。
