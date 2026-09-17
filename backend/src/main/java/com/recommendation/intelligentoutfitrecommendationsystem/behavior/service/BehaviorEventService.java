@@ -12,6 +12,7 @@ import com.recommendation.intelligentoutfitrecommendationsystem.common.observabi
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -22,8 +23,8 @@ import java.util.UUID;
 /**
  * 行为事件写入服务。
  *
- * 公开推荐交互写入保持严格校验；内部交易事件写入采用 best-effort，
- * 避免反馈闭环埋点故障影响购物车、下单、支付等主流程。
+ * 公开推荐交互写入保持严格校验；普通内部事件默认 best-effort，订单创建则通过严格入口
+ * 与交易事实共同提交，在关键闭环完整性和其他主流程可用性之间保留明确边界。
  */
 @Service
 public class BehaviorEventService {
@@ -85,34 +86,51 @@ public class BehaviorEventService {
 
     public void recordBusinessEvent(BehaviorEventCommand command) {
         try {
-            if (command == null) {
-                throw new BadRequestException("behavior event command is required");
-            }
-            validateUserId(command.userId());
-            BehaviorEventType eventType = BehaviorEventType.parse(command.eventType());
-            BehaviorEventSource source = BehaviorEventSource.parseOrDefault(
-                    command.source(),
-                    BehaviorEventSource.COMMERCE
-            );
-            String recommendationId = resolveBusinessRecommendation(command, eventType);
-            int insertedRows = behaviorMapper.insert(toEvent(
-                    normalizeEventId(command.eventId()),
-                    command.userId(),
-                    eventType,
-                    source,
-                    command.spuId(),
-                    command.skuId(),
-                    command.threadId(),
-                    command.requestId(),
-                    command.orderNo(),
-                    command.quantity(),
-                    command.metadata(),
-                    recommendationId
-            ));
-            recordFunnel(eventType, recommendationId, insertedRows);
+            writeBusinessEvent(command);
         } catch (RuntimeException exception) {
             LOGGER.warn("Failed to record behavior event from business flow.", exception);
         }
+    }
+
+    /**
+     * 在调用方已开启的交易事务中写入必须与主流程共同提交的行为事件。
+     *
+     * 该入口不降级持久化失败；订单创建依赖异常继续传播，以回滚订单、库存和幂等占位记录。
+     *
+     * @param command 已由内部业务流程组装的事件命令
+     * @throws RuntimeException 校验、归因或持久化失败时原样传播
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordBusinessEventStrict(BehaviorEventCommand command) {
+        writeBusinessEvent(command);
+    }
+
+    private void writeBusinessEvent(BehaviorEventCommand command) {
+        if (command == null) {
+            throw new BadRequestException("behavior event command is required");
+        }
+        validateUserId(command.userId());
+        BehaviorEventType eventType = BehaviorEventType.parse(command.eventType());
+        BehaviorEventSource source = BehaviorEventSource.parseOrDefault(
+                command.source(),
+                BehaviorEventSource.COMMERCE
+        );
+        String recommendationId = resolveBusinessRecommendation(command, eventType);
+        int insertedRows = behaviorMapper.insert(toEvent(
+                normalizeEventId(command.eventId()),
+                command.userId(),
+                eventType,
+                source,
+                command.spuId(),
+                command.skuId(),
+                command.threadId(),
+                command.requestId(),
+                command.orderNo(),
+                command.quantity(),
+                command.metadata(),
+                recommendationId
+        ));
+        recordFunnel(eventType, recommendationId, insertedRows);
     }
 
     private BehaviorEvent toEvent(

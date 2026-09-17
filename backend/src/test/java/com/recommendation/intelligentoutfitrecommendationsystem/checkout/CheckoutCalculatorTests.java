@@ -51,6 +51,18 @@ class CheckoutCalculatorTests {
         assertThat(result.discountAmount()).isEqualByComparingTo("0.00");
         assertThat(result.payableAmount()).isEqualByComparingTo("30.03");
         assertThat(result.invalidReasons()).isEmpty();
+        verify(checkoutMapper, never()).findCartFactsForUpdate(10L, List.of(2102L));
+    }
+
+    @Test
+    void orderCalculationReadsTradeFactsWithSingleLockingCurrentQuery() {
+        CheckoutFactRow row = row(2102L, "299.00", 1, "on_sale", "on_sale", 10);
+        when(checkoutMapper.findCartFactsForUpdate(10L, List.of(2102L))).thenReturn(List.of(row));
+
+        calculator.calculateForOrder(10L, List.of(2102L), 31L);
+
+        verify(checkoutMapper).findCartFactsForUpdate(10L, List.of(2102L));
+        verify(checkoutMapper, never()).findCartFacts(10L, List.of(2102L));
     }
 
     @Test
@@ -75,7 +87,7 @@ class CheckoutCalculatorTests {
                 row(2203L, "199.00", 1, "off_sale", "on_sale", 2),
                 row(2204L, "199.00", 1, "on_sale", "off_sale", 2)
         ).forEach(invalidRow -> {
-            when(checkoutMapper.findCartFacts(10L, List.of(invalidRow.getSkuId())))
+            when(checkoutMapper.findCartFactsForUpdate(10L, List.of(invalidRow.getSkuId())))
                     .thenReturn(List.of(invalidRow));
 
             assertThatThrownBy(() -> calculator.calculateForOrder(

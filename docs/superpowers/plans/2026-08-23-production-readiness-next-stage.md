@@ -460,11 +460,11 @@ sh ./mvnw -B -ntp \
 - Modify: `backend/src/test/java/com/recommendation/intelligentoutfitrecommendationsystem/order/OrderMapperTests.java`
 - Delete after migration: `backend/src/main/java/com/recommendation/intelligentoutfitrecommendationsystem/order/model/OrderCheckoutItem.java`
 
-- [ ] `CreateOrderRequest` 增加必填 `addressId`，仍不接受金额字段。
-- [ ] `order_address_snapshot` 与订单一对一，保存 `source_address_id` 和下单时完整地址文本。
-- [ ] `source_address_id` 仅供审计，不建立阻止用户删除地址的强外键。
-- [ ] 订单详情读取快照；订单列表不额外加载完整地址，避免列表查询膨胀。
-- [ ] 修改或删除地址簿地址后，历史订单详情保持不变。
+- [x] `CreateOrderRequest` 增加必填 `addressId`，仍不接受金额字段。
+- [x] `order_address_snapshot` 与订单一对一，保存 `source_address_id` 和下单时完整地址文本。
+- [x] `source_address_id` 仅供审计，不建立阻止用户删除地址的强外键。
+- [x] 订单详情读取快照；订单列表不额外加载完整地址，避免列表查询膨胀。
+- [x] 修改或删除地址簿地址后，历史订单详情保持不变。
 
 ### Task 4.2：正式下单事务使用 CheckoutCalculator
 
@@ -489,12 +489,12 @@ sh ./mvnw -B -ntp \
 → 提交事务
 ```
 
-- [ ] 正式下单不复用前端预览金额，而是调用 `calculateForOrder`。
-- [ ] `OrderService` 不再直接读取 `OrderMapper.findCheckoutItemsFromCart` 或自行计算总额；删除旧 Mapper 查询和 `OrderCheckoutItem`，只消费 checkout 模块的不可变结果。
-- [ ] 订单总额和订单项价格全部取自 `CheckoutCalculation`。
-- [ ] 地址、订单、订单项、地址快照、库存变化、购物车清理和幂等业务结果位于同一事务。
-- [ ] 在“库存已锁定但快照写入失败”场景注入故障，断言所有变化回滚。
-- [ ] 保留现有 `InventoryApplicationService` 的锁定/确认/释放边界，不新增一套库存实现。
+- [x] 正式下单不复用前端预览金额，而是调用 `calculateForOrder`。
+- [x] `OrderService` 不再直接读取 `OrderMapper.findCheckoutItemsFromCart` 或自行计算总额；删除旧 Mapper 查询和 `OrderCheckoutItem`，只消费 checkout 模块的不可变结果。
+- [x] 订单总额和订单项价格全部取自 `CheckoutCalculation`。
+- [x] 地址、订单、订单项、地址快照、库存变化、购物车清理、订单事件和幂等业务结果位于同一事务；严格事件写入失败会触发整笔交易回滚。
+- [x] 在“库存已锁定但快照写入失败”场景注入故障，断言所有变化回滚。
+- [x] 保留现有 `InventoryApplicationService` 的锁定/确认/释放边界，不新增一套库存实现。
 
 ### Task 4.3：扩展幂等指纹并接入前端 Idempotency-Key
 
@@ -509,13 +509,13 @@ sh ./mvnw -B -ntp \
 - Modify: `frontend/src/pages/CheckoutPage.tsx`
 - Modify: `frontend/src/pages/CheckoutPage.test.tsx`
 
-- [ ] 购物车订单指纹从 `normalizedSkuIds` 扩展为 `normalizedSkuIds + addressId`。
-- [ ] 相同用户、相同键、相同商品和地址返回原订单。
-- [ ] 相同用户和键但商品或地址变化返回幂等冲突，不错误复用旧订单。
-- [ ] 并发相同请求只生成一个订单、一个地址快照和一次有效库存变化。
-- [ ] 前端每次用户主动提交生成 UUID `Idempotency-Key`。
-- [ ] 同一次网络重试复用原键；用户修改地址或商品选择后生成新键。
-- [ ] 提交按钮防重复点击，但按钮防抖不能替代服务端幂等。
+- [x] 购物车订单指纹从 `normalizedSkuIds` 扩展为 `normalizedSkuIds + addressId`。
+- [x] 相同用户、相同键、相同商品和地址返回原订单。
+- [x] 相同用户和键但商品或地址变化返回幂等冲突，不错误复用旧订单。
+- [x] 并发相同请求只生成一个订单、一个地址快照和一次有效库存变化。
+- [x] 前端每次用户主动提交生成 UUID `Idempotency-Key`，购物车下单和立即购买均已接入。
+- [x] 同一次网络重试复用原键；用户修改地址、商品或数量，或者取消后重新发起时生成新键。
+- [x] 提交按钮防重复点击，但按钮防抖不能替代服务端幂等。
 
 ### 阶段 4 验收
 
@@ -547,6 +547,34 @@ npm run build
 2. `refactor: create orders from checkout calculation`
 3. `fix: include address in order idempotency fingerprint`
 4. `test: verify trusted checkout rollback and concurrency`
+
+### 阶段 4 完成记录（2026-08-29）
+
+**已提交完成：**
+
+- [x] Task 4.1：订单请求增加 `addressId`，持久化不可变订单地址快照。
+- [x] Task 4.2 主体：正式下单统一使用 `CheckoutCalculator`，服务端重新计算金额并纳入订单事务。
+- [x] Task 4.3 购物车路径：地址进入幂等指纹，购物车提交支持 UUID 幂等键、失败重试复用和意图变化换键。
+- [x] 阶段 4 计划项和主体实现分别提交在 `79ad96c`、`edfa308`、`5137c5c`、`7ea1ab7`。
+
+**最终复审收口：**
+
+- [x] 增加订单严格事件写入入口，使订单事件失败能够触发整笔交易回滚；单测、Spring 代理测试和真实 MySQL 故障注入测试均已通过。
+- [x] 正式下单通过一条 `FOR UPDATE OF ci, sku, spu, inv` 当前读同时取得并锁定交易事实；既避免可重复读旧快照，也不锁共享展示维表。
+- [x] 立即购买请求增加 UUID `Idempotency-Key`；同一未关闭动作失败重试复用，成功、取消或意图变化后换键。
+- [x] 结算页直接展示服务端 `lineAmount`，不再由浏览器重复计算行金额。
+- [x] 补充地址持久化前去除首尾空白的边界说明。
+
+**最终验证：**
+
+- [x] 后端阶段 4 针对性测试：42 个测试通过。
+- [x] 真实 MySQL 回滚与并发测试：5 个测试通过。
+- [x] 前端全量测试：31 个测试文件、84 个测试通过；生产构建成功。
+- [x] Java 全量 `mvn verify`：538 个测试，0 失败、0 错误、12 个条件跳过；Checkstyle 0 违规。
+- [x] 最终修复经过两轮独立复审，结论为 Critical 0、Important 0、无新增 Minor，Assessment `Yes`。
+- [x] `git diff --check` 通过；Python 仓库和 Docker 配置未被本阶段收口改动。
+
+**当前结论：** 阶段 4 已完成最终验收。下一步从阶段 5 的接口假闭环清理开始，不再重复 Task 4.1～4.3。
 
 ---
 

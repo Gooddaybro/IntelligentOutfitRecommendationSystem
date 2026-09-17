@@ -26,6 +26,26 @@ describe("order api client", () => {
     expect((fetchMock.mock.calls[0][1].headers as Headers).get("Idempotency-Key"))
       .toBe("2d36f872-e8d1-4e4f-b12e-a9702c88e890");
   });
+
+  it("sends the required Idempotency-Key when buying now", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve(JSON.stringify({ data: { orderNo: "ORD2" } }))
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.buyNow(2102, 2, "11111111-1111-4111-8111-111111111111", "rec-1");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/orders/buy-now",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ skuId: 2102, quantity: 2, recommendationId: "rec-1" })
+      })
+    );
+    expect((fetchMock.mock.calls[0][1].headers as Headers).get("Idempotency-Key"))
+      .toBe("11111111-1111-4111-8111-111111111111");
+  });
 });
 
 describe("payment api client", () => {

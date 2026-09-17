@@ -128,6 +128,14 @@ public class AddressService {
         return address;
     }
 
+    /**
+     * 在持久化边界统一去除地址字段首尾空白，避免展示差异进入地址快照和后续订单合同。
+     *
+     * @param id 更新时的地址 ID；创建时为 null
+     * @param userId 当前认证用户 ID
+     * @param request 已通过 API 字段约束校验的地址请求
+     * @return 可安全持久化的用户地址实体
+     */
     private UserAddress fromRequest(Long id, Long userId, AddressSaveRequest request) {
         UserAddress address = new UserAddress();
         address.setId(id);
